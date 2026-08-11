@@ -540,7 +540,7 @@ test('worker branch convention is deterministic and rejects invalid issue number
 
 test('PR closing references preserve authorized linked issues and remove stale ones', () => {
   assert.equal(
-    withIssueClosingReference('Summary\n\nCloses #1\nClose #17\nClosed #99', 17, [39]),
+    withIssueClosingReference('Summary\n\nCloses #1\nClose #17\nClosed #99', 17, [39, 39]),
     'Summary\n\nCloses #17\nCloses #39',
   );
 });
