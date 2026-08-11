@@ -1,0 +1,4 @@
+interface:
+  display_name: 'triage-main'
+  short_description: 'Reusable triage-main workflow'
+  default_prompt: 'Use the triage-main workflow for this repository.'
