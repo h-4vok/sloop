@@ -1,0 +1,448 @@
+{
+  "communities": {
+    "0": [
+      "src_core_boundaries_clicontrol_status",
+      "src_dispatcher",
+      "src_dispatcher_acquire",
+      "src_dispatcher_activerunforhitl",
+      "src_dispatcher_argumentvalues",
+      "src_dispatcher_check",
+      "src_dispatcher_checkfeedback",
+      "src_dispatcher_claimnewissue",
+      "src_dispatcher_command",
+      "src_dispatcher_config",
+      "src_dispatcher_deps",
+      "src_dispatcher_dispatch",
+      "src_dispatcher_effectivemaxrounds",
+      "src_dispatcher_findingids",
+      "src_dispatcher_hascommit",
+      "src_dispatcher_haspersistedrecoverycontext",
+      "src_dispatcher_hitlcomment",
+      "src_dispatcher_humanreviewguide",
+      "src_dispatcher_isactivestatus",
+      "src_dispatcher_isrenderedhumanreviewguide",
+      "src_dispatcher_isstaleworker",
+      "src_dispatcher_issue",
+      "src_dispatcher_isworkerstatus",
+      "src_dispatcher_latestreview",
+      "src_dispatcher_latestworkercomment",
+      "src_dispatcher_normalizecheckstatus",
+      "src_dispatcher_normalizederror",
+      "src_dispatcher_pauseforreviewcap",
+      "src_dispatcher_prepareworkerbranch",
+      "src_dispatcher_prhealthyforhumanmerge",
+      "src_dispatcher_processissue",
+      "src_dispatcher_publishhumanreviewguide",
+      "src_dispatcher_redactdiagnostic",
+      "src_dispatcher_renderedhumanreviewguide",
+      "src_dispatcher_review",
+      "src_dispatcher_reviewfeedback",
+      "src_dispatcher_reviewverdict",
+      "src_dispatcher_rolecommand",
+      "src_dispatcher_roleprompt",
+      "src_dispatcher_root",
+      "src_dispatcher_roundfrombody",
+      "src_dispatcher_runreview",
+      "src_dispatcher_runworker",
+      "src_dispatcher_skillfor",
+      "src_dispatcher_skills",
+      "src_dispatcher_state",
+      "src_dispatcher_statedir",
+      "src_dispatcher_statefile",
+      "src_dispatcher_status",
+      "src_dispatcher_synccommandexecutor",
+      "src_dispatcher_waitforci",
+      "src_dispatcher_waitforevidence",
+      "src_dispatcher_withissueclosingreference",
+      "src_dispatcher_withworkerlifecycle",
+      "src_dispatcher_workerbranchname",
+      "src_dispatcher_workermetadata"
+    ],
+    "1": [
+      "src_config",
+      "src_config_allowedtree",
+      "src_config_argvlistparser",
+      "src_config_argvparser",
+      "src_config_booleanparser",
+      "src_config_canonicalconfigyaml",
+      "src_config_configdiagnostic",
+      "src_config_configfingerprint",
+      "src_config_configvalidationerror",
+      "src_config_configvalidationerror_constructor",
+      "src_config_configvaluetype",
+      "src_config_containershapes",
+      "src_config_credentialdiagnostics",
+      "src_config_deepfreeze",
+      "src_config_durationparser",
+      "src_config_enumparser",
+      "src_config_executablebasename",
+      "src_config_f",
+      "src_config_fail",
+      "src_config_field",
+      "src_config_fieldmetadata",
+      "src_config_fingerprintvalue",
+      "src_config_formatduration",
+      "src_config_getconfigfield",
+      "src_config_getpath",
+      "src_config_gitconfigdispatchesshell",
+      "src_config_integerparser",
+      "src_config_listparser",
+      "src_config_loadconfigfile",
+      "src_config_loadconfigtext",
+      "src_config_parseconfig",
+      "src_config_pathparser",
+      "src_config_plainobject",
+      "src_config_reconciler",
+      "src_config_runnerconfig",
+      "src_config_sensitivity",
+      "src_config_setpath",
+      "src_config_shellexecutable",
+      "src_config_shellexecutables",
+      "src_config_sloopconfig",
+      "src_config_stringparser",
+      "src_config_unknownkeys",
+      "src_config_updateconfigfile",
+      "src_config_updateconfigtext"
+    ],
+    "2": [
+      "openai_codex",
+      "package",
+      "package_bin",
+      "package_bin_sloop",
+      "package_dependencies",
+      "package_dependencies_openai_codex",
+      "package_dependencies_yaml",
+      "package_devdependencies",
+      "package_devdependencies_prettier",
+      "package_devdependencies_types_node",
+      "package_devdependencies_typescript",
+      "package_engines",
+      "package_engines_node",
+      "package_name",
+      "package_private",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_format",
+      "package_scripts_format_check",
+      "package_scripts_help",
+      "package_scripts_link_local",
+      "package_scripts_loop",
+      "package_scripts_sloop",
+      "package_scripts_test",
+      "package_scripts_unlink_local",
+      "package_scripts_version",
+      "package_type",
+      "package_version",
+      "prettier",
+      "types_node",
+      "typescript",
+      "yaml"
+    ],
+    "3": [
+      "src_adapters",
+      "src_adapters_productiondependencies",
+      "src_core_boundaries_githubprovider_pullrequest",
+      "src_core_boundaries_healthgate_processalive",
+      "src_dispatcher_checkoutworkerbranch",
+      "src_dispatcher_childprocessinvocation",
+      "src_dispatcher_commentissueonce",
+      "src_dispatcher_commentpullrequest",
+      "src_dispatcher_commentpullrequestonce",
+      "src_dispatcher_defaultprocessalive",
+      "src_dispatcher_dispatcherlockpath",
+      "src_dispatcher_eligible",
+      "src_dispatcher_gh",
+      "src_dispatcher_ghjson",
+      "src_dispatcher_linkissuetoactiverun",
+      "src_dispatcher_preparerecovery",
+      "src_dispatcher_publishhitldecision",
+      "src_dispatcher_pullrequest",
+      "src_dispatcher_pullrequestbody",
+      "src_dispatcher_readstate",
+      "src_dispatcher_recoverstalelock",
+      "src_dispatcher_resetrunstate",
+      "src_dispatcher_resolveexecutable",
+      "src_dispatcher_resolvereviewcap",
+      "src_dispatcher_runcommand",
+      "src_dispatcher_rundispatchercli",
+      "src_dispatcher_runsynccommand",
+      "src_dispatcher_spec",
+      "src_dispatcher_updatepullrequestbody",
+      "src_dispatcher_writestate"
+    ],
+    "4": [
+      "src_core_boundaries",
+      "src_core_boundaries_agentrunner",
+      "src_core_boundaries_agentrunner_run",
+      "src_core_boundaries_githubprovider",
+      "src_core_boundaries_githubprovider_comment",
+      "src_core_boundaries_githubprovider_eligible",
+      "src_core_boundaries_githubprovider_prcomment",
+      "src_core_boundaries_githubprovider_pullrequestbody",
+      "src_core_boundaries_githubprovider_updatepullrequestbody",
+      "src_core_boundaries_gitprovider",
+      "src_core_boundaries_gitprovider_checkoutworkerbranch",
+      "src_core_boundaries_gitprovider_prepareworkerbranch",
+      "src_core_boundaries_healthgate",
+      "src_core_boundaries_healthgate_pid",
+      "src_core_boundaries_lockowner",
+      "src_core_boundaries_runeventsink",
+      "src_core_boundaries_runeventsink_onreclaim",
+      "src_core_boundaries_scheduler",
+      "src_core_boundaries_scheduler_now",
+      "src_core_boundaries_scheduler_sleep",
+      "src_core_boundaries_workspace",
+      "src_core_boundaries_workspace_load",
+      "src_core_boundaries_workspace_save"
+    ],
+    "5": [
+      "ref_src_ts",
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_esmoduleinterop",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_outdir",
+      "tsconfig_compileroptions_rootdir",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_include"
+    ],
+    "6": [
+      "src_core_boundaries_lockstore",
+      "src_core_boundaries_lockstore_abandonreclaim",
+      "src_core_boundaries_lockstore_finishreclaim",
+      "src_core_boundaries_lockstore_readowner",
+      "src_core_boundaries_lockstore_readreclaimowner",
+      "src_core_boundaries_lockstore_reclaimagems",
+      "src_core_boundaries_lockstore_release",
+      "src_core_boundaries_lockstore_tryacquire",
+      "src_core_boundaries_lockstore_trybeginreclaim"
+    ],
+    "7": [
+      "src_core_boundaries_clicontrol",
+      "src_core_boundaries_clicontrol_linkissue",
+      "src_core_boundaries_clicontrol_list",
+      "src_core_boundaries_clicontrol_loadconfig",
+      "src_core_boundaries_clicontrol_preparerecovery",
+      "src_core_boundaries_clicontrol_recoverlock",
+      "src_core_boundaries_clicontrol_reset",
+      "src_core_boundaries_clicontrol_resolvereviewcap"
+    ],
+    "8": [
+      "codex_skills_dispatcher_skill",
+      "codex_skills_product_lead_skill",
+      "codex_skills_qa_sdet_skill",
+      "codex_skills_staff_reviewer_skill",
+      "codex_skills_triage_staging_skill",
+      "codex_skills_worker_skill",
+      "readme"
+    ],
+    "9": [
+      "prettierrc",
+      "prettierrc_endofline",
+      "prettierrc_printwidth",
+      "prettierrc_semi",
+      "prettierrc_singlequote",
+      "prettierrc_trailingcomma"
+    ],
+    "10": [
+      "test_dispatcher_test",
+      "test_dispatcher_test_assertpersisteddiagnostic",
+      "test_dispatcher_test_baseconfig",
+      "test_dispatcher_test_existinghumanreviewguide",
+      "test_dispatcher_test_harness"
+    ],
+    "11": [
+      "src_cli",
+      "src_cli_packagejson",
+      "src_cli_requiresupportednode",
+      "src_cli_runcli"
+    ],
+    "12": [
+      "docs_sloop_engineering_v1",
+      "github_workflows_pr_checks",
+      "sloop_config_yaml"
+    ],
+    "13": [
+      "test_cli_test",
+      "test_cli_test_cli"
+    ],
+    "14": [
+      "test_config_test",
+      "test_config_test_canonical"
+    ],
+    "15": [
+      "contributing"
+    ],
+    "16": [
+      "test_boundaries_test"
+    ]
+  },
+  "cohesion": {
+    "0": 0.07792207792207792,
+    "1": 0.08773784355179703,
+    "2": 0.0625,
+    "3": 0.15632183908045977,
+    "4": 0.08695652173913043,
+    "5": 0.16666666666666666,
+    "6": 0.2222222222222222,
+    "7": 0.25,
+    "8": 0.3333333333333333,
+    "9": 0.3333333333333333,
+    "10": 0.5,
+    "11": 0.6666666666666666,
+    "12": 0.6666666666666666,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_adapters_productiondependencies",
+      "label": "productionDependencies()",
+      "degree": 18
+    },
+    {
+      "id": "src_dispatcher_deps",
+      "label": "Deps",
+      "degree": 16
+    },
+    {
+      "id": "src_dispatcher_dispatch",
+      "label": "dispatch()",
+      "degree": 16
+    },
+    {
+      "id": "src_dispatcher_runworker",
+      "label": "runWorker()",
+      "degree": 14
+    },
+    {
+      "id": "src_dispatcher_resolvereviewcap",
+      "label": "resolveReviewCap()",
+      "degree": 12
+    },
+    {
+      "id": "package_scripts",
+      "label": "scripts",
+      "degree": 11
+    },
+    {
+      "id": "src_config_parseconfig",
+      "label": "parseConfig()",
+      "degree": 11
+    },
+    {
+      "id": "src_dispatcher_linkissuetoactiverun",
+      "label": "linkIssueToActiveRun()",
+      "degree": 11
+    },
+    {
+      "id": "src_config_fail",
+      "label": "fail()",
+      "degree": 10
+    },
+    {
+      "id": "src_core_boundaries_clicontrol",
+      "label": "CliControl",
+      "degree": 10
+    }
+  ],
+  "surprises": [
+    {
+      "source": "Worker Skill",
+      "target": "Sloop README",
+      "source_files": [
+        ".codex/skills/worker/SKILL.md",
+        "README.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    },
+    {
+      "source": "Sloop Configuration",
+      "target": "PR Checks Workflow",
+      "source_files": [
+        "sloop.config.yaml",
+        ".github/workflows/pr-checks.yml"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories"
+    },
+    {
+      "source": "Sloop Engineering V1 Operation",
+      "target": "PR Checks Workflow",
+      "source_files": [
+        "docs/sloop-engineering-v1.md",
+        ".github/workflows/pr-checks.yml"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories"
+    },
+    {
+      "source": "Dispatcher Skill",
+      "target": "Triage Staging Skill",
+      "source_files": [
+        ".codex/skills/dispatcher/SKILL.md",
+        ".codex/skills/triage-staging/SKILL.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; peripheral node `Triage Staging Skill` unexpectedly reaches hub `Dispatcher Skill`"
+    },
+    {
+      "source": "productionDependencies()",
+      "target": "commentPullRequest()",
+      "source_files": [
+        "src/adapters.ts",
+        "src/dispatcher.ts"
+      ],
+      "confidence": "INFERRED",
+      "relation": "indirect_call",
+      "why": "inferred connection - not explicitly stated in source"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `LockStore` connect `Community 6` to `Community 0`, `Community 4`?",
+      "why": "High betweenness centrality (0.034) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `CliControl` connect `Community 7` to `Community 0`, `Community 4`?",
+      "why": "High betweenness centrality (0.030) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `GitHubProvider` connect `Community 4` to `Community 0`, `Community 3`?",
+      "why": "High betweenness centrality (0.023) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 7 inferred relationships involving `productionDependencies()` (e.g. with `commentPullRequest()` and `defaultProcessAlive()`) actually correct?",
+      "why": "`productionDependencies()` has 7 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `singleQuote`, `trailingComma`, `semi` to the rest of the system?",
+      "why": "65 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.07792207792207792 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 1` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.08773784355179703 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

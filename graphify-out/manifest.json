@@ -1,0 +1,177 @@
+{
+  "C:\\src\\sloop\\.prettierrc.json": {
+    "mtime": 1786442054.4488,
+    "ast_hash": "63aab08b0013ff6677075fa228d6cf7c",
+    "semantic_hash": "63aab08b0013ff6677075fa228d6cf7c"
+  },
+  "C:\\src\\sloop\\package.json": {
+    "mtime": 1787576006.3901403,
+    "ast_hash": "dd68be5c667e7a40950b7208240ca3f4",
+    "semantic_hash": "dd68be5c667e7a40950b7208240ca3f4"
+  },
+  "C:\\src\\sloop\\src\\adapters.ts": {
+    "mtime": 1787575896.0609481,
+    "ast_hash": "5f0c06cbcf6410eef0b5eafb5b772388",
+    "semantic_hash": "5f0c06cbcf6410eef0b5eafb5b772388"
+  },
+  "C:\\src\\sloop\\src\\cli.ts": {
+    "mtime": 1787575896.0609481,
+    "ast_hash": "26a205401bc090b757b22c5bf59b6965",
+    "semantic_hash": "26a205401bc090b757b22c5bf59b6965"
+  },
+  "C:\\src\\sloop\\src\\config.ts": {
+    "mtime": 1787581093.807491,
+    "ast_hash": "69e389af0e34cdb481662dc31b406a93",
+    "semantic_hash": "69e389af0e34cdb481662dc31b406a93"
+  },
+  "C:\\src\\sloop\\src\\core\\boundaries.ts": {
+    "mtime": 1787575896.0629327,
+    "ast_hash": "98f43bea027652fdcf119aebc25f606a",
+    "semantic_hash": "98f43bea027652fdcf119aebc25f606a"
+  },
+  "C:\\src\\sloop\\src\\dispatcher.ts": {
+    "mtime": 1787575896.0640478,
+    "ast_hash": "2f4f4bcaf8e5ff275c35596b375a9fb2",
+    "semantic_hash": "2f4f4bcaf8e5ff275c35596b375a9fb2"
+  },
+  "C:\\src\\sloop\\test\\boundaries.test.mjs": {
+    "mtime": 1787575896.0651472,
+    "ast_hash": "ed4ece7fe6a547a54a701400f8ad6a54",
+    "semantic_hash": "ed4ece7fe6a547a54a701400f8ad6a54"
+  },
+  "C:\\src\\sloop\\test\\cli.test.mjs": {
+    "mtime": 1787575896.066158,
+    "ast_hash": "fc57739f891f48f7d2a9e7bcc7c31187",
+    "semantic_hash": "fc57739f891f48f7d2a9e7bcc7c31187"
+  },
+  "C:\\src\\sloop\\test\\config.test.mjs": {
+    "mtime": 1787581072.8612654,
+    "ast_hash": "70f49ce32a202f6071f99629c124e3f0",
+    "semantic_hash": "70f49ce32a202f6071f99629c124e3f0"
+  },
+  "C:\\src\\sloop\\test\\dispatcher.test.mjs": {
+    "mtime": 1787575896.066158,
+    "ast_hash": "2ac4f0109cf1c0cd0efcb57253978e9d",
+    "semantic_hash": "2ac4f0109cf1c0cd0efcb57253978e9d"
+  },
+  "C:\\src\\sloop\\tsconfig.json": {
+    "mtime": 1786442054.4538012,
+    "ast_hash": "a991260098ea86f3a8235349b932cc66",
+    "semantic_hash": "a991260098ea86f3a8235349b932cc66"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\dispatcher\\SKILL.md": {
+    "mtime": 1786442054.4438014,
+    "ast_hash": "70d3ccd51293041be048bc77992891b1",
+    "semantic_hash": "70d3ccd51293041be048bc77992891b1"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\dispatcher\\agents\\openai.yaml": {
+    "mtime": 1786442054.4438014,
+    "ast_hash": "ccfbe4f9536ec0b5b545a9a667644837",
+    "semantic_hash": "ccfbe4f9536ec0b5b545a9a667644837"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\product-lead\\SKILL.md": {
+    "mtime": 1786442054.4438014,
+    "ast_hash": "993fd4d8038ef0dd8d6205f9129dd8ed",
+    "semantic_hash": "993fd4d8038ef0dd8d6205f9129dd8ed"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\product-lead\\agents\\openai.yaml": {
+    "mtime": 1786442054.4448016,
+    "ast_hash": "993173c0ffc7baea4656ca4d3acb141e",
+    "semantic_hash": "993173c0ffc7baea4656ca4d3acb141e"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\qa-sdet\\SKILL.md": {
+    "mtime": 1787575896.0575142,
+    "ast_hash": "b81eb43422e7f4567afacfc5bb37fdce",
+    "semantic_hash": "b81eb43422e7f4567afacfc5bb37fdce"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\qa-sdet\\agents\\openai.yaml": {
+    "mtime": 1786442054.4448016,
+    "ast_hash": "856351a3aca10a4866665fbc702f0619",
+    "semantic_hash": "856351a3aca10a4866665fbc702f0619"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\staff-reviewer\\SKILL.md": {
+    "mtime": 1786442054.4458008,
+    "ast_hash": "ed603278f0178ac283cc8f4e9afe9a45",
+    "semantic_hash": "ed603278f0178ac283cc8f4e9afe9a45"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\staff-reviewer\\agents\\openai.yaml": {
+    "mtime": 1786442054.4468014,
+    "ast_hash": "1083bbd13ae96c248ab6154f1376f086",
+    "semantic_hash": "1083bbd13ae96c248ab6154f1376f086"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\triage-staging\\SKILL.md": {
+    "mtime": 1786442054.4468014,
+    "ast_hash": "06dbb9e02340843fcdb7fac4068086c4",
+    "semantic_hash": "06dbb9e02340843fcdb7fac4068086c4"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\triage-staging\\agents\\openai.yaml": {
+    "mtime": 1786442054.4468014,
+    "ast_hash": "a8541397cbf46f74c6d91e912d161783",
+    "semantic_hash": "a8541397cbf46f74c6d91e912d161783"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\worker\\SKILL.md": {
+    "mtime": 1786442054.447801,
+    "ast_hash": "d53e4de164d8a9496520a74b806c17cd",
+    "semantic_hash": "d53e4de164d8a9496520a74b806c17cd"
+  },
+  "C:\\src\\sloop\\.codex\\skills\\worker\\agents\\openai.yaml": {
+    "mtime": 1786442054.447801,
+    "ast_hash": "42758e1a171e87b3faf530208cc84cf3",
+    "semantic_hash": "42758e1a171e87b3faf530208cc84cf3"
+  },
+  "C:\\src\\sloop\\.github\\workflows\\pr-checks.yml": {
+    "mtime": 1786442054.4488,
+    "ast_hash": "f42033603ca6055c55022477b1ad0128",
+    "semantic_hash": "f42033603ca6055c55022477b1ad0128"
+  },
+  "C:\\src\\sloop\\CONTRIBUTING.md": {
+    "mtime": 1786442054.4498012,
+    "ast_hash": "2e6cdd0116b62ee018e37685373591eb",
+    "semantic_hash": "2e6cdd0116b62ee018e37685373591eb"
+  },
+  "C:\\src\\sloop\\README.md": {
+    "mtime": 1787575896.0584092,
+    "ast_hash": "529a342f79e9315414e5f39c36988c48",
+    "semantic_hash": "529a342f79e9315414e5f39c36988c48"
+  },
+  "C:\\src\\sloop\\docs\\roles\\dispatcher.md": {
+    "mtime": 1786442054.4498012,
+    "ast_hash": "cc9cdecd3dc10bd65c06d973eaee6286",
+    "semantic_hash": "cc9cdecd3dc10bd65c06d973eaee6286"
+  },
+  "C:\\src\\sloop\\docs\\roles\\product-lead.md": {
+    "mtime": 1786442054.4498012,
+    "ast_hash": "39ca10af61fbafb559bb39fdc24ad530",
+    "semantic_hash": "39ca10af61fbafb559bb39fdc24ad530"
+  },
+  "C:\\src\\sloop\\docs\\roles\\qa-sdet.md": {
+    "mtime": 1787575896.0594087,
+    "ast_hash": "8134526dbb235b411423f5c6e575e3c9",
+    "semantic_hash": "8134526dbb235b411423f5c6e575e3c9"
+  },
+  "C:\\src\\sloop\\docs\\roles\\staff-reviewer.md": {
+    "mtime": 1786442054.450801,
+    "ast_hash": "bdfdee6a5f702f688bf92c70e661729a",
+    "semantic_hash": "bdfdee6a5f702f688bf92c70e661729a"
+  },
+  "C:\\src\\sloop\\docs\\roles\\triage-staging.md": {
+    "mtime": 1786442054.450801,
+    "ast_hash": "7895c06dd5867d966988ef7b9df75984",
+    "semantic_hash": "7895c06dd5867d966988ef7b9df75984"
+  },
+  "C:\\src\\sloop\\docs\\roles\\worker.md": {
+    "mtime": 1786442054.450801,
+    "ast_hash": "b06731c75860ff2e3ab8e82a998adc2e",
+    "semantic_hash": "b06731c75860ff2e3ab8e82a998adc2e"
+  },
+  "C:\\src\\sloop\\docs\\sloop-engineering-v1.md": {
+    "mtime": 1786442054.450801,
+    "ast_hash": "e80efdd88232b8470efe6177efc1ea52",
+    "semantic_hash": "e80efdd88232b8470efe6177efc1ea52"
+  },
+  "C:\\src\\sloop\\sloop.config.yaml": {
+    "mtime": 1787576212.8669283,
+    "ast_hash": "3de6ebfc782bb0646fd31872d35843e9",
+    "semantic_hash": "3de6ebfc782bb0646fd31872d35843e9"
+  }
+}

@@ -7,7 +7,19 @@ description: Validate sloop-cli PR acceptance criteria, regression coverage, smo
 
 GitHub review publishing: use `gh pr review <number> --body-file <file> --comment`, or `gh api repos/<owner>/<repo>/pulls/<number>/reviews --method POST` with JSON containing `body` and `event: COMMENT`. Do not invent flags; check `gh pr review --help` when uncertain.
 
-Map every acceptance criterion to a check. Run focused tests, regression tests, build, and configured smoke/health commands. Publish one comment per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. List checks as `- [Q<n>] <pass|fail|blocked> - <criterion>; <command> - <result>`. For defects preserve `file:<line>` and reproduction/requested fix; questions use `question`. Never use `[Worker]` or `[Staff Review]`. Entry: staff review approved or findings resolved. Exit: `qa-sdet: passed` or `qa-sdet: failed` with reproduction and `changes_requested`/`blocked`. Do not waive failures, alter tests to hide defects, or merge.
+Map every acceptance criterion to a check. Run focused tests, regression tests, build, and configured smoke/health commands. Publish one comment per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. List checks as `- [Q<n>] <pass|fail|blocked> - <criterion>; <command> - <result>`. Passed checks stay concise. Every failed or product-blocked check follows the failure evidence contract below. Questions use `question`. Never use `[Worker]` or `[Staff Review]`. Entry: staff review approved or findings resolved. Exit: `qa-sdet: passed` or `qa-sdet: failed` with reproduction and `changes_requested`/`blocked`. Do not waive failures, alter tests to hide defects, or merge.
+
+## Failure evidence contract
+
+For every `fail` or product `blocked` result include:
+
+- `Plain language:` one short explanation of the user-visible problem;
+- either `Reproduction:` with exact minimal steps, command, input, prerequisites, and reviewed SHA, or `Code path:` with the minimal failing call/expression and relevant `file:line` path;
+- `Expected:` the observable acceptance behavior;
+- `Actual:` the observed output, exit code, exception, state, or side effect;
+- `Requested fix:` the smallest outcome needed, without prescribing internals unnecessarily.
+
+A vague risk, test name, or file/line reference without the failing invocation is not sufficient defect evidence. Keep examples isolated, safe, sanitized, and copyable by Worker. If a check cannot be reproduced because of environment or tool policy, classify it accordingly and provide the exact blocking command/result instead of reporting a product defect.
 
 ## Execution and recovery discipline
 
