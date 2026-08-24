@@ -468,10 +468,16 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         value,
       );
     const hasCredentialMaterial =
-      /(?:^|\s)(?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+\S+/i.test(value) ||
+      /(?:^|[=\s])(?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+\S+/i.test(
+        value,
+      ) ||
       /(?:^|[\s,;])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[=:]\s*\S+/i.test(
         value,
       ) ||
+      /[?&](?:api[_-]?key|access[_-]?token|auth[_-]?token|token|client[_-]?secret|password|passwd)=[^&#\s]+/i.test(
+        value,
+      ) ||
+      /^(?:--?(?:user|proxy-user|oauth2-bearer)|http\.extraheader)=\S+/i.test(value) ||
       /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(value);
     return hasUrlUserinfo || hasRecognizedToken || hasCredentialMaterial
       ? [
@@ -483,8 +489,27 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         ]
       : [];
   }
-  if (Array.isArray(value))
-    return value.flatMap((child, index) => credentialDiagnostics(child, `${path}[${index}]`));
+  if (Array.isArray(value)) {
+    const credentialValueOptions =
+      /^(?:-u|--user|--proxy-user|--oauth2-bearer|http\.extraheader)$/i;
+    return value.flatMap((child, index) => {
+      if (
+        index > 0 &&
+        typeof value[index - 1] === 'string' &&
+        credentialValueOptions.test(value[index - 1]) &&
+        typeof child === 'string' &&
+        child.length > 0
+      )
+        return [
+          {
+            path: `${path}[${index}]`,
+            message:
+              'credentials are not accepted in sloop.config.yaml; use the external environment',
+          },
+        ];
+      return credentialDiagnostics(child, `${path}[${index}]`);
+    });
+  }
   if (plainObject(value))
     return Object.entries(value).flatMap(([key, child]) =>
       credentialDiagnostics(child, `${path}.${key}`),

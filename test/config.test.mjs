@@ -195,16 +195,27 @@ test('credential-bearing values are rejected while ordinary public values remain
 });
 
 test('credential-bearing headers and assignments are rejected in argv fields', () => {
-  for (const [argument, expectedPath] of [
-    ['Authorization: Bearer secret-value', '$.health.command[2]'],
-    ['Proxy-Authorization: Basic dXNlcjpwYXNz', '$.health.command[2]'],
-    ['api_key=secret-value', '$.health.command[1]'],
-    ['password:secret-value', '$.health.command[1]'],
-    ['-----BEGIN PRIVATE KEY-----', '$.health.command[1]'],
+  for (const [command, expectedPath] of [
+    [
+      ['curl', '-H', 'Authorization: Bearer secret-value', 'https://example.com'],
+      '$.health.command[2]',
+    ],
+    [
+      ['curl', '--header=Authorization: Bearer secret-value', 'https://example.com'],
+      '$.health.command[1]',
+    ],
+    [['curl', '--user', 'alice:supersecret', 'https://example.com'], '$.health.command[2]'],
+    [['curl', '--user=alice:supersecret', 'https://example.com'], '$.health.command[1]'],
+    [
+      ['git', '-c', 'http.extraHeader=Authorization: Bearer secret-value', 'fetch'],
+      '$.health.command[2]',
+    ],
+    [['curl', 'https://example.com/?access_token=secret-value'], '$.health.command[1]'],
+    [['curl', '-H', 'Proxy-Authorization: Basic dXNlcjpwYXNz'], '$.health.command[2]'],
+    [['tool', 'api_key=secret-value'], '$.health.command[1]'],
+    [['tool', 'password:secret-value'], '$.health.command[1]'],
+    [['tool', '-----BEGIN PRIVATE KEY-----'], '$.health.command[1]'],
   ]) {
-    const command = argument.includes('Authorization:')
-      ? ['curl', '-H', argument, 'https://example.com']
-      : ['tool', argument];
     const source = canonical.replace(
       'command:\n    # Health probe argv; never evaluated by a shell.\n    - gh\n    - run\n    - list\n    - --branch\n    - main',
       `command: ${JSON.stringify(command)}`,
