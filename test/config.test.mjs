@@ -195,6 +195,8 @@ test('argv rejects Git configuration that dispatches a shell', () => {
     [['git', '-c', 'alias.x=!echo shell-bypass', 'x'], '$.health.command[2]'],
     [['git', '-c', 'alias.x= !script', 'x'], '$.health.command[2]'],
     [['git', '-c', 'core.sshCommand=ssh-wrapper', 'fetch'], '$.health.command[2]'],
+    [['git', '-c', 'core.pager=sh -c echo unsafe', '--paginate', 'log'], '$.health.command[2]'],
+    [['git', '-cpager.log=unsafe-pager', '--paginate', 'log'], '$.health.command[1]'],
     [['git', '-c', 'filter.clean.smudge=processor', 'checkout'], '$.health.command[2]'],
   ])
     assert.throws(

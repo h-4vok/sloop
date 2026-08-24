@@ -136,9 +136,10 @@ const gitConfigDispatchesShell = (argument: string): boolean => {
   const configuredValue = argument.slice(separator + 1).trimStart();
   return (
     (name.startsWith('alias.') && configuredValue.startsWith('!')) ||
-    /^(?:core\.(?:editor|gitproxy|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/.test(
+    /^(?:core\.(?:editor|gitproxy|pager|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/.test(
       name,
     ) ||
+    /^pager\..+$/.test(name) ||
     /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/.test(name)
   );
 };
@@ -170,12 +171,13 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
         `${path}[${index}]`,
         'environment assignments are forbidden; inherit values from the external environment',
       );
-    if (
-      executable === 'git' &&
-      index > 1 &&
-      argv[index - 1] === '-c' &&
-      gitConfigDispatchesShell(arg)
-    )
+    const gitConfig =
+      executable === 'git' && index > 1 && argv[index - 1] === '-c'
+        ? arg
+        : executable === 'git' && index > 0 && arg.startsWith('-c')
+          ? arg.slice(2)
+          : undefined;
+    if (gitConfig !== undefined && gitConfigDispatchesShell(gitConfig))
       fail(
         `${path}[${index}]`,
         'Git configuration that dispatches a shell is forbidden; use non-executable configuration',
