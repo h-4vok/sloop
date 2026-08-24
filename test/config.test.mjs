@@ -123,14 +123,17 @@ test('argv rejects shell interpreters across supported platforms', () => {
   for (const [command, expectedPath] of [
     [['sh', '-c', 'rm -rf /tmp/x'], '$.health.command[0]'],
     [['/bin/bash', '-c', 'echo unsafe'], '$.health.command[0]'],
+    [['bash-5.2', '-c', 'echo unsafe'], '$.health.command[0]'],
     [['C:\\Windows\\System32\\cmd.exe', '/c', 'echo unsafe'], '$.health.command[0]'],
     [['pwsh.exe', '-Command', 'Write-Output unsafe'], '$.health.command[0]'],
     [['hush', '-c', 'echo unsafe'], '$.health.command[0]'],
     [['/usr/bin/yash', '-c', 'echo unsafe'], '$.health.command[0]'],
     [['/usr/local/bin/pdksh', '-c', 'echo unsafe'], '$.health.command[0]'],
+    [['ksh93', '-c', 'echo unsafe'], '$.health.command[0]'],
     [['busybox', 'hush', '-c', 'echo unsafe'], '$.health.command[1]'],
     [['toybox', 'sh', '-c', 'echo unsafe'], '$.health.command[1]'],
     [['env', 'zsh', '-c', 'echo unsafe'], '$.health.command[1]'],
+    [['env', 'zsh-5.9', '-c', 'echo unsafe'], '$.health.command[1]'],
   ])
     assert.throws(
       () =>

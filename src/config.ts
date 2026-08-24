@@ -120,8 +120,15 @@ const shellExecutables = new Set([
   'yash',
   'zsh',
 ]);
-const shellExecutable = (argument: string): boolean =>
-  shellExecutables.has(executableBasename(argument)) || executableBasename(argument).endsWith('sh');
+const shellExecutable = (argument: string): boolean => {
+  const basename = executableBasename(argument);
+  if (shellExecutables.has(basename) || basename.endsWith('sh')) return true;
+  return [...shellExecutables].some(
+    (shell) =>
+      basename.startsWith(`${shell}-`) ||
+      (basename.startsWith(shell) && /^\d/.test(basename.slice(shell.length))),
+  );
+};
 const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
