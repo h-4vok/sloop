@@ -40,14 +40,36 @@ export function emitDispatcherFailure(error: unknown): number {
   return error && typeof error === 'object' && 'exitCode' in error ? (error.exitCode as number) : 2;
 }
 
-export async function runCli(args: string[], nodeVersion = process.version): Promise<void> {
+type RuntimeModule = typeof import('./runtime.js');
+type DispatcherModule = typeof import('./dispatcher.js');
+type AdaptersModule = typeof import('./adapters.js');
+
+export interface RunCliModules {
+  runtime: Pick<
+    RuntimeModule,
+    | 'emitNodeVersionFailure'
+    | 'emitUsageFailure'
+    | 'parseReadOnlyCommand'
+    | 'runDispatcherPreflight'
+    | 'runReadOnlyCommand'
+  >;
+  dispatcher: Pick<DispatcherModule, 'runDispatcherCli'>;
+  adapters: Pick<AdaptersModule, 'productionDependencies'>;
+}
+
+export async function runCli(
+  args: string[],
+  nodeVersion = process.version,
+  modules?: RunCliModules,
+): Promise<void> {
+  const runtime = modules?.runtime ?? (await import('./runtime.js'));
   const {
     emitNodeVersionFailure,
     emitUsageFailure,
     parseReadOnlyCommand,
     runDispatcherPreflight,
     runReadOnlyCommand,
-  } = await import('./runtime.js');
+  } = runtime;
   try {
     requireSupportedNode(nodeVersion);
   } catch {
@@ -75,10 +97,9 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     );
     return;
   }
-  const [{ runDispatcherCli }, { productionDependencies }] = await Promise.all([
-    import('./dispatcher.js'),
-    import('./adapters.js'),
-  ]);
+  const [{ runDispatcherCli }, { productionDependencies }] = modules
+    ? [modules.dispatcher, modules.adapters]
+    : await Promise.all([import('./dispatcher.js'), import('./adapters.js')]);
   const preflight = runDispatcherPreflight(args);
   if (!preflight.root || !preflight.config || !preflight.repository) {
     process.exitCode = preflight.code;
