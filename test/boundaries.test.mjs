@@ -17,6 +17,16 @@ test('production assembly supplies every typed external-concern boundary', () =>
     ],
     AgentRunner: ['run'],
     HealthGate: ['pid', 'processAlive'],
+    LockStore: [
+      'tryAcquire',
+      'readOwner',
+      'tryBeginReclaim',
+      'readReclaimOwner',
+      'reclaimAgeMs',
+      'finishReclaim',
+      'abandonReclaim',
+      'release',
+    ],
     Scheduler: ['now', 'sleep'],
     RunEventSink: ['onReclaim'],
   };

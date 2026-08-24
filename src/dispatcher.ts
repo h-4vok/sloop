@@ -1,14 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type {
@@ -16,6 +8,7 @@ import type {
   GitHubProvider,
   GitProvider,
   HealthGate,
+  LockStore,
   RunEventSink,
   Scheduler,
   Workspace,
@@ -140,6 +133,7 @@ export type Deps = Workspace<State> &
   HealthGate &
   Scheduler &
   RunEventSink &
+  LockStore &
   GitProvider;
 export type Spec = {
   command: string;
@@ -1451,56 +1445,36 @@ function linkIssueToActiveRun(issue: number): void {
 
 export function acquire(d: Deps, ttl: number): string {
   const token = randomUUID();
-  const lock = dispatcherLockPath(d.root);
-  mkdirSync(join(lock, '..'), { recursive: true });
+  const lockOwner = { pid: d.pid(), createdAt: d.now(), token };
   for (let attempt = 0; attempt < 3; attempt++)
-    try {
-      mkdirSync(lock);
-      writeState({ pid: d.pid(), createdAt: d.now(), token } as any, join(lock, 'owner.json'));
-      return token;
-    } catch {
-      const owner = join(lock, 'owner.json');
+    if (d.tryAcquire(lockOwner)) return token;
+    else {
       let stale = false;
       try {
-        const x: any = JSON.parse(readFileSync(owner, 'utf8'));
-        try {
-          process.kill(x.pid, 0);
-          stale = false;
-        } catch {
-          stale = d.now() - x.createdAt > ttl;
-        }
+        const owner = d.readOwner();
+        stale = !d.processAlive(owner.pid) && d.now() - owner.createdAt > ttl;
       } catch {
         stale = true;
       }
       if (stale) {
-        const reclaimed = join(lock, 'reclaiming');
-        if (existsSync(reclaimed)) {
+        if (!d.tryBeginReclaim(lockOwner)) {
           let markerStale = false;
           try {
-            const marker: any = JSON.parse(readFileSync(join(reclaimed, 'owner.json'), 'utf8'));
-            try {
-              process.kill(marker.pid, 0);
-            } catch {
-              markerStale = d.now() - marker.createdAt > ttl;
-            }
+            const marker = d.readReclaimOwner();
+            markerStale = !d.processAlive(marker.pid) && d.now() - marker.createdAt > ttl;
           } catch {
-            markerStale = d.now() - statSync(reclaimed).mtimeMs > ttl;
+            markerStale = d.reclaimAgeMs(d.now()) > ttl;
           }
           if (!markerStale) throw new Error('another dispatcher is reclaiming the lock');
-          rmSync(reclaimed, { recursive: true, force: true });
+          d.abandonReclaim();
+          if (!d.tryBeginReclaim(lockOwner)) continue;
         }
         try {
-          mkdirSync(reclaimed);
-          writeState(
-            { pid: d.pid(), createdAt: d.now(), token } as any,
-            join(reclaimed, 'owner.json'),
-          );
           d.onReclaim();
-          writeState({ pid: d.pid(), createdAt: d.now(), token } as any, join(lock, 'owner.json'));
-          rmSync(reclaimed, { recursive: true, force: true });
+          d.finishReclaim(lockOwner);
           return token;
         } catch {
-          if (existsSync(reclaimed)) rmSync(reclaimed, { recursive: true, force: true });
+          d.abandonReclaim();
           continue;
         }
       } else throw new Error('another dispatcher is already running');
@@ -1596,13 +1570,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
       }
     }
   } finally {
-    const owner = join(dispatcherLockPath(d.root), 'owner.json');
-    try {
-      if (JSON.parse(readFileSync(owner, 'utf8')).token === lockToken)
-        rmSync(dispatcherLockPath(d.root), { recursive: true, force: true });
-    } catch {
-      /* lock already recovered */
-    }
+    d.release(lockToken);
   }
 }
 

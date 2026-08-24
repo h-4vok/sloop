@@ -5,6 +5,20 @@ export interface Workspace<State> {
   save(state: State): void;
 }
 
+export type LockOwner = { pid: number; createdAt: number; token: string };
+
+/** Atomic storage operations for the single-dispatcher lock. */
+export interface LockStore {
+  tryAcquire(owner: LockOwner): boolean;
+  readOwner(): LockOwner;
+  tryBeginReclaim(owner: LockOwner): boolean;
+  readReclaimOwner(): LockOwner;
+  reclaimAgeMs(now: number): number;
+  finishReclaim(owner: LockOwner): void;
+  abandonReclaim(): void;
+  release(token: string): void;
+}
+
 export interface GitProvider {
   prepareWorkerBranch(issue: number): { branch: string; mainBaseSha: string };
   checkoutWorkerBranch(branch: string): void;

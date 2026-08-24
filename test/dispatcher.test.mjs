@@ -1,13 +1,5 @@
 import assert from 'node:assert/strict';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -273,6 +265,18 @@ function harness(
     processAlive: (pid) => pid > 0 && pid !== -1,
     sleep: async () => {},
     onReclaim: () => {},
+    tryAcquire: () => true,
+    readOwner: () => {
+      throw new Error('lock owner unavailable');
+    },
+    tryBeginReclaim: () => true,
+    readReclaimOwner: () => {
+      throw new Error('reclaim owner unavailable');
+    },
+    reclaimAgeMs: () => 0,
+    finishReclaim: () => {},
+    abandonReclaim: () => {},
+    release: () => {},
     prepareWorkerBranch: (issue) => ({
       branch: workerBranchName(issue),
       mainBaseSha: 'main-sha-1',
@@ -977,13 +981,24 @@ test('active live run remains exclusive while stale recovery is allowed', async 
 
 test('stale locks recover safely and reclaim markers are atomic', () => {
   const h = harness();
-  const lock = dispatcherLockPath(h.root);
-  mkdirSync(lock, { recursive: true });
-  writeFileSync(join(lock, 'owner.json'), '{stale');
+  const calls = [];
+  h.deps.tryAcquire = () => (calls.push('tryAcquire'), false);
+  h.deps.readOwner = () => {
+    calls.push('readOwner');
+    throw new Error('corrupt owner');
+  };
+  h.deps.tryBeginReclaim = () => (calls.push('tryBeginReclaim'), true);
+  h.deps.finishReclaim = () => calls.push('finishReclaim');
+  h.deps.onReclaim = () => calls.push('onReclaim');
   const first = acquire(h.deps, 1);
   assert.match(first, /^[0-9a-f-]+$/);
-  assert.throws(() => acquire(h.deps, 1), /already running/);
-  rmSync(lock, { recursive: true, force: true });
+  assert.deepEqual(calls, [
+    'tryAcquire',
+    'readOwner',
+    'tryBeginReclaim',
+    'onReclaim',
+    'finishReclaim',
+  ]);
 });
 
 test('status remains concise by default and returns exact verbose diagnostics only on request', () => {
@@ -1353,19 +1368,26 @@ test('recoverStaleLock refuses a live owner', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('dead reclaim marker recovers after its TTL', () => {
+test('lock reclaim uses injected storage and process liveness seams', () => {
   const h = harness();
-  const lock = dispatcherLockPath(h.root);
-  const marker = join(lock, 'reclaiming');
-  mkdirSync(marker, { recursive: true });
-  writeFileSync(join(lock, 'owner.json'), '{stale');
-  writeFileSync(
-    join(marker, 'owner.json'),
-    JSON.stringify({ pid: 'dead', createdAt: Date.now() - 100 }),
-  );
-  utimesSync(marker, new Date(Date.now() - 100), new Date(Date.now() - 100));
-  const token = acquire(h.deps, 1);
+  const calls = [];
+  h.deps.now = () => 100;
+  h.deps.tryAcquire = () => false;
+  h.deps.readOwner = () => ({ pid: 41, createdAt: 0, token: 'old' });
+  h.deps.processAlive = (pid) => (calls.push(`processAlive:${pid}`), false);
+  h.deps.tryBeginReclaim = (() => {
+    let attempt = 0;
+    return () => ++attempt > 1;
+  })();
+  h.deps.readReclaimOwner = () => ({ pid: 42, createdAt: 0, token: 'reclaimer' });
+  h.deps.abandonReclaim = () => calls.push('abandonReclaim');
+  h.deps.finishReclaim = () => calls.push('finishReclaim');
+  const token = acquire(h.deps, 10);
   assert.match(token, /^[0-9a-f-]+$/);
-  assert.equal(existsSync(join(lock, 'reclaiming')), false);
-  rmSync(lock, { recursive: true, force: true });
+  assert.deepEqual(calls, [
+    'processAlive:41',
+    'processAlive:42',
+    'abandonReclaim',
+    'finishReclaim',
+  ]);
 });
