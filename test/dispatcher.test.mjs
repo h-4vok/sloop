@@ -1057,7 +1057,10 @@ test('active live run remains exclusive while stale recovery is allowed', async 
       workerHeartbeatAt: Date.now(),
     },
   });
-  await assert.rejects(() => dispatch(h.cfg, h.deps), /active run exists/);
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error.exitCode === 3 && /active run exists/.test(error.message),
+  );
 });
 
 test('stale locks recover safely and reclaim markers are atomic', () => {

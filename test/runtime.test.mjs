@@ -5,6 +5,7 @@ import {
   discoverRepository,
   EXIT,
   parseReadOnlyCommand,
+  parseDispatcherCommand,
   runDispatcherPreflight,
   runReadOnlyCommand,
 } from '../dist/runtime.js';
@@ -88,6 +89,19 @@ test('command parser accepts only documented read-only forms', () => {
   });
   assert.equal(parseReadOnlyCommand(['--list']), undefined);
   assert.throws(() => parseReadOnlyCommand(['doctor', '--json']), /usage:/);
+});
+
+test('dispatcher parser accepts one complete command and rejects ambiguous or unsupported forms', () => {
+  assert.deepEqual(parseDispatcherCommand([]), { kind: 'workflow' });
+  assert.deepEqual(parseDispatcherCommand(['--prepare-recovery', '31', '--pr', '54']), {
+    kind: 'prepare-recovery',
+  });
+  assert.throws(
+    () => parseDispatcherCommand(['--prepare-recovery', '31', '--link-issue', '32']),
+    /mixed, duplicate, unknown, or unsupported/,
+  );
+  assert.throws(() => parseDispatcherCommand(['--repo', 'owner/other']), /unsupported/);
+  assert.throws(() => parseDispatcherCommand(['--list', '--list']), /duplicate/);
 });
 
 test('repository discovery uses the invocation cwd and normalizes one Git root', () => {
@@ -229,6 +243,26 @@ test('local recovery commands do not require GitHub, Codex, labels, or a clean t
   assert.equal(result.code, EXIT.ok);
   assert.ok(!h.calls.some(({ file }) => file === 'gh' || file === 'codex'));
   assert.ok(!h.calls.some(({ args }) => args[0] === 'status' || args[0] === 'symbolic-ref'));
+});
+
+test('ambiguous dispatcher command fails before discovery or mutation prerequisites', () => {
+  const h = harness();
+  const result = runDispatcherPreflight(['--prepare-recovery', '31', '--link-issue', '32'], h.io);
+  assert.equal(result.code, EXIT.preflight);
+  assert.equal(h.calls.length, 0);
+  assert.match(h.stderr[0], /usage/);
+});
+
+test('missing configured remote is collected as a preflight diagnostic', () => {
+  const h = harness({
+    'git remote get-url origin': { stdout: '', stderr: 'missing', status: 2 },
+  });
+  assert.equal(
+    runReadOnlyCommand(parseReadOnlyCommand(['issues', 'list', '--json']), h.io),
+    EXIT.preflight,
+  );
+  const checks = JSON.parse(h.stdout[0]).diagnostics.map(({ check }) => check);
+  assert.ok(checks.includes('remote'));
 });
 
 test('base configuration cannot redirect the immutable bootstrap selector', () => {

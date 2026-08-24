@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { LockOwner } from './core/boundaries.js';
 import type { Deps } from './dispatcher.js';
 import type { SloopConfig } from './config.js';
+import { CliFailure } from './dispatcher.js';
 import {
   checkoutWorkerBranch,
   commentPullRequest,
@@ -72,10 +73,15 @@ export function productionDependencies(
             lastError: current.lastError,
           };
     },
-    list: () =>
-      eligible(root, repository, validatedConfig.github.labels.eligible).map(
-        ({ number, title }) => ({ number, title }),
-      ),
+    list: () => {
+      try {
+        return eligible(root, repository, validatedConfig.github.labels.eligible).map(
+          ({ number, title }) => ({ number, title }),
+        );
+      } catch (error) {
+        throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+      }
+    },
     recoverLock: () => recoverStaleLock(root, defaultProcessAlive),
     reset: () => writeState(resetRunState(readState(state), defaultProcessAlive), state),
     resolveReviewCap: (args, config) => resolveReviewCap(args, config, state, root, repository),
@@ -95,17 +101,27 @@ export function productionDependencies(
     },
     eligible: () => eligible(root, repository, validatedConfig.github.labels.eligible),
     comment: (issue, body) => {
-      execFileSync('gh', ['issue', 'comment', String(issue), '--body', body], {
-        cwd: root,
-        stdio: 'inherit',
-      });
+      execFileSync(
+        'gh',
+        ['issue', 'comment', String(issue), '--repo', repository, '--body', body],
+        {
+          cwd: root,
+          stdio: 'inherit',
+        },
+      );
     },
     pullRequest: (pr) => pullRequest(pr, root, repository),
     updatePullRequestBody: (pr, body) => updatePullRequestBody(pr, body, root, repository),
     pullRequestBody: (pr) => pullRequestBody(pr, root, repository),
     prComment: (pr, body) => commentPullRequest(pr, body, root, repository),
     run: (spec) => runCommand(spec, root),
-    prepareWorkerBranch: (issue) => prepareWorkerBranch(issue, root),
+    prepareWorkerBranch: (issue) =>
+      prepareWorkerBranch(
+        issue,
+        root,
+        validatedConfig.repository.remote,
+        validatedConfig.repository.baseBranch,
+      ),
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
     pid: () => process.pid,
     processAlive: defaultProcessAlive,

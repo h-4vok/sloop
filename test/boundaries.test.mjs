@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { productionDependencies } from '../dist/adapters.js';
 import { loadConfigText, canonicalConfigYaml } from '../dist/config.js';
+import { CliFailure } from '../dist/dispatcher.js';
 
 test('production assembly supplies every typed external-concern boundary', () => {
   const dependencies = productionDependencies(
@@ -49,6 +50,11 @@ test('production assembly supplies every typed external-concern boundary', () =>
   for (const [boundary, members] of Object.entries(methods))
     for (const member of members)
       assert.equal(typeof dependencies[member], 'function', `${boundary}.${member} is required`);
+});
+
+test('typed CLI failures preserve stable busy and external exit classes', () => {
+  assert.equal(new CliFailure(3, 'owned').exitCode, 3);
+  assert.equal(new CliFailure(5, 'HTTP 503: Service Unavailable').exitCode, 5);
 });
 
 test('production adapters root agent execution and use the validated YAML configuration', async () => {

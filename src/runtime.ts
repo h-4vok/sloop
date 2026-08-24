@@ -79,6 +79,7 @@ const envelope = (
   result: unknown = null,
   diagnostics: readonly Diagnostic[] = [],
   issues: readonly number[] = [],
+  pullRequests: readonly number[] = [],
 ): ResultEnvelope => ({
   command,
   status,
@@ -86,7 +87,7 @@ const envelope = (
   summary,
   result,
   diagnostics,
-  references: { issues, pullRequests: [] },
+  references: { issues, pullRequests },
 });
 
 function commandName(args: readonly string[]): string {
@@ -247,9 +248,9 @@ function githubChecks(
     failures.push(
       diagnostic('github-auth', 'GitHub CLI is not authenticated.', 'Run `gh auth login`.'),
     );
-  const remoteUrl = clean(
-    io.run('git', ['remote', 'get-url', config.repository.remote], root).stdout,
-  );
+  const remoteResult = io.run('git', ['remote', 'get-url', config.repository.remote], root);
+  const remoteUrl = clean(remoteResult.stdout);
+  if (remoteResult.status !== 0 || !remoteUrl) return failures;
   const identity = io.run(
     'gh',
     ['repo', 'view', remoteUrl, '--json', 'nameWithOwner,viewerPermission'],
@@ -300,7 +301,19 @@ function githubChecks(
       );
     }
   }
-  const repo = githubRepository(remoteUrl);
+  let repo: string;
+  try {
+    repo = githubRepository(remoteUrl);
+  } catch {
+    failures.push(
+      diagnostic(
+        'repository-identity',
+        'The configured remote is not a GitHub repository URL.',
+        'Set the configured remote to the target GitHub repository URL.',
+      ),
+    );
+    return failures;
+  }
   const labels = io.run(
     'gh',
     ['label', 'list', '--repo', repo, '--limit', '1000', '--json', 'name'],
@@ -409,6 +422,25 @@ export function runDispatcherPreflight(
   providedIo?: RuntimeIo,
 ): Readonly<{ code: ExitCode; root?: string; config?: SloopConfig; repository?: string }> {
   const io = providedIo ?? productionIo();
+  let command: DispatcherCommand;
+  try {
+    command = parseDispatcherCommand(args);
+  } catch (error) {
+    return {
+      code: emit(
+        envelope(commandName(args), 'failed', 'preflight', 'Command usage is invalid.', null, [
+          diagnostic(
+            'usage',
+            error instanceof Error ? error.message : String(error),
+            'Run `sloop --help` and use a documented command form.',
+          ),
+        ]),
+        false,
+        EXIT.preflight,
+        io,
+      ),
+    };
+  }
   let root: string;
   let config: SloopConfig;
   try {
@@ -428,13 +460,9 @@ export function runDispatcherPreflight(
     };
   }
 
-  const localOnly =
-    args.includes('--status') ||
-    args.includes('--recover-lock') ||
-    args.includes('--reset') ||
-    args.includes('--prepare-recovery');
-  const githubRead = args.includes('--list');
-  const githubWrite = args.includes('--link-issue') || args.includes('--resolve-review-cap');
+  const localOnly = ['status', 'recover-lock', 'reset', 'prepare-recovery'].includes(command.kind);
+  const githubRead = command.kind === 'list';
+  const githubWrite = ['link-issue', 'resolve-review-cap'].includes(command.kind);
   const failures = localOnly
     ? commonChecks(root, config, io)
     : githubRead
@@ -458,10 +486,76 @@ export function runDispatcherPreflight(
         io,
       ),
     };
-  const remoteUrl = clean(
-    io.run('git', ['remote', 'get-url', config.repository.remote], root).stdout,
-  );
-  return { code: EXIT.ok, root, config, repository: githubRepository(remoteUrl) };
+  const remoteResult = io.run('git', ['remote', 'get-url', config.repository.remote], root);
+  try {
+    return {
+      code: EXIT.ok,
+      root,
+      config,
+      repository: githubRepository(clean(remoteResult.stdout)),
+    };
+  } catch {
+    return {
+      code: emit(
+        envelope(commandName(args), 'failed', 'preflight', 'Preflight validation failed.', null, [
+          diagnostic(
+            'repository-identity',
+            'The configured remote is not a GitHub repository URL.',
+            'Set the configured remote to the target GitHub repository URL.',
+          ),
+        ]),
+        false,
+        EXIT.preflight,
+        io,
+      ),
+    };
+  }
+}
+
+type DispatcherCommand = Readonly<{
+  kind:
+    | 'workflow'
+    | 'status'
+    | 'list'
+    | 'recover-lock'
+    | 'reset'
+    | 'prepare-recovery'
+    | 'resolve-review-cap'
+    | 'link-issue';
+}>;
+
+export function parseDispatcherCommand(args: readonly string[]): DispatcherCommand {
+  if (args.length === 0) return { kind: 'workflow' };
+  const positive = (value: string | undefined): boolean => /^[1-9]\d*$/.test(value ?? '');
+  if (
+    args[0] === '--status' &&
+    (args.length === 1 || (args.length === 2 && args[1] === '--verbose'))
+  )
+    return { kind: 'status' };
+  if (args.length === 1 && args[0] === '--list') return { kind: 'list' };
+  if (args.length === 1 && args[0] === '--recover-lock') return { kind: 'recover-lock' };
+  if (args.length === 1 && args[0] === '--reset') return { kind: 'reset' };
+  if (args[0] === '--link-issue' && args.length === 2 && positive(args[1]))
+    return { kind: 'link-issue' };
+  if (
+    args[0] === '--prepare-recovery' &&
+    positive(args[1]) &&
+    (args.length === 2 || (args.length === 4 && args[2] === '--pr' && positive(args[3])))
+  )
+    return { kind: 'prepare-recovery' };
+  if (args[0] === '--resolve-review-cap' && args.length > 1) {
+    const forbidden = new Set([
+      '--status',
+      '--list',
+      '--recover-lock',
+      '--reset',
+      '--prepare-recovery',
+      '--link-issue',
+      '--repo',
+    ]);
+    if (!args.slice(1).some((arg) => forbidden.has(arg))) return { kind: 'resolve-review-cap' };
+  }
+  throw new Error('mixed, duplicate, unknown, or unsupported command arguments');
 }
 
 type Parsed = { command: 'status' | 'issues list' | 'doctor'; json: boolean; verbose: boolean };
@@ -594,7 +688,10 @@ export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): Exit
   let workflow: Record<string, unknown> = {};
   if (parsed.command === 'status' && existsSync(stateFile)) {
     try {
-      workflow = JSON.parse(readFileSync(stateFile, 'utf8')) as Record<string, unknown>;
+      const parsedState: unknown = JSON.parse(readFileSync(stateFile, 'utf8'));
+      if (!parsedState || typeof parsedState !== 'object' || Array.isArray(parsedState))
+        throw new Error('state must be a JSON object');
+      workflow = parsedState as Record<string, unknown>;
     } catch {
       return emit(
         envelope(parsed.command, 'blocked', 'result', 'Workflow state is unreadable.', null, [
@@ -639,6 +736,9 @@ export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): Exit
           },
       ...(parsed.verbose ? { config } : {}),
     },
+    [],
+    typeof workflow.issue === 'number' ? [workflow.issue] : [],
+    typeof workflow.pr === 'number' ? [workflow.pr] : [],
   );
   return emit(value, parsed.json, status === 'blocked' ? EXIT.blocked : EXIT.ok, io);
 }

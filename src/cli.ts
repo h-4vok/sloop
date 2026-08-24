@@ -49,11 +49,11 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     process.exitCode = emitNodeVersionFailure(args, nodeVersion);
     return;
   }
-  if (args.includes('--help')) {
+  if (args.length === 1 && args[0] === '--help') {
     console.log(HELP);
     return;
   }
-  if (args.includes('--version')) {
+  if (args.length === 1 && args[0] === '--version') {
     console.log(packageJson.version);
     return;
   }
@@ -88,10 +88,9 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[sloop] ${message}`);
-    process.exitCode = /active run|already running|reclaiming the lock/i.test(message)
-      ? EXIT.busy
-      : /network|github|timed out|ECONN|ENOTFOUND/i.test(message)
-        ? EXIT.external
+    process.exitCode =
+      error && typeof error === 'object' && 'exitCode' in error
+        ? (error.exitCode as number)
         : EXIT.preflight;
   }
 }

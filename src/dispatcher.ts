@@ -149,6 +149,15 @@ export type Spec = {
   onHeartbeat?: () => void;
 };
 
+export class CliFailure extends Error {
+  constructor(
+    public readonly exitCode: 2 | 3 | 5,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 const defaultRoot = process.cwd();
 const stateDir = join(defaultRoot, '.sloop');
 const stateFile = join(stateDir, 'state.json');
@@ -1299,10 +1308,13 @@ export function workerBranchName(issue: number): string {
 export function prepareWorkerBranch(
   issue: number,
   cwd = defaultRoot,
+  remote = 'origin',
+  baseBranch = 'main',
 ): { branch: string; mainBaseSha: string } {
   const branch = workerBranchName(issue);
-  execFileSync('git', ['fetch', 'origin', 'main'], { cwd, stdio: 'inherit' });
-  const mainBaseSha = execFileSync('git', ['rev-parse', 'origin/main'], {
+  const baseRef = `${remote}/${baseBranch}`;
+  execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
+  const mainBaseSha = execFileSync('git', ['rev-parse', baseRef], {
     cwd,
     encoding: 'utf8',
   }).trim();
@@ -1315,7 +1327,7 @@ export function prepareWorkerBranch(
   } catch (error) {
     if (error instanceof Error && error.message.includes('already exists')) throw error;
   }
-  execFileSync('git', ['checkout', '-B', branch, 'origin/main'], { cwd, stdio: 'inherit' });
+  execFileSync('git', ['checkout', '-B', branch, baseRef], { cwd, stdio: 'inherit' });
   return { branch, mainBaseSha };
 }
 
@@ -1536,7 +1548,7 @@ export function acquire(d: Deps, ttl: number): string {
           } catch {
             markerStale = d.reclaimAgeMs(d.now()) > ttl;
           }
-          if (!markerStale) throw new Error('another dispatcher is reclaiming the lock');
+          if (!markerStale) throw new CliFailure(3, 'another dispatcher is reclaiming the lock');
           d.abandonReclaim();
           if (!d.tryBeginReclaim(lockOwner)) continue;
         }
@@ -1548,9 +1560,9 @@ export function acquire(d: Deps, ttl: number): string {
           d.abandonReclaim();
           continue;
         }
-      } else throw new Error('another dispatcher is already running');
+      } else throw new CliFailure(3, 'another dispatcher is already running');
     }
-  throw new Error('another dispatcher is already running');
+  throw new CliFailure(3, 'another dispatcher is already running');
 }
 
 export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
@@ -1566,7 +1578,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
     isStaleWorker(initial, cfg, d) ||
     (initial.status === 'blocked' && hasPersistedRecoveryContext(initial));
   if (isActiveStatus(initial.status) && !recovery)
-    throw new Error(`active run exists for issue #${initial.issue}`);
+    throw new CliFailure(3, `active run exists for issue #${initial.issue}`);
   const lockToken = acquire(d, cfg.lockTtlMs ?? 900000);
   try {
     if (!cfg.workerCommand || !cfg.staffReviewCommand || !cfg.qaCommand)
