@@ -227,6 +227,8 @@ test('credential-bearing headers and assignments are rejected in argv fields', (
     [['curl', '-H', 'Authorization: token opaque-secret'], '$.health.command[2]'],
     [['curl', '-H', 'Private-Token: opaque-secret'], '$.health.command[2]'],
     [['curl', '--header', 'X-Api-Key: opaque-secret'], '$.health.command[2]'],
+    [['curl', '-H', 'Cookie: session=supersecret'], '$.health.command[2]'],
+    [['curl', '--header=Set-Cookie: session=supersecret'], '$.health.command[1]'],
     [
       ['curl', '--header=Authorization: Bearer secret-value', 'https://example.com'],
       '$.health.command[1]',

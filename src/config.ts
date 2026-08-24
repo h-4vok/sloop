@@ -504,7 +504,7 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         value,
       );
     const hasCredentialMaterial =
-      /(?:^|[=\s])(?:authorization|proxy-authorization|private-token|x-api-key|api-key)\s*:\s*\S+/i.test(
+      /(?:^|[=\s])(?:authorization|proxy-authorization|private-token|x-api-key|api-key|cookie|set-cookie)\s*:\s*\S+/i.test(
         value,
       ) ||
       /(?:^|[\s,;])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[=:]\s*\S+/i.test(
