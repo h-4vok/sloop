@@ -1,0 +1,70 @@
+# Canonical tracked Sloop repository contract. Secrets belong in the external environment.
+schemaVersion: 1
+repository:
+  # Git remote and pull-request branch policy.
+  remote: origin
+  baseBranch: main
+  branchPrefix: codex/issue-
+workspace:
+  # Use checkout for one persistent trusted workspace, or worktree for ephemeral isolation.
+  mode: checkout
+  path: .
+  worktreeRoot: .sloop/worktrees
+github:
+  labels:
+    eligible: Automation Ready
+    claimed: Automation Claimed
+    blocked: Automation Blocked
+    # Highest priority first.
+    priority: ['Priority: P0', 'Priority: P1', 'Priority: P2']
+  # Review publications are recognized only by these unique leading markers.
+  roleMarkers:
+    worker: '[Worker]'
+    qa: '[QA/SDET Review]'
+    staff: '[Staff Review]'
+workflow:
+  humanMergeWait: true
+  # V1 requires QA and Staff exactly once; QA runs first by default.
+  reviewOrder: [qa, staff]
+  # Commands are argv arrays and are never evaluated by a shell.
+  verification:
+    - [npm, test]
+    - [npm, run, build]
+    - [npm, run, format:check]
+  requiredChecks: [pr-checks]
+agents:
+  worker:
+    argv: [codex, exec, --sandbox, danger-full-access]
+    timeout: 10m
+    retries: 0
+  qa:
+    argv: [codex, exec, --sandbox, danger-full-access]
+    timeout: 10m
+    retries: 0
+  staff:
+    argv: [codex, exec, --sandbox, danger-full-access]
+    timeout: 10m
+    retries: 0
+skills:
+  scope: repository
+  required: [dispatcher, worker, qa-sdet, staff-reviewer]
+health:
+  enabled: true
+  command: [gh, run, list, --branch, main]
+  timeout: 1m
+loop:
+  # Five-minute foreground polling is the V1 default.
+  interval: 5m
+  taskName: Sloop
+schedule:
+  enabled: false
+  expression: ''
+logging:
+  # Logs are local and sensitive; this path is redacted from fingerprints.
+  directory: .sloop/logs
+  retention: 30d
+  roleInvocation: true
+arbiter:
+  reviewRounds: 3
+  stagnatingAppearances: 2
+  decisions: 2

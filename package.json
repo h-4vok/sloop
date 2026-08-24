@@ -22,7 +22,8 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@openai/codex": "^0.149.1"
+    "@openai/codex": "^0.149.1",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
