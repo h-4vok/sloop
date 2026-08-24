@@ -52,7 +52,17 @@ test('registry is the single complete metadata source', () => {
     ])
       assert.ok(key in entry, `${entry.path} lacks ${key}`);
     assert.ok(Object.isFrozen(entry));
+    assert.ok(Object.isFrozen(entry.default));
+    assert.ok(Object.isFrozen(entry.choices));
+    assert.ok(Object.isFrozen(entry.dependencies));
   }
+});
+
+test('registry nested metadata and defaults cannot be mutated by consumers', () => {
+  const priority = configRegistry.find(({ path }) => path === 'github.labels.priority');
+  assert.throws(() => priority.default.push('injected'), TypeError);
+  assert.throws(() => priority.dependencies.push('injected=true'), TypeError);
+  assert.deepEqual(loadConfigText(canonical).github.labels.priority, priority.default);
 });
 
 test('defaults and every registered parser round trip through canonical YAML', () => {
@@ -128,6 +138,23 @@ test('argv rejects shell interpreters across supported platforms', () => {
     );
 });
 
+test('argv rejects env split-string command dispatch', () => {
+  for (const [command, expectedPath] of [
+    [['env', '-S', 'sh -c', '?'], '$.health.command[1]'],
+    [['env', '-Ssh -c', '?'], '$.health.command[1]'],
+    [['/usr/bin/env', '--split-string=sh -c', '?'], '$.health.command[1]'],
+  ])
+    assert.throws(
+      () =>
+        configRegistry
+          .find(({ path }) => path === 'health.command')
+          .parser(command, '$.health.command'),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(`${expectedPath}: env split-string options are forbidden`),
+    );
+});
+
 test('malformed containers and list fields produce validation diagnostics', () => {
   for (const [source, expected] of [
     ['schemaVersion: 1\nrepository: invalid\n', '$.repository: expected a YAML mapping'],
@@ -165,6 +192,30 @@ test('credential-bearing values are rejected while ordinary public values remain
     ),
   );
   assert.notEqual(configFingerprint(publicRemote), configFingerprint(loadConfigText(canonical)));
+});
+
+test('credential-bearing headers and assignments are rejected in argv fields', () => {
+  for (const [argument, expectedPath] of [
+    ['Authorization: Bearer secret-value', '$.health.command[2]'],
+    ['Proxy-Authorization: Basic dXNlcjpwYXNz', '$.health.command[2]'],
+    ['api_key=secret-value', '$.health.command[1]'],
+    ['password:secret-value', '$.health.command[1]'],
+    ['-----BEGIN PRIVATE KEY-----', '$.health.command[1]'],
+  ]) {
+    const command = argument.includes('Authorization:')
+      ? ['curl', '-H', argument, 'https://example.com']
+      : ['tool', argument];
+    const source = canonical.replace(
+      'command:\n    # Health probe argv; never evaluated by a shell.\n    - gh\n    - run\n    - list\n    - --branch\n    - main',
+      `command: ${JSON.stringify(command)}`,
+    );
+    assert.throws(
+      () => loadConfigText(source),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(`${expectedPath}: credentials are not accepted`),
+    );
+  }
 });
 
 test('JSON input is rejected with init guidance', () => {

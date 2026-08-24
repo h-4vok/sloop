@@ -95,9 +95,17 @@ const shellExecutable = (argument: string): boolean => {
     /^(?:cmd|powershell|pwsh)(?:\.exe)?$/.test(basename)
   );
 };
+const executableBasename = (argument: string): string =>
+  argument
+    .replace(/\\/g, '/')
+    .split('/')
+    .at(-1)!
+    .toLowerCase()
+    .replace(/\.exe$/, '');
 const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
+  const executable = executableBasename(argv[0]!);
   for (const [index, arg] of argv.entries()) {
     if (arg.includes('\0') || /&&|\|\||[|;<>`]|\$\(/.test(arg))
       fail(
@@ -106,6 +114,15 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
       );
     if (shellExecutable(arg))
       fail(`${path}[${index}]`, 'shell interpreters are forbidden; invoke the executable directly');
+    if (
+      executable === 'env' &&
+      index > 0 &&
+      (arg.startsWith('-S') || arg.startsWith('--split-string'))
+    )
+      fail(
+        `${path}[${index}]`,
+        'env split-string options are forbidden; provide each argument as a separate argv item',
+      );
   }
   return argv;
 };
@@ -159,7 +176,7 @@ const f = <T>(
     ...extra,
   });
 
-export const configRegistry = Object.freeze([
+export const configRegistry = deepFreeze([
   f(
     'schemaVersion',
     'integer',
@@ -450,7 +467,13 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
       /(?:^|[^A-Za-z0-9])(?:github_pat_[A-Za-z0-9_]{10,}|gh[pousr]_[A-Za-z0-9]{10,})(?:$|[^A-Za-z0-9])/i.test(
         value,
       );
-    return hasUrlUserinfo || hasRecognizedToken
+    const hasCredentialMaterial =
+      /(?:^|\s)(?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+\S+/i.test(value) ||
+      /(?:^|[\s,;])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[=:]\s*\S+/i.test(
+        value,
+      ) ||
+      /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(value);
+    return hasUrlUserinfo || hasRecognizedToken || hasCredentialMaterial
       ? [
           {
             path,
@@ -469,9 +492,9 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
   return [];
 }
 function deepFreeze<T>(value: T): T {
-  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-    Object.freeze(value);
+  if (value && typeof value === 'object') {
     for (const child of Object.values(value)) deepFreeze(child);
+    if (!Object.isFrozen(value)) Object.freeze(value);
   }
   return value;
 }
