@@ -16,6 +16,13 @@ import {
 
 const canonical = canonicalConfigYaml();
 
+test('tracked canonical YAML is the exact registry-generated document', () => {
+  assert.equal(
+    readFileSync(join(import.meta.dirname, '..', 'sloop.config.yaml'), 'utf8'),
+    canonical,
+  );
+});
+
 test('canonical schema produces an immutable typed config and stable redacted fingerprint', () => {
   const first = loadConfigText(canonical);
   const second = loadConfigText(
@@ -91,7 +98,7 @@ test('invalid documents provide exact YAML paths', () => {
       '$.workflow.reviewOrder: must contain qa and staff exactly once',
     ],
     [
-      canonical.replace('"[Staff Review]"', '"[QA/SDET Review]"'),
+      canonical.replace("'[Staff Review]'", "'[QA/SDET Review]'"),
       '$.github.roleMarkers: role markers must be unique',
     ],
     [
@@ -101,8 +108,8 @@ test('invalid documents provide exact YAML paths', () => {
     [
       canonical
         .replace(
-          'expression:\n    # Platform scheduler expression.\n    ""',
-          'expression:\n    # Platform scheduler expression.\n    ""',
+          "expression:\n    # Platform scheduler expression.\n    ''",
+          "expression:\n    # Platform scheduler expression.\n    ''",
         )
         .replace(
           'schedule:\n  enabled:\n    # Whether scheduler reconciliation is requested.\n    false',
@@ -142,7 +149,29 @@ test('argv rejects shell interpreters across supported platforms', () => {
           .parser(command, '$.health.command'),
       (error) =>
         error instanceof ConfigValidationError &&
-        error.message.includes(`${expectedPath}: shell interpreters are forbidden`),
+        (error.message.includes(`${expectedPath}: shell interpreters are forbidden`) ||
+          error.message.includes('$.health.command[0]: unsupported executable')),
+    );
+});
+
+test('argv uses bounded direct-process profiles', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
+  assert.deepEqual(parser(['git', 'show', 'README.english'], '$.health.command'), [
+    'git',
+    'show',
+    'README.english',
+  ]);
+  for (const command of [
+    ['node', '-e', "require('node:child_process').execSync('echo unsafe')"],
+    ['python', '-c', "__import__('os').system('echo unsafe')"],
+    ['npm', 'exec', 'sh'],
+    ['gh', 'alias', 'set', 'unsafe', '!echo unsafe'],
+  ])
+    assert.throws(
+      () => parser(command, '$.health.command'),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        /unsupported executable|executable indirection is forbidden/.test(error.message),
     );
 });
 
@@ -280,6 +309,52 @@ test('credential-bearing values are rejected while ordinary public values remain
     ),
   );
   assert.notEqual(configFingerprint(publicRemote), configFingerprint(loadConfigText(canonical)));
+});
+
+test('representative external credential families are rejected', () => {
+  for (const value of [
+    'AKIAIOSFODNN7EXAMPLE',
+    ['xoxb', '123456789012', '123456789012', 'abcdefghijklmnopqrstuvwx'].join('-'),
+    ['sk', 'live', '1234567890abcdefghijklmnop'].join('_'),
+  ]) {
+    const source = canonical.replace(
+      'remote:\n    # Git remote used for Sloop branches.\n    origin',
+      `remote: ${value}`,
+    );
+    assert.throws(
+      () => loadConfigText(source),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message ===
+          '$.repository.remote: credentials are not accepted in sloop.config.yaml; use the external environment',
+    );
+  }
+  assert.doesNotThrow(() => loadConfigText(canonical.replace('remote:\n', 'remote:\n')));
+});
+
+test('credential carrier options are rejected even when their value is opaque', () => {
+  const source = canonical.replace(
+    'command:\n    # Health probe argv; never evaluated by a shell.\n    - gh\n    - run\n    - list\n    - --branch\n    - main',
+    'command: [git, --credential, opaque-value]',
+  );
+  assert.throws(
+    () => loadConfigText(source),
+    (error) =>
+      error instanceof ConfigValidationError &&
+      error.message.includes('$.health.command[2]: credentials are not accepted'),
+  );
+});
+
+test('YAML aliases are rejected with a stable validation diagnostic', () => {
+  assert.throws(
+    () =>
+      loadConfigText(
+        'schemaVersion: 1\nrepository: &repo\n  remote: origin\n  baseBranch: main\n  branchPrefix: *repo\n',
+      ),
+    (error) =>
+      error instanceof ConfigValidationError &&
+      error.message === '$: YAML aliases are not supported in sloop.config.yaml',
+  );
 });
 
 test('credential-bearing headers and assignments are rejected in argv fields', () => {

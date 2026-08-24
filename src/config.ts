@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
-import { Document, parseDocument, type Node } from 'yaml';
+import { Document, isAlias, parseDocument, visit, type Node } from 'yaml';
 
 export type ConfigValueType =
   'string' | 'boolean' | 'integer' | 'duration' | 'enum' | 'list' | 'path' | 'argv';
@@ -112,6 +112,7 @@ const shellExecutables = new Set([
   'nu',
   'osh',
   'powershell',
+  'pdksh',
   'pwsh',
   'rc',
   'sh',
@@ -122,13 +123,21 @@ const shellExecutables = new Set([
 ]);
 const shellExecutable = (argument: string): boolean => {
   const basename = executableBasename(argument);
-  if (shellExecutables.has(basename) || basename.endsWith('sh')) return true;
+  if (shellExecutables.has(basename)) return true;
   return [...shellExecutables].some(
     (shell) =>
       basename.startsWith(`${shell}-`) ||
       (basename.startsWith(shell) && /^\d/.test(basename.slice(shell.length))),
   );
 };
+const allowedExecutables = new Set(['codex', 'env', 'gh', 'git', 'npm']);
+const executableIndirectionOptions: Readonly<Record<string, readonly RegExp[]>> = Object.freeze({
+  codex: [/^(?:-c|--config)(?:=|$)/i],
+  env: [],
+  gh: [/^(?:alias|extension)$/i],
+  git: [/^(?:alias|difftool|filter-branch|mergetool|shell)$/i, /^--exec(?:=|$)/i],
+  npm: [/^(?:exec|x|explore)$/i],
+});
 const gitConfigDispatchesShell = (argument: string): boolean => {
   const separator = argument.indexOf('=');
   if (separator < 1) return false;
@@ -149,6 +158,15 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
   const executable = executableBasename(argv[0]!);
+  if (shellExecutable(argv[0]!))
+    fail(`${path}[0]`, 'shell interpreters are forbidden; invoke the executable directly');
+  if (!allowedExecutables.has(executable))
+    fail(
+      `${path}[0]`,
+      `unsupported executable ${JSON.stringify(executable)}; allowed direct-process profiles: ${[
+        ...allowedExecutables,
+      ].join(', ')}`,
+    );
   for (const [index, arg] of argv.entries()) {
     if (arg.includes('\0') || /&&|\|\||[|;<>`]|\$\(/.test(arg))
       fail(
@@ -157,6 +175,11 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
       );
     if (shellExecutable(arg))
       fail(`${path}[${index}]`, 'shell interpreters are forbidden; invoke the executable directly');
+    if (index > 0 && executableIndirectionOptions[executable]!.some((pattern) => pattern.test(arg)))
+      fail(
+        `${path}[${index}]`,
+        'executable indirection is forbidden by this direct-process command profile',
+      );
     if (
       executable === 'env' &&
       index > 0 &&
@@ -532,11 +555,15 @@ function containerShapes(
     return containerShapes(value[key], child, childPath);
   });
 }
-function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
+function credentialDiagnostics(
+  value: unknown,
+  path = '$',
+  ancestors = new WeakSet<object>(),
+): ConfigDiagnostic[] {
   if (typeof value === 'string') {
     const hasUrlUserinfo = /^[a-z][a-z\d+.-]*:\/\/[^\s/@]+(?::[^\s/@]*)?@/i.test(value);
     const hasRecognizedToken =
-      /(?:^|[^A-Za-z0-9])(?:github_pat_[A-Za-z0-9_]{10,}|gh[pousr]_[A-Za-z0-9]{10,})(?:$|[^A-Za-z0-9])/i.test(
+      /(?:^|[^A-Za-z0-9])(?:github_pat_[A-Za-z0-9_]{10,}|gh[pousr]_[A-Za-z0-9]{10,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|sk_(?:live|test)_[A-Za-z0-9]{10,})(?:$|[^A-Za-z0-9])/i.test(
         value,
       );
     const hasCredentialMaterial =
@@ -552,7 +579,7 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
       /[?&](?:api[_-]?key|access[_-]?token|auth[_-]?token|token|client[_-]?secret|password|passwd)=[^&#\s]+/i.test(
         value,
       ) ||
-      /^(?:--(?:[a-z0-9-]*(?:api-?key|token|secret|password|passwd|cookie)|user|proxy-user|oauth2-bearer)|http\.extraheader)=\S+/i.test(
+      /^(?:--(?:[a-z0-9-]*(?:api-?key|token|secret|credential|password|passwd|cookie)|user|proxy-user|oauth2-bearer)|http\.extraheader)=\S+/i.test(
         value,
       ) ||
       /^-(?:u|b)\S+/i.test(value) ||
@@ -570,9 +597,13 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         ]
       : [];
   }
+  if (value !== null && typeof value === 'object') {
+    if (ancestors.has(value)) return [{ path, message: 'YAML aliases must not form cycles' }];
+    ancestors.add(value);
+  }
   if (Array.isArray(value)) {
     const credentialValueOptions =
-      /^(?:-(?:u|b|H)|--(?:header|[a-z0-9-]*(?:api-?key|token|secret|password|passwd|cookie)|user|proxy-user|oauth2-bearer)|http\.extraheader)$/i;
+      /^(?:-(?:u|b|H)|--(?:header|[a-z0-9-]*(?:api-?key|token|secret|credential|password|passwd|cookie)|user|proxy-user|oauth2-bearer)|http\.extraheader)$/i;
     return value.flatMap((child, index) => {
       if (
         index > 0 &&
@@ -588,12 +619,12 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
               'credentials are not accepted in sloop.config.yaml; use the external environment',
           },
         ];
-      return credentialDiagnostics(child, `${path}[${index}]`);
+      return credentialDiagnostics(child, `${path}[${index}]`, ancestors);
     });
   }
   if (plainObject(value))
     return Object.entries(value).flatMap(([key, child]) =>
-      credentialDiagnostics(child, `${path}.${key}`),
+      credentialDiagnostics(child, `${path}.${key}`, ancestors),
     );
   return [];
 }
@@ -687,6 +718,14 @@ export function loadConfigText(source: string): SloopConfig {
     throw new ConfigValidationError(
       document.errors.map((error) => ({ path: '$', message: `invalid YAML: ${error.message}` })),
     );
+  let aliasFound = false;
+  visit(document, (_key, node) => {
+    if (isAlias(node)) aliasFound = true;
+  });
+  if (aliasFound)
+    throw new ConfigValidationError([
+      { path: '$', message: 'YAML aliases are not supported in sloop.config.yaml' },
+    ]);
   return parseConfig(document.toJS());
 }
 export function loadConfigFile(file: string): SloopConfig {
@@ -754,7 +793,12 @@ export function canonicalConfigYaml(): string {
     const node = document.getIn(metadata.path.split('.'), true);
     if (node && typeof node === 'object') (node as Node).commentBefore = ` ${metadata.explanation}`;
   }
-  return document.toString({ lineWidth: 0 });
+  return document
+    .toString({ lineWidth: 0 })
+    .replace(
+      /^(\s*(?:-\s+)?)"([^"\n]*)"$/gm,
+      (_match, prefix, value) => `${prefix}'${value.replaceAll("'", "''")}'`,
+    );
 }
 function formatDuration(milliseconds: number): string {
   for (const [unit, amount] of [
