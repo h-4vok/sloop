@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:f
 import { join } from 'node:path';
 import type { LockOwner } from './core/boundaries.js';
 import type { Deps } from './dispatcher.js';
+import type { SloopConfig } from './config.js';
 import {
   checkoutWorkerBranch,
   commentPullRequest,
@@ -24,7 +25,31 @@ import {
 } from './dispatcher.js';
 
 /** Assemble concrete production adapters outside the dispatcher core. */
-export function productionDependencies(root = process.cwd()): Deps {
+function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config {
+  const runner = (value: SloopConfig['agents']['worker']) => ({
+    command: value.argv[0],
+    args: [...value.argv.slice(1)],
+    timeoutMs: value.timeout,
+    retries: value.retries,
+  });
+  return {
+    baseBranch: config.repository.baseBranch,
+    workerCommand: runner(config.agents.worker),
+    qaCommand: runner(config.agents.qa),
+    staffReviewCommand: runner(config.agents.staff),
+    requiredPrChecks: [...config.workflow.requiredChecks],
+    workerLeaseMs: config.agents.worker.timeout,
+    maxReviewRounds: config.arbiter.reviewRounds,
+    logRoleInvocation: config.logging.roleInvocation,
+    lockTtlMs: config.agents.worker.timeout,
+  };
+}
+
+export function productionDependencies(
+  root: string,
+  validatedConfig: SloopConfig,
+  repository: string,
+): Deps {
   const state = join(root, '.sloop', 'state.json');
   const lock = dispatcherLockPath(root);
   const ownerFile = join(lock, 'owner.json');
@@ -35,15 +60,7 @@ export function productionDependencies(root = process.cwd()): Deps {
     root,
     load: () => readState(state),
     save: (next) => writeState(next, state),
-    loadConfig: () => {
-      const file = join(root, 'sloop.config.json');
-      try {
-        return JSON.parse(readFileSync(file, 'utf8'));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
-        throw error;
-      }
-    },
+    loadConfig: () => dispatcherConfig(validatedConfig),
     status: (verbose) => {
       const current = readState(state);
       return verbose
@@ -55,11 +72,14 @@ export function productionDependencies(root = process.cwd()): Deps {
             lastError: current.lastError,
           };
     },
-    list: () => eligible().map(({ number, title }) => ({ number, title })),
+    list: () =>
+      eligible(root, repository, validatedConfig.github.labels.eligible).map(
+        ({ number, title }) => ({ number, title }),
+      ),
     recoverLock: () => recoverStaleLock(root, defaultProcessAlive),
     reset: () => writeState(resetRunState(readState(state), defaultProcessAlive), state),
-    resolveReviewCap: (args, config) => resolveReviewCap(args, config),
-    linkIssue: (issue) => linkIssueToActiveRun(issue),
+    resolveReviewCap: (args, config) => resolveReviewCap(args, config, state, root, repository),
+    linkIssue: (issue) => linkIssueToActiveRun(issue, state, root, repository),
     prepareRecovery: (issue, requestedPr, config) => {
       const current = readState(state);
       const pr = requestedPr ?? current.pr;
@@ -73,18 +93,18 @@ export function productionDependencies(root = process.cwd()): Deps {
       );
       return pr;
     },
-    eligible,
+    eligible: () => eligible(root, repository, validatedConfig.github.labels.eligible),
     comment: (issue, body) => {
       execFileSync('gh', ['issue', 'comment', String(issue), '--body', body], {
         cwd: root,
         stdio: 'inherit',
       });
     },
-    pullRequest,
-    updatePullRequestBody,
-    pullRequestBody,
-    prComment: commentPullRequest,
-    run: runCommand,
+    pullRequest: (pr) => pullRequest(pr, root, repository),
+    updatePullRequestBody: (pr, body) => updatePullRequestBody(pr, body, root, repository),
+    pullRequestBody: (pr) => pullRequestBody(pr, root, repository),
+    prComment: (pr, body) => commentPullRequest(pr, body, root, repository),
+    run: (spec) => runCommand(spec, root),
     prepareWorkerBranch: (issue) => prepareWorkerBranch(issue, root),
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
     pid: () => process.pid,

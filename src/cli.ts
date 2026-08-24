@@ -37,6 +37,7 @@ export function requireSupportedNode(version: string): void {
 export async function runCli(args: string[], nodeVersion = process.version): Promise<void> {
   const {
     emitNodeVersionFailure,
+    emitUsageFailure,
     parseReadOnlyCommand,
     runDispatcherPreflight,
     runReadOnlyCommand,
@@ -63,8 +64,10 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
       return;
     }
   } catch (error) {
-    console.error(`[sloop] ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = EXIT.preflight;
+    process.exitCode = emitUsageFailure(
+      args,
+      error instanceof Error ? error.message : String(error),
+    );
     return;
   }
   const [{ runDispatcherCli }, { productionDependencies }] = await Promise.all([
@@ -72,11 +75,25 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     import('./adapters.js'),
   ]);
   const preflight = runDispatcherPreflight(args);
-  if (!preflight.root) {
+  if (!preflight.root || !preflight.config || !preflight.repository) {
     process.exitCode = preflight.code;
     return;
   }
-  await runDispatcherCli(args, productionDependencies(preflight.root));
+  try {
+    const result = await runDispatcherCli(
+      args,
+      productionDependencies(preflight.root, preflight.config, preflight.repository),
+    );
+    process.exitCode = result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[sloop] ${message}`);
+    process.exitCode = /active run|already running|reclaiming the lock/i.test(message)
+      ? EXIT.busy
+      : /network|github|timed out|ECONN|ENOTFOUND/i.test(message)
+        ? EXIT.external
+        : EXIT.preflight;
+  }
 }
 
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {

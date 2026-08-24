@@ -31,7 +31,7 @@ function harness(overrides = {}) {
       stderr: '',
       status: 0,
     },
-    'gh label list --limit 1000 --json name': {
+    'gh label list --repo o/r --limit 1000 --json name': {
       stdout: JSON.stringify(
         [
           'Automation Ready',
@@ -45,11 +45,12 @@ function harness(overrides = {}) {
       stderr: '',
       status: 0,
     },
-    'gh issue list --state open --label Automation Ready --json number,title,url,labels': {
-      stdout: '[{"number":31,"title":"Discovery"}]',
-      stderr: '',
-      status: 0,
-    },
+    'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
+      {
+        stdout: '[{"number":31,"title":"Discovery"}]',
+        stderr: '',
+        status: 0,
+      },
     'codex --version': { stdout: 'codex 1', stderr: '', status: 0 },
     ...overrides,
   };
@@ -159,7 +160,7 @@ test('preflight aggregates safely evaluable failures', () => {
       stderr: '',
       status: 1,
     },
-    'gh label list --limit 1000 --json name': { stdout: '[]', stderr: '', status: 0 },
+    'gh label list --repo o/r --limit 1000 --json name': { stdout: '[]', stderr: '', status: 0 },
   });
   assert.equal(
     runReadOnlyCommand(parseReadOnlyCommand(['issues', 'list', '--json']), h.io),
@@ -172,11 +173,12 @@ test('preflight aggregates safely evaluable failures', () => {
 
 test('external service failure uses exit 5 and never reports success', () => {
   const h = harness({
-    'gh issue list --state open --label Automation Ready --json number,title,url,labels': {
-      stdout: '',
-      stderr: 'network',
-      status: 1,
-    },
+    'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
+      {
+        stdout: '',
+        stderr: 'network',
+        status: 1,
+      },
   });
   assert.equal(
     runReadOnlyCommand(parseReadOnlyCommand(['issues', 'list', '--json']), h.io),
@@ -192,7 +194,10 @@ test('all stable exit-code classes are distinct and documented', () => {
 test('dispatcher commands cross discovery and base-config preflight before operations', () => {
   const h = harness();
   const result = runDispatcherPreflight(['--status'], h.io);
-  assert.deepEqual(result, { code: EXIT.ok, root: resolve('/repo') });
+  assert.equal(result.code, EXIT.ok);
+  assert.equal(result.root, resolve('/repo'));
+  assert.equal(result.repository, 'o/r');
+  assert.equal(result.config.repository.baseBranch, 'main');
   assert.deepEqual(
     h.calls.slice(0, 3).map(({ file, args }) => `${file} ${args.join(' ')}`),
     [
@@ -212,4 +217,31 @@ test('dispatcher preflight failure stops before any mutation-capable dependency'
   assert.match(h.stderr[0], /base-configuration/);
   assert.ok(!h.calls.some(({ file }) => file === 'gh'));
   assert.ok(!h.calls.some(({ args }) => ['status', 'checkout', 'reset'].includes(args[0])));
+});
+
+test('local recovery commands do not require GitHub, Codex, labels, or a clean tree', () => {
+  const h = harness({
+    'git status --porcelain': { stdout: 'dirty', stderr: '', status: 0 },
+    'gh --version': { stdout: '', stderr: 'missing', status: 1 },
+    'codex --version': { stdout: '', stderr: 'missing', status: 1 },
+  });
+  const result = runDispatcherPreflight(['--prepare-recovery', '31', '--pr', '54'], h.io);
+  assert.equal(result.code, EXIT.ok);
+  assert.ok(!h.calls.some(({ file }) => file === 'gh' || file === 'codex'));
+  assert.ok(!h.calls.some(({ args }) => args[0] === 'status' || args[0] === 'symbolic-ref'));
+});
+
+test('base configuration cannot redirect the immutable bootstrap selector', () => {
+  const redirected = canonicalConfigYaml().replace(
+    '    # Pull-request target and healthy base branch.\n    main',
+    '    # Pull-request target and healthy base branch.\n    trunk',
+  );
+  const h = harness({
+    'git show origin/main:sloop.config.yaml': { stdout: redirected, stderr: '', status: 0 },
+  });
+  assert.equal(
+    runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io),
+    EXIT.preflight,
+  );
+  assert.match(JSON.parse(h.stdout[0]).diagnostics[0].message, /base selector changed/);
 });

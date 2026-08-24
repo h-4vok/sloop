@@ -149,8 +149,8 @@ export type Spec = {
   onHeartbeat?: () => void;
 };
 
-const root = process.cwd();
-const stateDir = join(root, '.sloop');
+const defaultRoot = process.cwd();
+const stateDir = join(defaultRoot, '.sloop');
 const stateFile = join(stateDir, 'state.json');
 const skills = {
   claim: 'dispatcher',
@@ -193,7 +193,10 @@ export function dispatcherLockPath(rootPath: string): string {
   return join(tmpdir(), 'sloop-dispatcher', key, 'dispatcher.lock');
 }
 
-export function recoverStaleLock(rootPath = root, processAlive = defaultProcessAlive): string {
+export function recoverStaleLock(
+  rootPath = defaultRoot,
+  processAlive = defaultProcessAlive,
+): string {
   const lock = dispatcherLockPath(rootPath);
   if (!existsSync(lock)) return 'No dispatcher lock found.';
   const ownerFile = join(lock, 'owner.json');
@@ -281,22 +284,31 @@ export function runSyncCommand(
     execFileSync(command, commandArgs, options) as string,
   platform = process.platform,
   commandProcessor = process.env.ComSpec,
+  cwd = defaultRoot,
 ): string {
   const launch = childProcessInvocation(executable, args, platform, commandProcessor);
   return execute(launch.command, launch.args, {
-    cwd: root,
+    cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsVerbatimArguments: launch.windowsVerbatimArguments,
   }).trim();
 }
 
-function gh(args: string[]): string {
-  return runSyncCommand(resolveExecutable('gh'), args);
+function gh(args: string[], cwd = defaultRoot, repository?: string): string {
+  const scoped = repository && !args.includes('--repo') ? [...args, '--repo', repository] : args;
+  return runSyncCommand(
+    resolveExecutable('gh'),
+    scoped,
+    undefined,
+    process.platform,
+    process.env.ComSpec,
+    cwd,
+  );
 }
 
-function ghJson<T>(args: string[]): T {
-  const output = gh(args);
+function ghJson<T>(args: string[], cwd = defaultRoot, repository?: string): T {
+  const output = gh(args, cwd, repository);
   try {
     return JSON.parse(output) as T;
   } catch (error) {
@@ -306,29 +318,41 @@ function ghJson<T>(args: string[]): T {
   }
 }
 
-export function eligible(): Issue[] {
-  return ghJson<Issue[]>([
-    'issue',
-    'list',
-    '--state',
-    'open',
-    '--label',
-    'Automation Ready',
-    '--json',
-    'number,title,body',
-    '--limit',
-    '100',
-  ]).sort((a, b) => a.number - b.number);
+export function eligible(
+  cwd = defaultRoot,
+  repository?: string,
+  label = 'Automation Ready',
+): Issue[] {
+  return ghJson<Issue[]>(
+    [
+      'issue',
+      'list',
+      '--state',
+      'open',
+      '--label',
+      label,
+      '--json',
+      'number,title,body',
+      '--limit',
+      '100',
+    ],
+    cwd,
+    repository,
+  ).sort((a, b) => a.number - b.number);
 }
 
-export function pullRequest(pr: number): PullRequest {
-  const raw = ghJson<any>([
-    'pr',
-    'view',
-    String(pr),
-    '--json',
-    'number,state,baseRefName,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
-  ]);
+export function pullRequest(pr: number, cwd = defaultRoot, repository?: string): PullRequest {
+  const raw = ghJson<any>(
+    [
+      'pr',
+      'view',
+      String(pr),
+      '--json',
+      'number,state,baseRefName,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
+    ],
+    cwd,
+    repository,
+  );
   return {
     number: raw.number,
     state: raw.state,
@@ -357,39 +381,60 @@ export function pullRequest(pr: number): PullRequest {
   };
 }
 
-export function updatePullRequestBody(pr: number, body: string): void {
+export function updatePullRequestBody(
+  pr: number,
+  body: string,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
   const temp = join(tmpdir(), `sloop-pr-${process.pid}-${Date.now()}.md`);
   try {
     writeFileSync(temp, body, 'utf8');
-    gh(['pr', 'edit', String(pr), '--body-file', temp]);
+    gh(['pr', 'edit', String(pr), '--body-file', temp], cwd, repository);
   } finally {
     rmSync(temp, { force: true });
   }
 }
 
-export function commentPullRequest(pr: number, body: string): void {
-  gh(['pr', 'comment', String(pr), '--body', body]);
+export function commentPullRequest(
+  pr: number,
+  body: string,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
+  gh(['pr', 'comment', String(pr), '--body', body], cwd, repository);
 }
 
-function commentIssueOnce(issue: number, body: string): void {
-  const existing = ghJson<{ comments?: Array<{ body?: string }> }>([
-    'issue',
-    'view',
-    String(issue),
-    '--json',
-    'comments',
-  ]);
+function commentIssueOnce(
+  issue: number,
+  body: string,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
+  const existing = ghJson<{ comments?: Array<{ body?: string }> }>(
+    ['issue', 'view', String(issue), '--json', 'comments'],
+    cwd,
+    repository,
+  );
   if (!existing.comments?.some((comment) => comment.body === body))
-    gh(['issue', 'comment', String(issue), '--body', body]);
+    gh(['issue', 'comment', String(issue), '--body', body], cwd, repository);
 }
 
-function commentPullRequestOnce(pr: number, body: string): void {
-  if (!(pullRequest(pr).comments ?? []).some((comment) => comment.body === body))
-    commentPullRequest(pr, body);
+function commentPullRequestOnce(
+  pr: number,
+  body: string,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
+  if (!(pullRequest(pr, cwd, repository).comments ?? []).some((comment) => comment.body === body))
+    commentPullRequest(pr, body, cwd, repository);
 }
 
-export function pullRequestBody(pr: number): string {
-  return ghJson<{ body?: string }>(['pr', 'view', String(pr), '--json', 'body']).body ?? '';
+export function pullRequestBody(pr: number, cwd = defaultRoot, repository?: string): string {
+  return (
+    ghJson<{ body?: string }>(['pr', 'view', String(pr), '--json', 'body'], cwd, repository).body ??
+    ''
+  );
 }
 
 /** Keep every state-authorized GitHub closing reference exactly once in a PR body. */
@@ -433,7 +478,7 @@ export function command(
   };
 }
 
-export function runCommand(spec: Spec | undefined): Promise<string> {
+export function runCommand(spec: Spec | undefined, cwd = defaultRoot): Promise<string> {
   if (!spec) return Promise.resolve('');
   const executable = resolveExecutable(spec.command);
   const launch = childProcessInvocation(executable, spec.args);
@@ -447,7 +492,7 @@ export function runCommand(spec: Spec | undefined): Promise<string> {
             ]),
       );
       const child = spawn(launch.command, launch.args, {
-        cwd: root,
+        cwd,
         windowsHide: true,
         env: spec.env ? { ...process.env, ...spec.env } : process.env,
         windowsVerbatimArguments: launch.windowsVerbatimArguments,
@@ -1253,7 +1298,7 @@ export function workerBranchName(issue: number): string {
 
 export function prepareWorkerBranch(
   issue: number,
-  cwd = root,
+  cwd = defaultRoot,
 ): { branch: string; mainBaseSha: string } {
   const branch = workerBranchName(issue);
   execFileSync('git', ['fetch', 'origin', 'main'], { cwd, stdio: 'inherit' });
@@ -1274,7 +1319,7 @@ export function prepareWorkerBranch(
   return { branch, mainBaseSha };
 }
 
-export function checkoutWorkerBranch(branch: string, cwd = root): void {
+export function checkoutWorkerBranch(branch: string, cwd = defaultRoot): void {
   execFileSync('git', ['checkout', branch], { cwd, stdio: 'inherit' });
 }
 
@@ -1310,10 +1355,15 @@ function hitlComment(state: State, action: string): string {
   return `[HITL Review Cap] action=${action} issue=#${state.issue} pr=#${state.pr} round=${state.reviewRound} sha=${cap.decisionSha ?? 'unknown'} waived=${cap.waivedFindingIds.join(',') || 'none'} additionalRounds=${cap.additionalRounds} steer=${cap.steer}`;
 }
 
-function publishHitlDecision(state: State, action: string): void {
+function publishHitlDecision(
+  state: State,
+  action: string,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
   const body = hitlComment(state, action);
-  commentIssueOnce(state.issue!, body);
-  commentPullRequestOnce(state.pr!, body);
+  commentIssueOnce(state.issue!, body, cwd, repository);
+  commentPullRequestOnce(state.pr!, body, cwd, repository);
 }
 
 function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
@@ -1328,8 +1378,14 @@ function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
   );
 }
 
-export function resolveReviewCap(args: string[], cfg: Config): void {
-  const stored = readState();
+export function resolveReviewCap(
+  args: string[],
+  cfg: Config,
+  statePath = stateFile,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
+  const stored = readState(statePath);
   const steer = argumentValues(args, '--steer').at(-1)?.trim();
   if (!steer) throw new Error('--resolve-review-cap requires --steer <text>');
   const abandon = args.includes('--abandon');
@@ -1356,31 +1412,34 @@ export function resolveReviewCap(args: string[], cfg: Config): void {
       status: 'abandon_pending',
       abandonment: { ...stored.abandonment, steer },
     };
-    writeState(state);
+    writeState(state, statePath);
     if (!state.abandonment?.commentPublished) {
-      publishHitlDecision(state, 'abandon');
+      publishHitlDecision(state, 'abandon', cwd, repository);
       state = { ...state, abandonment: { ...state.abandonment!, commentPublished: true } };
-      writeState(state);
+      writeState(state, statePath);
     }
     if (!state.abandonment?.prClosed) {
-      gh(['pr', 'close', String(state.pr)]);
+      gh(['pr', 'close', String(state.pr)], cwd, repository);
       state = { ...state, abandonment: { ...state.abandonment!, prClosed: true } };
-      writeState(state);
+      writeState(state, statePath);
     }
     if (!state.abandonment?.labelled) {
-      gh(['issue', 'edit', String(state.issue), '--add-label', 'wontfix']);
+      gh(['issue', 'edit', String(state.issue), '--add-label', 'wontfix'], cwd, repository);
       state = { ...state, abandonment: { ...state.abandonment!, labelled: true } };
-      writeState(state);
+      writeState(state, statePath);
     }
     if (!state.abandonment?.issueClosed) {
-      gh(['issue', 'close', String(state.issue)]);
+      gh(['issue', 'close', String(state.issue)], cwd, repository);
       state = { ...state, abandonment: { ...state.abandonment!, issueClosed: true } };
-      writeState(state);
+      writeState(state, statePath);
     }
-    writeState({
-      ...state,
-      status: 'abandoned',
-    });
+    writeState(
+      {
+        ...state,
+        status: 'abandoned',
+      },
+      statePath,
+    );
     return;
   }
 
@@ -1401,13 +1460,13 @@ export function resolveReviewCap(args: string[], cfg: Config): void {
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...normalizedWaivers]),
     ],
     steer,
-    resolvedBy: gh(['api', 'user', '--jq', '.login']),
+    resolvedBy: gh(['api', 'user', '--jq', '.login'], cwd),
     resolvedAt: new Date().toISOString(),
   };
   const allWaived = cap.outstandingFindingIds.every((id) => cap.waivedFindingIds.includes(id));
   if (additionalRounds === 0 && !allWaived)
     throw new Error('findings remain; waive them explicitly or grant additional rounds');
-  const pr = pullRequest(current.pr);
+  const pr = pullRequest(current.pr, cwd, repository);
   if (additionalRounds === 0 && !prHealthyForHumanMerge(pr, cfg))
     throw new Error(
       'PR must have green required checks and be clean/mergeable before a no-round waiver',
@@ -1420,29 +1479,39 @@ export function resolveReviewCap(args: string[], cfg: Config): void {
     lastErrorVerbose: undefined,
     updatedAt: Date.now(),
   };
-  writeState(next);
-  publishHitlDecision(next, additionalRounds > 0 ? 'resume' : 'waive_ready_for_human_merge');
+  writeState(next, statePath);
+  publishHitlDecision(
+    next,
+    additionalRounds > 0 ? 'resume' : 'waive_ready_for_human_merge',
+    cwd,
+    repository,
+  );
 }
 
-export function linkIssueToActiveRun(issue: number): void {
+export function linkIssueToActiveRun(
+  issue: number,
+  statePath = stateFile,
+  cwd = defaultRoot,
+  repository?: string,
+): void {
   if (!Number.isInteger(issue) || issue <= 0)
     throw new Error('--link-issue requires a positive issue number');
-  const current = readState();
+  const current = readState(statePath);
   if (!current.issue || !current.pr)
     throw new Error('--link-issue requires one active run with an existing PR');
-  gh(['issue', 'view', String(issue), '--json', 'number,state']);
+  gh(['issue', 'view', String(issue), '--json', 'number,state'], cwd, repository);
   const linkedClosingIssues = [...new Set([...(current.linkedClosingIssues ?? []), issue])].filter(
     (number) => number !== current.issue,
   );
   const next = { ...current, linkedClosingIssues, updatedAt: Date.now() };
-  writeState(next);
-  const body = pullRequestBody(current.pr);
+  writeState(next, statePath);
+  const body = pullRequestBody(current.pr, cwd, repository);
   const normalized = withIssueClosingReference(body, current.issue, linkedClosingIssues);
-  if (normalized !== body.trim()) updatePullRequestBody(current.pr, normalized);
+  if (normalized !== body.trim()) updatePullRequestBody(current.pr, normalized, cwd, repository);
   const note = `[Sloop linked issue] PR #${current.pr} closes #${current.issue} and #${issue} when a human merges to main.`;
-  commentIssueOnce(current.issue, note);
-  commentIssueOnce(issue, note);
-  commentPullRequestOnce(current.pr, note);
+  commentIssueOnce(current.issue, note, cwd, repository);
+  commentIssueOnce(issue, note, cwd, repository);
+  commentPullRequestOnce(current.pr, note, cwd, repository);
 }
 
 export function acquire(d: Deps, ttl: number): string {
@@ -1484,7 +1553,7 @@ export function acquire(d: Deps, ttl: number): string {
   throw new Error('another dispatcher is already running');
 }
 
-export async function dispatch(cfg: Config, d: Deps): Promise<void> {
+export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   if ('codexSandbox' in (cfg as Record<string, unknown>))
     throw new Error(
       'codexSandbox is no longer supported; configure --sandbox in each role command args',
@@ -1521,7 +1590,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
           drainStatus: 'done',
           updatedAt: d.now(),
         });
-        return;
+        return 0;
       }
       processed.add(issue.number);
       try {
@@ -1555,7 +1624,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
         // Temporarily process exactly one issue per invocation. This prevents
         // state from one completed issue leaking into the next issue while the
         // dispatcher transition logic is being hardened.
-        return;
+        return 0;
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[sloop] issue #${issue.number} bloqueada: ${message}`);
@@ -1568,7 +1637,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
           lastError: message,
           pr: current.pr,
         });
-        return;
+        return 4;
       }
     }
   } finally {
@@ -1576,40 +1645,40 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
   }
 }
 
-export async function runDispatcherCli(args: string[], d: Deps): Promise<void> {
+export async function runDispatcherCli(args: string[], d: Deps): Promise<0 | 4> {
   if (args.includes('--status')) {
     const supportedStatusArgs =
       (args.length === 1 && args[0] === '--status') ||
       (args.length === 2 && args.includes('--verbose'));
     if (!supportedStatusArgs) throw new Error('--status accepts only the optional --verbose flag');
     console.log(JSON.stringify(d.status(args.includes('--verbose')), null, 2));
-    return;
+    return 0;
   }
   if (args.includes('--verbose')) throw new Error('--verbose is supported only with --status');
   const cfg = d.loadConfig();
   if (args.includes('--list')) {
     console.log(JSON.stringify(d.list(), null, 2));
-    return;
+    return 0;
   }
   if (args.includes('--recover-lock')) {
     console.log(d.recoverLock());
-    return;
+    return 0;
   }
   if (args.includes('--reset')) {
     d.reset();
     console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
-    return;
+    return 0;
   }
   if (args.includes('--resolve-review-cap')) {
     d.resolveReviewCap(args, cfg);
     console.log('Resolución HITL registrada.');
-    return;
+    return 0;
   }
   const linkIssueIndex = args.indexOf('--link-issue');
   if (linkIssueIndex >= 0) {
     d.linkIssue(Number(args[linkIssueIndex + 1]));
     console.log(`Issue #${args[linkIssueIndex + 1]} vinculada al PR activo.`);
-    return;
+    return 0;
   }
   const recoveryIndex = args.indexOf('--prepare-recovery');
   if (recoveryIndex >= 0) {
@@ -1618,16 +1687,24 @@ export async function runDispatcherCli(args: string[], d: Deps): Promise<void> {
     const requestedPr = prIndex >= 0 ? Number(args[prIndex + 1]) : undefined;
     const pr = d.prepareRecovery(issue, requestedPr, cfg);
     console.log(`Recovery preparado para issue #${issue}, PR #${pr}. Ejecutá npm run sloop.`);
-    return;
+    return 0;
   }
-  await dispatch(cfg, d);
+  return dispatch(cfg, d);
 }
 
 // Preserve the repository's legacy direct entry point; the installed bin uses cli.ts.
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/dispatcher.js'))
-  void import('./adapters.js').then(({ productionDependencies }) =>
-    runDispatcherCli(process.argv.slice(2), productionDependencies()).catch((error) => {
-      console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
-      process.exitCode = 1;
-    }),
+  void Promise.all([import('./adapters.js'), import('./config.js')]).then(
+    ([{ productionDependencies }, { canonicalConfigYaml, loadConfigText }]) =>
+      runDispatcherCli(
+        process.argv.slice(2),
+        productionDependencies(
+          process.cwd(),
+          loadConfigText(canonicalConfigYaml()),
+          'local/legacy',
+        ),
+      ).catch((error) => {
+        console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
+        process.exitCode = 1;
+      }),
   );

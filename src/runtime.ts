@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { loadConfigText, type SloopConfig } from './config.js';
@@ -159,7 +159,15 @@ function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref
       `Fetch ${bootstrap.repository.remote} and ensure ${bootstrap.repository.baseBranch} contains a valid sloop.config.yaml.`,
     );
   try {
-    return { config: loadConfigText(base.stdout), ref };
+    const config = loadConfigText(base.stdout);
+    if (
+      config.repository.remote !== bootstrap.repository.remote ||
+      config.repository.baseBranch !== bootstrap.repository.baseBranch
+    )
+      throw new Error(
+        `configured base selector changed between HEAD and ${ref}; repository.remote and repository.baseBranch must match`,
+      );
+    return { config, ref };
   } catch (error) {
     throw diagnostic(
       'base-configuration',
@@ -292,7 +300,12 @@ function githubChecks(
       );
     }
   }
-  const labels = io.run('gh', ['label', 'list', '--limit', '1000', '--json', 'name'], root);
+  const repo = githubRepository(remoteUrl);
+  const labels = io.run(
+    'gh',
+    ['label', 'list', '--repo', repo, '--limit', '1000', '--json', 'name'],
+    root,
+  );
   if (labels.status !== 0)
     failures.push(
       diagnostic(
@@ -329,6 +342,12 @@ function githubChecks(
       );
   }
   return failures;
+}
+
+function githubRepository(remoteUrl: string): string {
+  const match = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (!match) throw new Error('configured remote is not a GitHub repository URL');
+  return `${match[1]}/${match[2]}`;
 }
 
 function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnostic[] {
@@ -388,7 +407,7 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
 export function runDispatcherPreflight(
   args: readonly string[],
   providedIo?: RuntimeIo,
-): Readonly<{ code: ExitCode; root?: string }> {
+): Readonly<{ code: ExitCode; root?: string; config?: SloopConfig; repository?: string }> {
   const io = providedIo ?? productionIo();
   let root: string;
   let config: SloopConfig;
@@ -409,12 +428,20 @@ export function runDispatcherPreflight(
     };
   }
 
-  const localOnly = args.includes('--status') || args.includes('--recover-lock');
+  const localOnly =
+    args.includes('--status') ||
+    args.includes('--recover-lock') ||
+    args.includes('--reset') ||
+    args.includes('--prepare-recovery');
+  const githubRead = args.includes('--list');
+  const githubWrite = args.includes('--link-issue') || args.includes('--resolve-review-cap');
   const failures = localOnly
     ? commonChecks(root, config, io)
-    : args.includes('--list')
+    : githubRead
       ? [...commonChecks(root, config, io), ...githubChecks(root, config, io)]
-      : doctorChecks(root, config, io);
+      : githubWrite
+        ? [...commonChecks(root, config, io), ...githubChecks(root, config, io, true)]
+        : doctorChecks(root, config, io);
   if (failures.length)
     return {
       code: emit(
@@ -431,7 +458,10 @@ export function runDispatcherPreflight(
         io,
       ),
     };
-  return { code: EXIT.ok, root };
+  const remoteUrl = clean(
+    io.run('git', ['remote', 'get-url', config.repository.remote], root).stdout,
+  );
+  return { code: EXIT.ok, root, config, repository: githubRepository(remoteUrl) };
 }
 
 type Parsed = { command: 'status' | 'issues list' | 'doctor'; json: boolean; verbose: boolean };
@@ -453,6 +483,18 @@ export function parseReadOnlyCommand(args: readonly string[]): Parsed | undefine
       'usage: sloop status [--verbose] [--json] | sloop issues list [--json] | sloop doctor',
     );
   return undefined;
+}
+
+export function emitUsageFailure(args: readonly string[], message: string): ExitCode {
+  const io = productionIo();
+  return emit(
+    envelope(commandName(args), 'failed', 'preflight', 'Command usage is invalid.', null, [
+      diagnostic('usage', message, 'Run `sloop --help` and use a documented command form.'),
+    ]),
+    args.includes('--json'),
+    EXIT.preflight,
+    io,
+  );
 }
 
 export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): ExitCode {
@@ -494,6 +536,9 @@ export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): Exit
       io,
     );
   if (parsed.command === 'issues list') {
+    const remoteUrl = clean(
+      io.run('git', ['remote', 'get-url', config.repository.remote], root).stdout,
+    );
     const response = io.run(
       'gh',
       [
@@ -503,6 +548,8 @@ export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): Exit
         'open',
         '--label',
         config.github.labels.eligible,
+        '--repo',
+        githubRepository(remoteUrl),
         '--json',
         'number,title,url,labels',
       ],
@@ -543,14 +590,55 @@ export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): Exit
       );
     }
   }
+  const stateFile = join(root, '.sloop', 'state.json');
+  let workflow: Record<string, unknown> = {};
+  if (parsed.command === 'status' && existsSync(stateFile)) {
+    try {
+      workflow = JSON.parse(readFileSync(stateFile, 'utf8')) as Record<string, unknown>;
+    } catch {
+      return emit(
+        envelope(parsed.command, 'blocked', 'result', 'Workflow state is unreadable.', null, [
+          diagnostic(
+            'state',
+            'The local workflow state is invalid JSON.',
+            'Repair the state through dispatcher recovery tooling.',
+          ),
+        ]),
+        parsed.json,
+        EXIT.blocked,
+        io,
+      );
+    }
+  }
+  const workflowStatus = String(workflow.status ?? 'idle');
+  const status: ResultStatus =
+    workflowStatus === 'blocked'
+      ? 'blocked'
+      : /running|pending|review|claimed/.test(workflowStatus)
+        ? 'waiting'
+        : 'idle';
   const value = envelope(
     parsed.command,
-    parsed.command === 'status' ? 'idle' : 'completed',
+    parsed.command === 'status' ? status : 'completed',
     'result',
     parsed.command === 'status'
-      ? `Repository ${root} is ready; no workflow state was inspected.`
+      ? workflowStatus === 'idle'
+        ? `Repository ${root} is idle.`
+        : `Repository ${root} workflow status is ${workflowStatus}.`
       : 'All checks passed.',
-    { repository: root, configRef: ref, ...(parsed.verbose ? { config } : {}) },
+    {
+      repository: root,
+      configRef: ref,
+      workflow: parsed.verbose
+        ? workflow
+        : {
+            issue: workflow.issue,
+            pr: workflow.pr,
+            status: workflow.status,
+            lastError: workflow.lastError,
+          },
+      ...(parsed.verbose ? { config } : {}),
+    },
   );
-  return emit(value, parsed.json, EXIT.ok, io);
+  return emit(value, parsed.json, status === 'blocked' ? EXIT.blocked : EXIT.ok, io);
 }
