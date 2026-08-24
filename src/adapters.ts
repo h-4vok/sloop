@@ -9,10 +9,15 @@ import {
   defaultProcessAlive,
   dispatcherLockPath,
   eligible,
+  linkIssueToActiveRun,
   prepareWorkerBranch,
+  prepareRecovery,
   pullRequest,
   pullRequestBody,
   readState,
+  recoverStaleLock,
+  resetRunState,
+  resolveReviewCap,
   runCommand,
   updatePullRequestBody,
   writeState,
@@ -20,6 +25,7 @@ import {
 
 /** Assemble concrete production adapters outside the dispatcher core. */
 export function productionDependencies(root = process.cwd()): Deps {
+  const state = join(root, '.sloop', 'state.json');
   const lock = dispatcherLockPath(root);
   const ownerFile = join(lock, 'owner.json');
   const reclaim = join(lock, 'reclaiming');
@@ -27,8 +33,46 @@ export function productionDependencies(root = process.cwd()): Deps {
     writeFileSync(file, JSON.stringify(owner, null, 2) + '\n');
   return {
     root,
-    load: () => readState(),
-    save: writeState,
+    load: () => readState(state),
+    save: (next) => writeState(next, state),
+    loadConfig: () => {
+      const file = join(root, 'sloop.config.json');
+      try {
+        return JSON.parse(readFileSync(file, 'utf8'));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+        throw error;
+      }
+    },
+    status: (verbose) => {
+      const current = readState(state);
+      return verbose
+        ? current
+        : {
+            issue: current.issue,
+            pr: current.pr,
+            status: current.status,
+            lastError: current.lastError,
+          };
+    },
+    list: () => eligible().map(({ number, title }) => ({ number, title })),
+    recoverLock: () => recoverStaleLock(root, defaultProcessAlive),
+    reset: () => writeState(resetRunState(readState(state), defaultProcessAlive), state),
+    resolveReviewCap: (args, config) => resolveReviewCap(args, config),
+    linkIssue: (issue) => linkIssueToActiveRun(issue),
+    prepareRecovery: (issue, requestedPr, config) => {
+      const current = readState(state);
+      const pr = requestedPr ?? current.pr;
+      if (!Number.isInteger(issue) || issue < 1)
+        throw new Error('--prepare-recovery requires an issue number');
+      if (!pr || !Number.isInteger(pr))
+        throw new Error('--prepare-recovery requires --pr or an existing state.pr');
+      writeState(
+        prepareRecovery(current, issue, pr, Date.now(), config.workerLeaseMs ?? 900000),
+        state,
+      );
+      return pr;
+    },
     eligible,
     comment: (issue, body) => {
       execFileSync('gh', ['issue', 'comment', String(issue), '--body', body], {

@@ -6,6 +6,16 @@ test('production assembly supplies every typed external-concern boundary', () =>
   const dependencies = productionDependencies(process.cwd());
   const methods = {
     Workspace: ['load', 'save'],
+    CliControl: [
+      'loadConfig',
+      'status',
+      'list',
+      'recoverLock',
+      'reset',
+      'resolveReviewCap',
+      'linkIssue',
+      'prepareRecovery',
+    ],
     GitProvider: ['prepareWorkerBranch', 'checkoutWorkerBranch'],
     GitHubProvider: [
       'eligible',

@@ -5,6 +5,7 @@ import { extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type {
   AgentRunner,
+  CliControl,
   GitHubProvider,
   GitProvider,
   HealthGate,
@@ -128,6 +129,7 @@ export type Config = {
 };
 export type Issue = { number: number; title: string; body?: string };
 export type Deps = Workspace<State> &
+  CliControl<Config> &
   GitHubProvider<Issue, PullRequest> &
   AgentRunner<Spec> &
   HealthGate &
@@ -1326,7 +1328,7 @@ function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
   );
 }
 
-function resolveReviewCap(args: string[], cfg: Config): void {
+export function resolveReviewCap(args: string[], cfg: Config): void {
   const stored = readState();
   const steer = argumentValues(args, '--steer').at(-1)?.trim();
   if (!steer) throw new Error('--resolve-review-cap requires --steer <text>');
@@ -1422,7 +1424,7 @@ function resolveReviewCap(args: string[], cfg: Config): void {
   publishHitlDecision(next, additionalRounds > 0 ? 'resume' : 'waive_ready_for_human_merge');
 }
 
-function linkIssueToActiveRun(issue: number): void {
+export function linkIssueToActiveRun(issue: number): void {
   if (!Number.isInteger(issue) || issue <= 0)
     throw new Error('--link-issue requires a positive issue number');
   const current = readState();
@@ -1580,45 +1582,32 @@ export async function runDispatcherCli(args: string[], d: Deps): Promise<void> {
       (args.length === 1 && args[0] === '--status') ||
       (args.length === 2 && args.includes('--verbose'));
     if (!supportedStatusArgs) throw new Error('--status accepts only the optional --verbose flag');
-    const current = readState();
-    const displayed = args.includes('--verbose')
-      ? current
-      : {
-          issue: current.issue,
-          pr: current.pr,
-          status: current.status,
-          lastError: current.lastError,
-        };
-    console.log(JSON.stringify(displayed, null, 2));
+    console.log(JSON.stringify(d.status(args.includes('--verbose')), null, 2));
     return;
   }
   if (args.includes('--verbose')) throw new Error('--verbose is supported only with --status');
-  const cfg: Config = existsSync(join(root, 'sloop.config.json'))
-    ? JSON.parse(readFileSync(join(root, 'sloop.config.json'), 'utf8'))
-    : {};
+  const cfg = d.loadConfig();
   if (args.includes('--list')) {
-    const listedIssues = eligible().map(({ number, title }) => ({ number, title }));
-    console.log(JSON.stringify(listedIssues, null, 2));
+    console.log(JSON.stringify(d.list(), null, 2));
     return;
   }
   if (args.includes('--recover-lock')) {
-    console.log(recoverStaleLock(root));
+    console.log(d.recoverLock());
     return;
   }
   if (args.includes('--reset')) {
-    const state = readState();
-    writeState(resetRunState(state));
+    d.reset();
     console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
     return;
   }
   if (args.includes('--resolve-review-cap')) {
-    resolveReviewCap(args, cfg);
+    d.resolveReviewCap(args, cfg);
     console.log('Resolución HITL registrada.');
     return;
   }
   const linkIssueIndex = args.indexOf('--link-issue');
   if (linkIssueIndex >= 0) {
-    linkIssueToActiveRun(Number(args[linkIssueIndex + 1]));
+    d.linkIssue(Number(args[linkIssueIndex + 1]));
     console.log(`Issue #${args[linkIssueIndex + 1]} vinculada al PR activo.`);
     return;
   }
@@ -1626,12 +1615,8 @@ export async function runDispatcherCli(args: string[], d: Deps): Promise<void> {
   if (recoveryIndex >= 0) {
     const issue = Number(args[recoveryIndex + 1]);
     const prIndex = args.indexOf('--pr');
-    const pr = prIndex >= 0 ? Number(args[prIndex + 1]) : readState().pr;
-    if (!Number.isInteger(issue) || issue < 1)
-      throw new Error('--prepare-recovery requires an issue number');
-    if (!pr || !Number.isInteger(pr))
-      throw new Error('--prepare-recovery requires --pr or an existing state.pr');
-    writeState(prepareRecovery(readState(), issue, pr, Date.now(), cfg.workerLeaseMs ?? 900000));
+    const requestedPr = prIndex >= 0 ? Number(args[prIndex + 1]) : undefined;
+    const pr = d.prepareRecovery(issue, requestedPr, cfg);
     console.log(`Recovery preparado para issue #${issue}, PR #${pr}. Ejecutá npm run sloop.`);
     return;
   }

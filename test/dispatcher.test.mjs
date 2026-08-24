@@ -19,6 +19,7 @@ import {
   withIssueClosingReference,
   resetRunState,
   runCommand,
+  runDispatcherCli,
 } from '../dist/dispatcher.js';
 
 test('Windows batch commands use cmd.exe without Node shell mode', () => {
@@ -190,6 +191,23 @@ function harness(
       saves.push(structuredClone(next));
       state = next;
     },
+    loadConfig: () => ({ ...baseConfig, ...overrides.config }),
+    status: (verbose) =>
+      verbose
+        ? state
+        : { issue: state.issue, pr: state.pr, status: state.status, lastError: state.lastError },
+    list: () => issues.map(({ number, title }) => ({ number, title })),
+    recoverLock: () => 'recovered',
+    reset: () => {
+      state = resetRunState(state, () => false);
+    },
+    resolveReviewCap: () => {},
+    linkIssue: () => {},
+    prepareRecovery: (issue, requestedPr) => {
+      const number = requestedPr ?? state.pr;
+      state = prepareRecovery(state, issue, number, Date.now(), 100);
+      return number;
+    },
     eligible: () => issues,
     comment: (issue, body) => comments.push([issue, body]),
     run: async (spec) => {
@@ -301,6 +319,69 @@ function harness(
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
+
+test('public CLI commands invoke only the injected control seams', async () => {
+  const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });
+  const calls = [];
+  h.deps.loadConfig = () => (calls.push(['loadConfig']), h.cfg);
+  h.deps.status = (verbose) => (calls.push(['status', verbose]), { status: 'injected' });
+  h.deps.list = () => (calls.push(['list']), [{ number: 28, title: 'injected' }]);
+  h.deps.recoverLock = () => (calls.push(['recoverLock']), 'injected recovery');
+  h.deps.reset = () => calls.push(['reset']);
+  h.deps.resolveReviewCap = (args, config) => calls.push(['resolveReviewCap', args, config]);
+  h.deps.linkIssue = (issue) => calls.push(['linkIssue', issue]);
+  h.deps.prepareRecovery = (issue, pr, config) => (
+    calls.push(['prepareRecovery', issue, pr, config]),
+    49
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await runDispatcherCli(['--status', '--verbose'], h.deps);
+    await runDispatcherCli(['--list'], h.deps);
+    await runDispatcherCli(['--recover-lock'], h.deps);
+    await runDispatcherCli(['--reset'], h.deps);
+    await runDispatcherCli(
+      ['--resolve-review-cap', '--steer', 'continue', '--additional-rounds', '1'],
+      h.deps,
+    );
+    await runDispatcherCli(['--link-issue', '29'], h.deps);
+    await runDispatcherCli(['--prepare-recovery', '28', '--pr', '49'], h.deps);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    [
+      'status',
+      'loadConfig',
+      'list',
+      'loadConfig',
+      'recoverLock',
+      'loadConfig',
+      'reset',
+      'loadConfig',
+      'resolveReviewCap',
+      'loadConfig',
+      'linkIssue',
+      'loadConfig',
+      'prepareRecovery',
+    ],
+  );
+  assert.deepEqual(
+    calls.find(([name]) => name === 'status'),
+    ['status', true],
+  );
+  assert.deepEqual(
+    calls.find(([name]) => name === 'linkIssue'),
+    ['linkIssue', 29],
+  );
+  assert.deepEqual(calls.find(([name]) => name === 'prepareRecovery').slice(0, 3), [
+    'prepareRecovery',
+    28,
+    49,
+  ]);
+});
 
 test('commands use argv, exit codes, retries, timeout and no shell contract', async () => {
   assert.deepEqual(command(['node', '-e', 'process.exit(0)'], 42, true).args, [

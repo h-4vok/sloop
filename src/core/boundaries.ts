@@ -5,6 +5,18 @@ export interface Workspace<State> {
   save(state: State): void;
 }
 
+/** Public command handling that belongs to the platform adapter, not the loop core. */
+export interface CliControl<Config> {
+  loadConfig(): Config;
+  status(verbose: boolean): unknown;
+  list(): unknown;
+  recoverLock(): string;
+  reset(): void;
+  resolveReviewCap(args: string[], config: Config): void;
+  linkIssue(issue: number): void;
+  prepareRecovery(issue: number, pr: number | undefined, config: Config): number;
+}
+
 export type LockOwner = { pid: number; createdAt: number; token: string };
 
 /** Atomic storage operations for the single-dispatcher lock. */
