@@ -163,6 +163,33 @@ test('argv rejects env split-string command dispatch', () => {
     );
 });
 
+test('argv rejects embedded environment assignments', () => {
+  for (const [command, expectedPath] of [
+    [['env', 'GIT_SSH_COMMAND=ssh -o ProxyCommand=helper', 'git', 'fetch'], '$.health.command[1]'],
+    [['/usr/bin/env', 'GIT_CONFIG_COUNT=1', 'git', 'fetch'], '$.health.command[1]'],
+    [['env', 'LD_PRELOAD=/tmp/hook.so', 'tool'], '$.health.command[1]'],
+    [['env', 'NODE_OPTIONS=--require=/tmp/hook.js', 'node', 'check.mjs'], '$.health.command[1]'],
+  ])
+    assert.throws(
+      () =>
+        configRegistry
+          .find(({ path }) => path === 'health.command')
+          .parser(command, '$.health.command'),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(
+          `${expectedPath}: environment assignments are forbidden; inherit values from the external environment`,
+        ),
+    );
+
+  assert.deepEqual(
+    configRegistry
+      .find(({ path }) => path === 'health.command')
+      .parser(['env', 'git', 'fetch'], '$.health.command'),
+    ['env', 'git', 'fetch'],
+  );
+});
+
 test('argv rejects Git configuration that dispatches a shell', () => {
   for (const [command, expectedPath] of [
     [['git', '-c', 'alias.x=!echo shell-bypass', 'x'], '$.health.command[2]'],

@@ -142,6 +142,8 @@ const gitConfigDispatchesShell = (argument: string): boolean => {
     /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/.test(name)
   );
 };
+const environmentAssignment = (argument: string): boolean =>
+  /^[A-Za-z_][A-Za-z0-9_]*=/.test(argument);
 const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
@@ -162,6 +164,11 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
       fail(
         `${path}[${index}]`,
         'env split-string options are forbidden; provide each argument as a separate argv item',
+      );
+    if (executable === 'env' && index > 0 && environmentAssignment(arg))
+      fail(
+        `${path}[${index}]`,
+        'environment assignments are forbidden; inherit values from the external environment',
       );
     if (
       executable === 'git' &&
