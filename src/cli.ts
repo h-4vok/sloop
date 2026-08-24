@@ -9,7 +9,12 @@ const packageJson = JSON.parse(
 
 export const HELP = `Sloop ${packageJson.version}
 
-Usage: sloop [option]
+Usage: sloop <command> [option]
+
+Read-only commands:
+  status [--verbose] [--json]  Validate and show repository context
+  issues list [--json]         List eligible issues
+  doctor                       Run all runtime prerequisite checks
 
 Options:
   --help                 Show this help
@@ -39,6 +44,18 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     console.log(packageJson.version);
     return;
   }
+  const { parseReadOnlyCommand, runReadOnlyCommand, EXIT } = await import('./runtime.js');
+  try {
+    const command = parseReadOnlyCommand(args);
+    if (command) {
+      process.exitCode = runReadOnlyCommand(command);
+      return;
+    }
+  } catch (error) {
+    console.error(`[sloop] ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = EXIT.preflight;
+    return;
+  }
   const [{ runDispatcherCli }, { productionDependencies }] = await Promise.all([
     import('./dispatcher.js'),
     import('./adapters.js'),
@@ -53,6 +70,6 @@ if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {
       : process.version;
   void runCli(process.argv.slice(2), version).catch((error) => {
     console.error(`[sloop] ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
+    process.exitCode = 2;
   });
 }

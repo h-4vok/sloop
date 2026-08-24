@@ -12,7 +12,7 @@ test('help documents the linked CLI contract', () => {
   const result = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^Sloop 0\.1\.0/m);
-  assert.match(result.stdout, /Usage: sloop \[option\]/);
+  assert.match(result.stdout, /Usage: sloop <command> \[option\]/);
   assert.equal(result.stdout.trim(), HELP);
 });
 
@@ -41,7 +41,7 @@ test('unsupported Node stops before dispatcher loading', () => {
     encoding: 'utf8',
     env: { ...process.env, NODE_ENV: 'test', SLOOP_TEST_NODE_VERSION: 'v20.0.0' },
   });
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 2);
   assert.match(result.stderr, /requires Node\.js 22 or newer/);
   assert.equal(result.stdout, '');
 });
