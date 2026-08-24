@@ -176,7 +176,11 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
         ? arg
         : executable === 'git' && index > 0 && arg.startsWith('-c')
           ? arg.slice(2)
-          : undefined;
+          : executable === 'git' && index > 1 && argv[index - 1] === '--config-env'
+            ? arg
+            : executable === 'git' && index > 0 && arg.startsWith('--config-env=')
+              ? arg.slice('--config-env='.length)
+              : undefined;
     if (gitConfig !== undefined && gitConfigDispatchesShell(gitConfig))
       fail(
         `${path}[${index}]`,
