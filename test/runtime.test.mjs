@@ -5,6 +5,7 @@ import {
   discoverRepository,
   EXIT,
   parseReadOnlyCommand,
+  runDispatcherPreflight,
   runReadOnlyCommand,
 } from '../dist/runtime.js';
 import { canonicalConfigYaml } from '../dist/config.js';
@@ -186,4 +187,29 @@ test('external service failure uses exit 5 and never reports success', () => {
 
 test('all stable exit-code classes are distinct and documented', () => {
   assert.deepEqual(EXIT, { ok: 0, preflight: 2, busy: 3, blocked: 4, external: 5 });
+});
+
+test('dispatcher commands cross discovery and base-config preflight before operations', () => {
+  const h = harness();
+  const result = runDispatcherPreflight(['--status'], h.io);
+  assert.deepEqual(result, { code: EXIT.ok, root: resolve('/repo') });
+  assert.deepEqual(
+    h.calls.slice(0, 3).map(({ file, args }) => `${file} ${args.join(' ')}`),
+    [
+      'git rev-parse --show-toplevel',
+      'git show HEAD:sloop.config.yaml',
+      'git show origin/main:sloop.config.yaml',
+    ],
+  );
+});
+
+test('dispatcher preflight failure stops before any mutation-capable dependency', () => {
+  const h = harness({
+    'git show origin/main:sloop.config.yaml': { stdout: '', stderr: 'missing', status: 128 },
+  });
+  const result = runDispatcherPreflight([], h.io);
+  assert.deepEqual(result, { code: EXIT.preflight });
+  assert.match(h.stderr[0], /base-configuration/);
+  assert.ok(!h.calls.some(({ file }) => file === 'gh'));
+  assert.ok(!h.calls.some(({ args }) => ['status', 'checkout', 'reset'].includes(args[0])));
 });

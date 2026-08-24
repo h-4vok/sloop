@@ -89,6 +89,11 @@ const envelope = (
   references: { issues, pullRequests: [] },
 });
 
+function commandName(args: readonly string[]): string {
+  const positional = args.filter((arg) => !arg.startsWith('--'));
+  return positional.length ? positional.join(' ') : (args[0] ?? 'sloop');
+}
+
 function emit(value: ResultEnvelope, json: boolean, code: ExitCode, io: RuntimeIo): ExitCode {
   if (json) io.stdout(JSON.stringify(value));
   else {
@@ -98,6 +103,26 @@ function emit(value: ResultEnvelope, json: boolean, code: ExitCode, io: RuntimeI
     (code === EXIT.ok ? io.stdout : io.stderr)(lines.join('\n'));
   }
   return code;
+}
+
+export function emitNodeVersionFailure(
+  args: readonly string[],
+  nodeVersion: string,
+  providedIo?: RuntimeIo,
+): ExitCode {
+  const io = providedIo ?? productionIo();
+  return emit(
+    envelope(commandName(args), 'failed', 'preflight', 'Preflight validation failed.', null, [
+      diagnostic(
+        'node',
+        `Sloop requires Node.js 22 or newer; current runtime is ${nodeVersion}.`,
+        'Install Node.js 22 or newer.',
+      ),
+    ]),
+    args.includes('--json'),
+    EXIT.preflight,
+    io,
+  );
 }
 
 export function discoverRepository(io: RuntimeIo): string {
@@ -358,6 +383,55 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
       ),
     );
   return failures;
+}
+
+export function runDispatcherPreflight(
+  args: readonly string[],
+  providedIo?: RuntimeIo,
+): Readonly<{ code: ExitCode; root?: string }> {
+  const io = providedIo ?? productionIo();
+  let root: string;
+  let config: SloopConfig;
+  try {
+    root = discoverRepository(io);
+    ({ config } = loadBaseConfig(root, io));
+  } catch (error) {
+    const item = error as Diagnostic;
+    return {
+      code: emit(
+        envelope(commandName(args), 'failed', 'discovery', 'Repository startup failed.', null, [
+          item,
+        ]),
+        false,
+        EXIT.preflight,
+        io,
+      ),
+    };
+  }
+
+  const localOnly = args.includes('--status') || args.includes('--recover-lock');
+  const failures = localOnly
+    ? commonChecks(root, config, io)
+    : args.includes('--list')
+      ? [...commonChecks(root, config, io), ...githubChecks(root, config, io)]
+      : doctorChecks(root, config, io);
+  if (failures.length)
+    return {
+      code: emit(
+        envelope(
+          commandName(args),
+          'failed',
+          'preflight',
+          'Preflight validation failed.',
+          null,
+          failures,
+        ),
+        false,
+        EXIT.preflight,
+        io,
+      ),
+    };
+  return { code: EXIT.ok, root };
 }
 
 type Parsed = { command: 'status' | 'issues list' | 'doctor'; json: boolean; verbose: boolean };

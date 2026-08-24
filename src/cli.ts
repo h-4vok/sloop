@@ -35,7 +35,19 @@ export function requireSupportedNode(version: string): void {
 }
 
 export async function runCli(args: string[], nodeVersion = process.version): Promise<void> {
-  requireSupportedNode(nodeVersion);
+  const {
+    emitNodeVersionFailure,
+    parseReadOnlyCommand,
+    runDispatcherPreflight,
+    runReadOnlyCommand,
+    EXIT,
+  } = await import('./runtime.js');
+  try {
+    requireSupportedNode(nodeVersion);
+  } catch {
+    process.exitCode = emitNodeVersionFailure(args, nodeVersion);
+    return;
+  }
   if (args.includes('--help')) {
     console.log(HELP);
     return;
@@ -44,7 +56,6 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     console.log(packageJson.version);
     return;
   }
-  const { parseReadOnlyCommand, runReadOnlyCommand, EXIT } = await import('./runtime.js');
   try {
     const command = parseReadOnlyCommand(args);
     if (command) {
@@ -60,7 +71,12 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     import('./dispatcher.js'),
     import('./adapters.js'),
   ]);
-  await runDispatcherCli(args, productionDependencies());
+  const preflight = runDispatcherPreflight(args);
+  if (!preflight.root) {
+    process.exitCode = preflight.code;
+    return;
+  }
+  await runDispatcherCli(args, productionDependencies(preflight.root));
 }
 
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {

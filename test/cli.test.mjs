@@ -45,3 +45,17 @@ test('unsupported Node stops before dispatcher loading', () => {
   assert.match(result.stderr, /requires Node\.js 22 or newer/);
   assert.equal(result.stdout, '');
 });
+
+test('unsupported Node emits the global envelope when JSON was requested', () => {
+  const result = spawnSync(process.execPath, [cli, 'status', '--json'], {
+    encoding: 'utf8',
+    env: { ...process.env, NODE_ENV: 'test', SLOOP_TEST_NODE_VERSION: 'v20.0.0' },
+  });
+  assert.equal(result.status, 2);
+  assert.equal(result.stderr, '');
+  const envelope = JSON.parse(result.stdout);
+  assert.equal(envelope.command, 'status');
+  assert.equal(envelope.status, 'failed');
+  assert.equal(envelope.phase, 'preflight');
+  assert.equal(envelope.diagnostics[0].check, 'node');
+});
