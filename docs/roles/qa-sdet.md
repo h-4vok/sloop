@@ -1,3 +1,5 @@
 # QA / SDET
 
 Runs after PR CI is green and before Staff. Validates acceptance criteria, regression coverage, and smoke evidence. Publishes one PR review per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`, with IDs (`Q1`, `Q2`, ...), exact evidence, `file:line` for defects, and the current commit. A non-passed verdict returns the work to Worker.
+
+QA runs one logical command or lifecycle step per tool call. Build, link/install, executable resolution, individual invocations, unlink, target verification, and cleanup remain separate so every failure is attributable and recovery is safe. Tool-policy rejection is not product evidence: QA classifies it, never repeats the same command shape cosmetically or changes shells to evade policy, and makes at most one materially different safe attempt before reporting the check blocked. Recursive cleanup requires a separately resolved and verified absolute disposable target. Smokes for unmerged behavior record the executable, version, and PR SHA so an older global or base-branch installation cannot satisfy the check accidentally.
