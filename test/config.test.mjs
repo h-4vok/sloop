@@ -125,6 +125,11 @@ test('argv rejects shell interpreters across supported platforms', () => {
     [['/bin/bash', '-c', 'echo unsafe'], '$.health.command[0]'],
     [['C:\\Windows\\System32\\cmd.exe', '/c', 'echo unsafe'], '$.health.command[0]'],
     [['pwsh.exe', '-Command', 'Write-Output unsafe'], '$.health.command[0]'],
+    [['hush', '-c', 'echo unsafe'], '$.health.command[0]'],
+    [['/usr/bin/yash', '-c', 'echo unsafe'], '$.health.command[0]'],
+    [['/usr/local/bin/pdksh', '-c', 'echo unsafe'], '$.health.command[0]'],
+    [['busybox', 'hush', '-c', 'echo unsafe'], '$.health.command[1]'],
+    [['toybox', 'sh', '-c', 'echo unsafe'], '$.health.command[1]'],
     [['env', 'zsh', '-c', 'echo unsafe'], '$.health.command[1]'],
   ])
     assert.throws(

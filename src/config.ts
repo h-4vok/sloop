@@ -88,13 +88,6 @@ const durationParser = (value: unknown, path: string): number => {
   const result = Number(match[1]) * multiplier;
   return Number.isSafeInteger(result) ? result : fail(path, 'duration is too large');
 };
-const shellExecutable = (argument: string): boolean => {
-  const basename = argument.replace(/\\/g, '/').split('/').at(-1)!.toLowerCase();
-  return (
-    /^(?:a|ba|c|da|fi|k|tc|z)?sh(?:\.exe)?$/.test(basename) ||
-    /^(?:cmd|powershell|pwsh)(?:\.exe)?$/.test(basename)
-  );
-};
 const executableBasename = (argument: string): string =>
   argument
     .replace(/\\/g, '/')
@@ -102,6 +95,33 @@ const executableBasename = (argument: string): string =>
     .at(-1)!
     .toLowerCase()
     .replace(/\.exe$/, '');
+const shellExecutables = new Set([
+  'ash',
+  'bash',
+  'bsh',
+  'cmd',
+  'csh',
+  'dash',
+  'elvish',
+  'es',
+  'fish',
+  'hush',
+  'ion',
+  'ksh',
+  'mksh',
+  'nu',
+  'osh',
+  'powershell',
+  'pwsh',
+  'rc',
+  'sh',
+  'tcsh',
+  'xonsh',
+  'yash',
+  'zsh',
+]);
+const shellExecutable = (argument: string): boolean =>
+  shellExecutables.has(executableBasename(argument)) || executableBasename(argument).endsWith('sh');
 const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
