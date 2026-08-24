@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -12,6 +11,15 @@ import {
 } from 'node:fs';
 import { extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type {
+  AgentRunner,
+  GitHubProvider,
+  GitProvider,
+  HealthGate,
+  RunEventSink,
+  Scheduler,
+  Workspace,
+} from './core/boundaries.js';
 
 export type Status =
   | 'queued'
@@ -126,25 +134,15 @@ type Config = {
   lockTtlMs?: number;
 };
 type Issue = { number: number; title: string; body?: string };
-type Deps = {
-  root: string;
-  load: () => State;
-  save: (s: State) => void;
-  eligible: () => Issue[];
-  comment: (i: number, b: string) => void;
-  run: (s: Spec) => Promise<string>;
-  pullRequest?: (pr: number) => Promise<PullRequest> | PullRequest;
-  now: () => number;
-  pid: () => number;
-  processAlive?: (pid: number) => boolean;
-  sleep?: (ms: number) => Promise<void>;
-  onReclaim?: () => void;
-  prepareWorkerBranch?: (issue: number) => { branch: string; mainBaseSha: string };
-  checkoutWorkerBranch?: (branch: string) => void;
-  updatePullRequestBody?: (pr: number, body: string) => void | Promise<void>;
-  pullRequestBody?: (pr: number) => string | Promise<string>;
-  prComment?: (pr: number, body: string) => void | Promise<void>;
-};
+type Deps = Workspace<State> &
+  GitHubProvider<Issue, PullRequest> &
+  AgentRunner<Spec> &
+  HealthGate &
+  Scheduler &
+  RunEventSink &
+  Partial<GitProvider> & {
+    pid: () => number;
+  };
 type Spec = {
   command: string;
   args: string[];
@@ -1620,8 +1618,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
+export async function runDispatcherCli(args: string[]): Promise<void> {
   if (args.includes('--status')) {
     const supportedStatusArgs =
       (args.length === 1 && args[0] === '--status') ||
@@ -1697,8 +1694,9 @@ async function main() {
   });
 }
 
-if (process.argv[1]?.endsWith('dispatcher.js'))
-  void main().catch((e) => {
-    console.error(`[dispatcher] ${e instanceof Error ? e.message : String(e)}`);
+// Preserve the repository's legacy direct entry point; the installed bin uses cli.ts.
+if (process.argv[1]?.replaceAll('\\', '/').endsWith('/dispatcher.js'))
+  void runDispatcherCli(process.argv.slice(2)).catch((error) => {
+    console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
   });

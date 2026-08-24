@@ -7,11 +7,15 @@ Sloop is a sequential engineering harness that claims GitHub issues, guides a Wo
 ```text
 npm ci
 copy sloop.config.json.example sloop.config.json
-npm run sloop -- --list
-npm run sloop
+npm run build
+npm run link:local
+sloop --help
+sloop --list
 ```
 
-`loop` and `sloop` both run the dispatcher. Configure each role command explicitly in `sloop.config.json`.
+The package remains private and is installed only as a link to this checkout. Node.js 22 or newer is required. After linking, `sloop` resolves its compiled code from this checkout and can be invoked from any working directory; the working directory remains the target repository whose `sloop.config.json` and `.sloop` state are used. Configure each role command explicitly in `sloop.config.json`.
+
+Remove the global link with `npm run unlink:local`. This is also the rollback if a build or runtime-asset check fails. The repository-local `npm run sloop -- <args>` workflow remains available.
 
 ## Operating model
 
