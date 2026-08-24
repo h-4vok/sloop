@@ -235,6 +235,16 @@ test('credential-bearing headers and assignments are rejected in argv fields', (
     ],
     [['curl', '--user', 'alice:supersecret', 'https://example.com'], '$.health.command[2]'],
     [['curl', '--user=alice:supersecret', 'https://example.com'], '$.health.command[1]'],
+    [['tool', '--api-key', 'secret-value'], '$.health.command[2]'],
+    [['tool', '--api-key=secret-value'], '$.health.command[1]'],
+    [['curl', '--cookie', 'session=supersecret'], '$.health.command[2]'],
+    [['curl', '--cookie=session=supersecret'], '$.health.command[1]'],
+    [['curl', '-b', 'session=supersecret'], '$.health.command[2]'],
+    [['curl', '-bsession=supersecret'], '$.health.command[1]'],
+    [['curl', '-ualice:supersecret'], '$.health.command[1]'],
+    [['curl', '-H', 'X-GitHub-Token: secret-value'], '$.health.command[2]'],
+    [['curl', '-HX-Service-Key: secret-value'], '$.health.command[1]'],
+    [['curl', '--header=X-Client-Secret: secret-value'], '$.health.command[1]'],
     [
       ['git', '-c', 'http.extraHeader=Authorization: Bearer secret-value', 'fetch'],
       '$.health.command[2]',
@@ -254,6 +264,7 @@ test('credential-bearing headers and assignments are rejected in argv fields', (
       (error) =>
         error instanceof ConfigValidationError &&
         error.message.includes(`${expectedPath}: credentials are not accepted`),
+      `expected credential rejection for ${JSON.stringify(command)}`,
     );
   }
 });

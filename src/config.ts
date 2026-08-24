@@ -504,7 +504,7 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         value,
       );
     const hasCredentialMaterial =
-      /(?:^|[=\s])(?:authorization|proxy-authorization|private-token|x-api-key|api-key|cookie|set-cookie)\s*:\s*\S+/i.test(
+      /(?:^|[=\s])(?:authorization|proxy-authorization|cookie|set-cookie|[a-z0-9-]*(?:token|key|secret))\s*:\s*\S+/i.test(
         value,
       ) ||
       /(?:^|[\s,;])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[=:]\s*\S+/i.test(
@@ -513,7 +513,13 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
       /[?&](?:api[_-]?key|access[_-]?token|auth[_-]?token|token|client[_-]?secret|password|passwd)=[^&#\s]+/i.test(
         value,
       ) ||
-      /^(?:--?(?:user|proxy-user|oauth2-bearer)|http\.extraheader)=\S+/i.test(value) ||
+      /^(?:--(?:[a-z0-9-]*(?:api-?key|token|secret|password|passwd|cookie)|user|proxy-user|oauth2-bearer)|http\.extraheader)=\S+/i.test(
+        value,
+      ) ||
+      /^-(?:u|b)\S+/i.test(value) ||
+      /^-H(?:authorization|proxy-authorization|cookie|set-cookie|[a-z0-9-]*(?:token|key|secret))\s*:\s*\S+/i.test(
+        value,
+      ) ||
       /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(value);
     return hasUrlUserinfo || hasRecognizedToken || hasCredentialMaterial
       ? [
@@ -527,7 +533,7 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
   }
   if (Array.isArray(value)) {
     const credentialValueOptions =
-      /^(?:-u|--user|--proxy-user|--oauth2-bearer|http\.extraheader)$/i;
+      /^(?:-(?:u|b|H)|--(?:header|[a-z0-9-]*(?:api-?key|token|secret|password|passwd|cookie)|user|proxy-user|oauth2-bearer)|http\.extraheader)$/i;
     return value.flatMap((child, index) => {
       if (
         index > 0 &&
