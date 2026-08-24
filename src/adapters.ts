@@ -99,16 +99,26 @@ export function productionDependencies(
       );
       return pr;
     },
-    eligible: () => eligible(root, repository, validatedConfig.github.labels.eligible),
+    eligible: () => {
+      try {
+        return eligible(root, repository, validatedConfig.github.labels.eligible);
+      } catch (error) {
+        throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+      }
+    },
     comment: (issue, body) => {
-      execFileSync(
-        'gh',
-        ['issue', 'comment', String(issue), '--repo', repository, '--body', body],
-        {
-          cwd: root,
-          stdio: 'inherit',
-        },
-      );
+      try {
+        execFileSync(
+          'gh',
+          ['issue', 'comment', String(issue), '--repo', repository, '--body', body],
+          {
+            cwd: root,
+            stdio: 'inherit',
+          },
+        );
+      } catch (error) {
+        throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+      }
     },
     pullRequest: (pr) => pullRequest(pr, root, repository),
     updatePullRequestBody: (pr, body) => updatePullRequestBody(pr, body, root, repository),

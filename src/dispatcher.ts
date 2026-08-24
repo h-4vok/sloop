@@ -220,7 +220,7 @@ export function recoverStaleLock(
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0)
     throw new Error(`dispatcher lock owner has no valid PID: ${ownerFile}`);
   if (processAlive(pid))
-    throw new Error(`dispatcher owner PID ${pid} is still running; lock was not changed`);
+    throw new CliFailure(3, `dispatcher owner PID ${pid} is still running; lock was not changed`);
   rmSync(lock, { recursive: true, force: true });
   return `Recovered stale dispatcher lock owned by PID ${pid}.`;
 }
@@ -306,14 +306,18 @@ export function runSyncCommand(
 
 function gh(args: string[], cwd = defaultRoot, repository?: string): string {
   const scoped = repository && !args.includes('--repo') ? [...args, '--repo', repository] : args;
-  return runSyncCommand(
-    resolveExecutable('gh'),
-    scoped,
-    undefined,
-    process.platform,
-    process.env.ComSpec,
-    cwd,
-  );
+  try {
+    return runSyncCommand(
+      resolveExecutable('gh'),
+      scoped,
+      undefined,
+      process.platform,
+      process.env.ComSpec,
+      cwd,
+    );
+  } catch (error) {
+    throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+  }
 }
 
 function ghJson<T>(args: string[], cwd = defaultRoot, repository?: string): T {
@@ -321,7 +325,8 @@ function ghJson<T>(args: string[], cwd = defaultRoot, repository?: string): T {
   try {
     return JSON.parse(output) as T;
   } catch (error) {
-    throw new Error(
+    throw new CliFailure(
+      5,
       `gh returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
@@ -1704,19 +1709,6 @@ export async function runDispatcherCli(args: string[], d: Deps): Promise<0 | 4> 
   return dispatch(cfg, d);
 }
 
-// Preserve the repository's legacy direct entry point; the installed bin uses cli.ts.
+// The legacy path remains callable for compatibility, but crosses the same startup boundary.
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/dispatcher.js'))
-  void Promise.all([import('./adapters.js'), import('./config.js')]).then(
-    ([{ productionDependencies }, { canonicalConfigYaml, loadConfigText }]) =>
-      runDispatcherCli(
-        process.argv.slice(2),
-        productionDependencies(
-          process.cwd(),
-          loadConfigText(canonicalConfigYaml()),
-          'local/legacy',
-        ),
-      ).catch((error) => {
-        console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
-        process.exitCode = 1;
-      }),
-  );
+  void import('./cli.js').then(({ runCli }) => runCli(process.argv.slice(2)));

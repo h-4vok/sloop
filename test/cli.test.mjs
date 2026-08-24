@@ -49,6 +49,21 @@ test('help and version work outside the Sloop checkout', () => {
   }
 });
 
+test('legacy dispatcher executable delegates through repository discovery', () => {
+  const outside = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-outside-'));
+  try {
+    const result = spawnSync(process.execPath, [resolve('dist/dispatcher.js'), '--status'], {
+      cwd: outside,
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /not inside a Git repository/);
+    assert.equal(result.stdout, '');
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('unsupported Node stops before dispatcher loading', () => {
   assert.throws(() => requireSupportedNode('v21.9.0'), /requires Node\.js 22 or newer.*v21\.9\.0/);
   const result = spawnSync(process.execPath, [cli, '--help'], {

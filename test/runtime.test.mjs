@@ -104,6 +104,29 @@ test('dispatcher parser accepts one complete command and rejects ambiguous or un
   );
   assert.throws(() => parseDispatcherCommand(['--repo', 'owner/other']), /unsupported/);
   assert.throws(() => parseDispatcherCommand(['--list', '--list']), /duplicate/);
+  assert.deepEqual(
+    parseDispatcherCommand([
+      '--resolve-review-cap',
+      '--steer',
+      'continue',
+      '--additional-rounds',
+      '1',
+      '--waive',
+      'S1,Q2',
+    ]),
+    { kind: 'resolve-review-cap' },
+  );
+  for (const tail of [
+    ['--help'],
+    ['--version'],
+    ['--json'],
+    ['--unknown'],
+    ['--steer', 'again'],
+    ['--additional-rounds', '1', '--additional-rounds', '2'],
+  ])
+    assert.throws(() =>
+      parseDispatcherCommand(['--resolve-review-cap', '--steer', 'continue', ...tail]),
+    );
 });
 
 test('repository discovery uses the invocation cwd and normalizes one Git root', () => {
@@ -111,6 +134,15 @@ test('repository discovery uses the invocation cwd and normalizes one Git root',
   assert.equal(discoverRepository(h.io), resolve('/repo'));
   assert.equal(h.calls[0].cwd, '/repo/nested');
   assert.deepEqual(h.calls[0].args, ['rev-parse', '--show-toplevel']);
+});
+
+test('repository discovery rejects a Git-selected worktree that does not contain the invocation', () => {
+  const h = harness();
+  h.io.cwd = resolve('/outside');
+  assert.throws(
+    () => discoverRepository(h.io),
+    (error) => error.check === 'repository' && /does not contain/.test(error.message),
+  );
 });
 
 test('outside a repository is a preflight failure on stderr without later calls', () => {
@@ -215,6 +247,7 @@ test('public status result boundary emits blocked JSON and exit 4 for unreadable
     const h = harness({
       'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
     });
+    h.io.cwd = root;
     assert.equal(
       runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io),
       EXIT.blocked,

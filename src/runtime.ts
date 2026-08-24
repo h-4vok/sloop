@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadConfigText, type SloopConfig } from './config.js';
 
 export const EXIT = Object.freeze({ ok: 0, preflight: 2, busy: 3, blocked: 4, external: 5 });
@@ -134,7 +134,15 @@ export function discoverRepository(io: RuntimeIo): string {
       'The current directory is not inside a Git repository.',
       'Change to the target repository or one of its subdirectories.',
     );
-  return resolve(clean(found.stdout));
+  const root = resolve(clean(found.stdout));
+  const pathFromRoot = relative(root, resolve(io.cwd));
+  if (pathFromRoot === '..' || pathFromRoot.startsWith(`..${sep}`) || isAbsolute(pathFromRoot))
+    throw diagnostic(
+      'repository',
+      'Git selected a repository that does not contain the current directory.',
+      'Remove Git repository-routing environment overrides and change to the target repository or one of its subdirectories.',
+    );
+  return root;
 }
 
 function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref: string } {
@@ -544,16 +552,31 @@ export function parseDispatcherCommand(args: readonly string[]): DispatcherComma
   )
     return { kind: 'prepare-recovery' };
   if (args[0] === '--resolve-review-cap' && args.length > 1) {
-    const forbidden = new Set([
-      '--status',
-      '--list',
-      '--recover-lock',
-      '--reset',
-      '--prepare-recovery',
-      '--link-issue',
-      '--repo',
-    ]);
-    if (!args.slice(1).some((arg) => forbidden.has(arg))) return { kind: 'resolve-review-cap' };
+    const counts = new Map<string, number>();
+    const values = new Map<string, string[]>();
+    const valueOptions = new Set(['--steer', '--additional-rounds', '--waive']);
+    const booleanOptions = new Set(['--waive-all-outstanding', '--abandon']);
+    for (let index = 1; index < args.length; index++) {
+      const option = args[index];
+      if (!valueOptions.has(option) && !booleanOptions.has(option))
+        throw new Error('mixed, duplicate, unknown, or unsupported command arguments');
+      counts.set(option, (counts.get(option) ?? 0) + 1);
+      if (valueOptions.has(option)) {
+        const value = args[++index];
+        if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`);
+        values.set(option, [...(values.get(option) ?? []), value]);
+      }
+    }
+    if ((counts.get('--steer') ?? 0) !== 1)
+      throw new Error('--resolve-review-cap requires exactly one --steer <text>');
+    for (const option of ['--additional-rounds', '--waive-all-outstanding', '--abandon'])
+      if ((counts.get(option) ?? 0) > 1) throw new Error(`${option} cannot be repeated`);
+    const rounds = values.get('--additional-rounds')?.[0];
+    if (rounds !== undefined && !/^\d+$/.test(rounds))
+      throw new Error('--additional-rounds must be a non-negative integer');
+    if ((values.get('--waive') ?? []).some((value) => !/^[QS]\d+(?:,[QS]\d+)*$/.test(value)))
+      throw new Error('--waive requires comma-separated Q<n> or S<n> finding IDs');
+    return { kind: 'resolve-review-cap' };
   }
   throw new Error('mixed, duplicate, unknown, or unsupported command arguments');
 }
