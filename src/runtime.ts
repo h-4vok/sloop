@@ -244,16 +244,17 @@ function githubChecks(
             'Correct the configured remote.',
           ),
         );
-      if (
-        !['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN'].includes(
-          repository.viewerPermission ?? '',
-        )
-      )
+      const acceptedPermissions = allLabels
+        ? ['WRITE', 'MAINTAIN', 'ADMIN']
+        : ['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN'];
+      if (!acceptedPermissions.includes(repository.viewerPermission ?? ''))
         failures.push(
           diagnostic(
             'permissions',
-            'Repository read permission is unavailable.',
-            'Request repository read access.',
+            allLabels
+              ? 'Repository write permission is unavailable.'
+              : 'Repository read permission is unavailable.',
+            `Request repository ${allLabels ? 'write' : 'read'} access.`,
           ),
         );
     } catch {
@@ -333,6 +334,27 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
         'working-tree',
         'The working tree is not clean.',
         'Commit or stash local changes.',
+      ),
+    );
+  const branch = io.run('git', ['symbolic-ref', '--short', 'HEAD'], root);
+  const branchName = clean(branch.stdout);
+  if (branch.status !== 0 || !branchName)
+    failures.push(
+      diagnostic(
+        'branch-policy',
+        'The checkout has a detached HEAD.',
+        'Check out the configured base or a Sloop worker branch.',
+      ),
+    );
+  else if (
+    branchName !== config.repository.baseBranch &&
+    !branchName.startsWith(config.repository.branchPrefix)
+  )
+    failures.push(
+      diagnostic(
+        'branch-policy',
+        `Branch ${branchName} violates the configured branch policy.`,
+        `Use ${config.repository.baseBranch} or ${config.repository.branchPrefix}<issue>.`,
       ),
     );
   return failures;

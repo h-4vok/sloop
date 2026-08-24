@@ -22,6 +22,7 @@ function harness(overrides = {}) {
     'git remote get-url origin': { stdout: 'https://github.com/o/r.git', stderr: '', status: 0 },
     'git rev-parse --verify origin/main^{commit}': { stdout: 'abc', stderr: '', status: 0 },
     'git status --porcelain': { stdout: '', stderr: '', status: 0 },
+    'git symbolic-ref --short HEAD': { stdout: 'codex/issue-31', stderr: '', status: 0 },
     'gh --version': { stdout: 'gh version 2', stderr: '', status: 0 },
     'gh auth status': { stdout: '', stderr: '', status: 0 },
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
