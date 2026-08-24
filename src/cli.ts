@@ -39,8 +39,11 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     console.log(packageJson.version);
     return;
   }
-  const { runDispatcherCli } = await import('./dispatcher.js');
-  await runDispatcherCli(args);
+  const [{ runDispatcherCli }, { productionDependencies }] = await Promise.all([
+    import('./dispatcher.js'),
+    import('./adapters.js'),
+  ]);
+  await runDispatcherCli(args, productionDependencies());
 }
 
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {

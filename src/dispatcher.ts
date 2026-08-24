@@ -118,7 +118,7 @@ export type PullRequest = {
 };
 
 type Command = string[] | { command: string; args: string[]; timeoutMs?: number; retries?: number };
-type Config = {
+export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
   staffReviewCommand?: Command;
@@ -133,17 +133,15 @@ type Config = {
   logRoleInvocation?: boolean;
   lockTtlMs?: number;
 };
-type Issue = { number: number; title: string; body?: string };
-type Deps = Workspace<State> &
+export type Issue = { number: number; title: string; body?: string };
+export type Deps = Workspace<State> &
   GitHubProvider<Issue, PullRequest> &
   AgentRunner<Spec> &
   HealthGate &
   Scheduler &
   RunEventSink &
-  Partial<GitProvider> & {
-    pid: () => number;
-  };
-type Spec = {
+  GitProvider;
+export type Spec = {
   command: string;
   args: string[];
   timeoutMs: number;
@@ -166,7 +164,7 @@ const skills = {
   staff: 'staff-reviewer',
 } as const;
 
-function readState(file = stateFile): State {
+export function readState(file = stateFile): State {
   if (!existsSync(file)) return {};
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
@@ -178,7 +176,7 @@ function readState(file = stateFile): State {
   }
 }
 
-function writeState(s: State, file = stateFile): void {
+export function writeState(s: State, file = stateFile): void {
   mkdirSync(join(file, '..'), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n');
@@ -312,7 +310,7 @@ function ghJson<T>(args: string[]): T {
   }
 }
 
-function eligible(): Issue[] {
+export function eligible(): Issue[] {
   return ghJson<Issue[]>([
     'issue',
     'list',
@@ -327,7 +325,7 @@ function eligible(): Issue[] {
   ]).sort((a, b) => a.number - b.number);
 }
 
-function pullRequest(pr: number): PullRequest {
+export function pullRequest(pr: number): PullRequest {
   const raw = ghJson<any>([
     'pr',
     'view',
@@ -363,7 +361,7 @@ function pullRequest(pr: number): PullRequest {
   };
 }
 
-function updatePullRequestBody(pr: number, body: string): void {
+export function updatePullRequestBody(pr: number, body: string): void {
   const temp = join(tmpdir(), `sloop-pr-${process.pid}-${Date.now()}.md`);
   try {
     writeFileSync(temp, body, 'utf8');
@@ -373,7 +371,7 @@ function updatePullRequestBody(pr: number, body: string): void {
   }
 }
 
-function commentPullRequest(pr: number, body: string): void {
+export function commentPullRequest(pr: number, body: string): void {
   gh(['pr', 'comment', String(pr), '--body', body]);
 }
 
@@ -394,7 +392,7 @@ function commentPullRequestOnce(pr: number, body: string): void {
     commentPullRequest(pr, body);
 }
 
-function pullRequestBody(pr: number): string {
+export function pullRequestBody(pr: number): string {
   return ghJson<{ body?: string }>(['pr', 'view', String(pr), '--json', 'body']).body ?? '';
 }
 
@@ -508,7 +506,7 @@ export function runCommand(spec: Spec | undefined): Promise<string> {
   return attempt(0);
 }
 
-function defaultProcessAlive(pid: number): boolean {
+export function defaultProcessAlive(pid: number): boolean {
   if (!pid || pid < 0) return false;
   try {
     process.kill(pid, 0);
@@ -534,7 +532,7 @@ function hasPersistedRecoveryContext(state: State): boolean {
 
 function isStaleWorker(s: State, cfg: Config, d: Deps): boolean {
   if (!isWorkerStatus(s.status)) return false;
-  if (typeof s.workerPid === 'number') return !(d.processAlive ?? defaultProcessAlive)(s.workerPid);
+  if (typeof s.workerPid === 'number') return !d.processAlive(s.workerPid);
   const lastHeartbeat = s.workerHeartbeatAt ?? s.workerStartedAt;
   return Boolean(lastHeartbeat && d.now() - lastHeartbeat > (cfg.workerLeaseMs ?? 900000));
 }
@@ -817,16 +815,13 @@ async function waitForEvidence(
   prNumber: number,
   predicate: (pr: PullRequest) => boolean,
 ): Promise<PullRequest> {
-  if (!d.pullRequest) throw new Error('GitHub PR evidence adapter is required');
   const deadline = d.now() + (cfg.evidenceTimeoutMs ?? 60000);
   let latest: PullRequest | undefined;
   do {
     latest = await d.pullRequest(prNumber);
     if (predicate(latest)) return latest;
     if (d.now() >= deadline) break;
-    await (d.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(
-      cfg.evidencePollIntervalMs ?? 2000,
-    );
+    await d.sleep(cfg.evidencePollIntervalMs ?? 2000);
   } while (d.now() < deadline);
   return latest!;
 }
@@ -857,7 +852,6 @@ async function waitForCi(
   issue: number,
   prNumber: number,
 ): Promise<{ passed: boolean; evidence: PullRequest; feedback?: string }> {
-  if (!d.pullRequest) throw new Error('GitHub PR evidence adapter is required');
   const required = cfg.requiredPrChecks ?? ['pr-checks'];
   const deadline = d.now() + (cfg.checkTimeoutMs ?? 900000);
   let latest = await d.pullRequest(prNumber);
@@ -896,9 +890,7 @@ async function waitForCi(
     console.error(
       `[sloop] issue #${issue}: esperando checks del PR #${prNumber}: ${checkFeedback(checks, required)}`,
     );
-    await (d.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(
-      cfg.checkPollIntervalMs ?? 5000,
-    );
+    await d.sleep(cfg.checkPollIntervalMs ?? 5000);
     latest = await d.pullRequest(prNumber);
   }
 }
@@ -995,15 +987,14 @@ async function runWorker(
   const metadata = workerMetadata(output, pr);
   if (!metadata.pr || metadata.base !== (cfg.baseBranch ?? 'main'))
     throw new Error('Worker must report an existing PR based on main');
-  if (!d.pullRequest) throw new Error('GitHub PR evidence adapter is required');
-  const currentBody = await (d.pullRequestBody ?? pullRequestBody)(metadata.pr);
+  const currentBody = await d.pullRequestBody(metadata.pr);
   const normalizedBody = withIssueClosingReference(
     currentBody,
     issue.number,
     d.load().linkedClosingIssues ?? [],
   );
   if (normalizedBody !== currentBody.trim())
-    await (d.updatePullRequestBody ?? updatePullRequestBody)(metadata.pr, normalizedBody);
+    await d.updatePullRequestBody(metadata.pr, normalizedBody);
   d.save({ ...d.load(), pr: metadata.pr, workerPid: undefined, workerHeartbeatAt: d.now() });
   const evidence = await waitForEvidence(d, cfg, metadata.pr, (candidate) => {
     const head = candidate.headRefOid;
@@ -1113,7 +1104,7 @@ async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: numb
   status(d, issue.number, 'review_cap_pending', { reviewRound: round, reviewCap: cap });
   const notice = `[HITL Review Cap] round=${round} cap=${effectiveMaxRounds(cfg, current)} sha=${current.headSha ?? 'unknown'} outstanding=${cap.outstandingFindingIds.join(',') || 'none'}. Resolve with npm run sloop -- --resolve-review-cap --steer "..." plus --additional-rounds N, --waive <Q/S>, --waive-all-outstanding, or --abandon.`;
   d.comment(issue.number, notice);
-  if (current.pr) await d.prComment?.(current.pr, notice);
+  if (current.pr) await d.prComment(current.pr, notice);
 }
 
 async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
@@ -1504,13 +1495,12 @@ export function acquire(d: Deps, ttl: number): string {
             { pid: d.pid(), createdAt: d.now(), token } as any,
             join(reclaimed, 'owner.json'),
           );
-          d.onReclaim?.();
+          d.onReclaim();
           writeState({ pid: d.pid(), createdAt: d.now(), token } as any, join(lock, 'owner.json'));
           rmSync(reclaimed, { recursive: true, force: true });
           return token;
         } catch {
-          if (existsSync(reclaimed) && !d.onReclaim)
-            rmSync(reclaimed, { recursive: true, force: true });
+          if (existsSync(reclaimed)) rmSync(reclaimed, { recursive: true, force: true });
           continue;
         }
       } else throw new Error('another dispatcher is already running');
@@ -1566,7 +1556,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
             throw new Error(
               `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
             );
-          (d.checkoutWorkerBranch ?? ((branch) => checkoutWorkerBranch(branch, d.root)))(persisted);
+          d.checkoutWorkerBranch(persisted);
           status(d, issue.number, 'worker_recovery_pending', {
             pr: d.load().pr,
             workerRecoveryCount: d.load().workerRecoveryCount ?? 0,
@@ -1578,9 +1568,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
         } else {
           claimNewIssue(d, issue.number);
           d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          const prepared = (d.prepareWorkerBranch ?? ((number) => prepareWorkerBranch(number)))(
-            issue.number,
-          );
+          const prepared = d.prepareWorkerBranch(issue.number);
           d.save({
             ...d.load(),
             branch: prepared.branch,
@@ -1618,7 +1606,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
   }
 }
 
-export async function runDispatcherCli(args: string[]): Promise<void> {
+export async function runDispatcherCli(args: string[], d: Deps): Promise<void> {
   if (args.includes('--status')) {
     const supportedStatusArgs =
       (args.length === 1 && args[0] === '--status') ||
@@ -1679,24 +1667,14 @@ export async function runDispatcherCli(args: string[]): Promise<void> {
     console.log(`Recovery preparado para issue #${issue}, PR #${pr}. Ejecutá npm run sloop.`);
     return;
   }
-  await dispatch(cfg, {
-    root,
-    load: () => readState(),
-    save: writeState,
-    eligible,
-    comment: (i, body) => gh(['issue', 'comment', String(i), '--body', body]),
-    run: runCommand,
-    pullRequest,
-    prComment: commentPullRequest,
-    now: Date.now,
-    pid: () => process.pid,
-    processAlive: defaultProcessAlive,
-  });
+  await dispatch(cfg, d);
 }
 
 // Preserve the repository's legacy direct entry point; the installed bin uses cli.ts.
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/dispatcher.js'))
-  void runDispatcherCli(process.argv.slice(2)).catch((error) => {
-    console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
-  });
+  void import('./adapters.js').then(({ productionDependencies }) =>
+    runDispatcherCli(process.argv.slice(2), productionDependencies()).catch((error) => {
+      console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    }),
+  );

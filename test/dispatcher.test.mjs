@@ -264,14 +264,20 @@ function harness(
       prBodyUpdates.push({ number, body });
     },
     pullRequestBody: () => pr.body,
+    prComment: (number, body) => {
+      assert.equal(number, pr.number);
+      pr.comments.push({ body });
+    },
     now: () => Date.now(),
     pid: () => process.pid,
     processAlive: (pid) => pid > 0 && pid !== -1,
     sleep: async () => {},
+    onReclaim: () => {},
     prepareWorkerBranch: (issue) => ({
       branch: workerBranchName(issue),
       mainBaseSha: 'main-sha-1',
     }),
+    checkoutWorkerBranch: () => {},
   };
 
   return {

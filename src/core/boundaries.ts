@@ -13,10 +13,10 @@ export interface GitProvider {
 export interface GitHubProvider<Issue, PullRequest> {
   eligible(): Issue[];
   comment(issue: number, body: string): void;
-  pullRequest?(pr: number): Promise<PullRequest> | PullRequest;
-  updatePullRequestBody?(pr: number, body: string): void | Promise<void>;
-  pullRequestBody?(pr: number): string | Promise<string>;
-  prComment?(pr: number, body: string): void | Promise<void>;
+  pullRequest(pr: number): Promise<PullRequest> | PullRequest;
+  updatePullRequestBody(pr: number, body: string): void | Promise<void>;
+  pullRequestBody(pr: number): string | Promise<string>;
+  prComment(pr: number, body: string): void | Promise<void>;
 }
 
 export interface AgentRunner<Spec> {
@@ -24,14 +24,15 @@ export interface AgentRunner<Spec> {
 }
 
 export interface HealthGate {
-  processAlive?(pid: number): boolean;
+  pid(): number;
+  processAlive(pid: number): boolean;
 }
 
 export interface Scheduler {
   now(): number;
-  sleep?(ms: number): Promise<void>;
+  sleep(ms: number): Promise<void>;
 }
 
 export interface RunEventSink {
-  onReclaim?(): void;
+  onReclaim(): void;
 }
