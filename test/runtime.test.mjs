@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { test } from 'node:test';
 import {
   discoverRepository,
@@ -203,6 +205,29 @@ test('external service failure uses exit 5 and never reports success', () => {
 
 test('all stable exit-code classes are distinct and documented', () => {
   assert.deepEqual(EXIT, { ok: 0, preflight: 2, busy: 3, blocked: 4, external: 5 });
+});
+
+test('public status result boundary emits blocked JSON and exit 4 for unreadable state', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-blocked-status-'));
+  try {
+    mkdirSync(join(root, '.sloop'));
+    writeFileSync(join(root, '.sloop', 'state.json'), '{invalid');
+    const h = harness({
+      'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+    });
+    assert.equal(
+      runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io),
+      EXIT.blocked,
+    );
+    assert.equal(h.stderr.length, 0);
+    assert.equal(h.stdout.length, 1);
+    const result = JSON.parse(h.stdout[0]);
+    assert.equal(result.status, 'blocked');
+    assert.equal(result.phase, 'result');
+    assert.equal(result.diagnostics[0].check, 'state');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('dispatcher commands cross discovery and base-config preflight before operations', () => {

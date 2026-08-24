@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { HELP, requireSupportedNode } from '../dist/cli.js';
+import { CliFailure } from '../dist/dispatcher.js';
+import { emitDispatcherFailure, HELP, requireSupportedNode } from '../dist/cli.js';
 
 const cli = resolve('dist/cli.js');
 
@@ -71,4 +72,21 @@ test('unsupported Node emits the global envelope when JSON was requested', () =>
   assert.equal(envelope.status, 'failed');
   assert.equal(envelope.phase, 'preflight');
   assert.equal(envelope.diagnostics[0].check, 'node');
+});
+
+test('public dispatcher failure emitter preserves busy exit and stream contract', () => {
+  const stdout = [];
+  const stderr = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (value) => stdout.push(value);
+  console.error = (value) => stderr.push(value);
+  try {
+    assert.equal(emitDispatcherFailure(new CliFailure(3, 'Issue is already owned.')), 3);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+  assert.deepEqual(stdout, []);
+  assert.deepEqual(stderr, ['[sloop] Issue is already owned.']);
 });

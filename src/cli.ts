@@ -34,6 +34,12 @@ export function requireSupportedNode(version: string): void {
   }
 }
 
+export function emitDispatcherFailure(error: unknown): number {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[sloop] ${message}`);
+  return error && typeof error === 'object' && 'exitCode' in error ? (error.exitCode as number) : 2;
+}
+
 export async function runCli(args: string[], nodeVersion = process.version): Promise<void> {
   const {
     emitNodeVersionFailure,
@@ -41,7 +47,6 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     parseReadOnlyCommand,
     runDispatcherPreflight,
     runReadOnlyCommand,
-    EXIT,
   } = await import('./runtime.js');
   try {
     requireSupportedNode(nodeVersion);
@@ -86,12 +91,7 @@ export async function runCli(args: string[], nodeVersion = process.version): Pro
     );
     process.exitCode = result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[sloop] ${message}`);
-    process.exitCode =
-      error && typeof error === 'object' && 'exitCode' in error
-        ? (error.exitCode as number)
-        : EXIT.preflight;
+    process.exitCode = emitDispatcherFailure(error);
   }
 }
 
