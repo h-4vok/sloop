@@ -129,6 +129,19 @@ const shellExecutable = (argument: string): boolean => {
       (basename.startsWith(shell) && /^\d/.test(basename.slice(shell.length))),
   );
 };
+const gitConfigDispatchesShell = (argument: string): boolean => {
+  const separator = argument.indexOf('=');
+  if (separator < 1) return false;
+  const name = argument.slice(0, separator).toLowerCase();
+  const configuredValue = argument.slice(separator + 1).trimStart();
+  return (
+    (name.startsWith('alias.') && configuredValue.startsWith('!')) ||
+    /^(?:core\.(?:editor|gitproxy|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/.test(
+      name,
+    ) ||
+    /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/.test(name)
+  );
+};
 const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
@@ -149,6 +162,16 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
       fail(
         `${path}[${index}]`,
         'env split-string options are forbidden; provide each argument as a separate argv item',
+      );
+    if (
+      executable === 'git' &&
+      index > 1 &&
+      argv[index - 1] === '-c' &&
+      gitConfigDispatchesShell(arg)
+    )
+      fail(
+        `${path}[${index}]`,
+        'Git configuration that dispatches a shell is forbidden; use non-executable configuration',
       );
   }
   return argv;
@@ -508,6 +531,9 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         value,
       ) ||
       /(?:^|[\s,;])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[=:]\s*\S+/i.test(
+        value,
+      ) ||
+      /(?:^|[\s,;])[a-z0-9_.-]*(?:token|key|secret|password|passwd|cookie)\s*=\s*\S+/i.test(
         value,
       ) ||
       /[?&](?:api[_-]?key|access[_-]?token|auth[_-]?token|token|client[_-]?secret|password|passwd)=[^&#\s]+/i.test(

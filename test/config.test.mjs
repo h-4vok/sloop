@@ -163,6 +163,33 @@ test('argv rejects env split-string command dispatch', () => {
     );
 });
 
+test('argv rejects Git configuration that dispatches a shell', () => {
+  for (const [command, expectedPath] of [
+    [['git', '-c', 'alias.x=!echo shell-bypass', 'x'], '$.health.command[2]'],
+    [['git', '-c', 'alias.x= !script', 'x'], '$.health.command[2]'],
+    [['git', '-c', 'core.sshCommand=ssh-wrapper', 'fetch'], '$.health.command[2]'],
+    [['git', '-c', 'filter.clean.smudge=processor', 'checkout'], '$.health.command[2]'],
+  ])
+    assert.throws(
+      () =>
+        configRegistry
+          .find(({ path }) => path === 'health.command')
+          .parser(command, '$.health.command'),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(
+          `${expectedPath}: Git configuration that dispatches a shell is forbidden`,
+        ),
+    );
+
+  assert.deepEqual(
+    configRegistry
+      .find(({ path }) => path === 'health.command')
+      .parser(['git', '-c', 'fetch.prune=true', 'fetch'], '$.health.command'),
+    ['git', '-c', 'fetch.prune=true', 'fetch'],
+  );
+});
+
 test('malformed containers and list fields produce validation diagnostics', () => {
   for (const [source, expected] of [
     ['schemaVersion: 1\nrepository: invalid\n', '$.repository: expected a YAML mapping'],
@@ -252,6 +279,9 @@ test('credential-bearing headers and assignments are rejected in argv fields', (
     [['curl', 'https://example.com/?access_token=secret-value'], '$.health.command[1]'],
     [['curl', '-H', 'Proxy-Authorization: Basic dXNlcjpwYXNz'], '$.health.command[2]'],
     [['tool', 'api_key=secret-value'], '$.health.command[1]'],
+    [['env', 'GITHUB_TOKEN=secret-value', 'gh', 'api', 'user'], '$.health.command[1]'],
+    [['tool', 'SERVICE_PASSWORD=secret-value'], '$.health.command[1]'],
+    [['tool', 'sessionCookie=secret-value'], '$.health.command[1]'],
     [['tool', 'password:secret-value'], '$.health.command[1]'],
     [['tool', '-----BEGIN PRIVATE KEY-----'], '$.health.command[1]'],
   ]) {
