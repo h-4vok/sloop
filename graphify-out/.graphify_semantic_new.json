@@ -1,0 +1,177 @@
+{
+  "nodes": [
+    {
+      "id": "contributing",
+      "label": "Contributing Guide",
+      "file_type": "document",
+      "source_file": "CONTRIBUTING.md"
+    },
+    {
+      "id": "readme",
+      "label": "Sloop README",
+      "file_type": "document",
+      "source_file": "README.md"
+    },
+    {
+      "id": "sloop_config_yaml",
+      "label": "Sloop Configuration",
+      "file_type": "code",
+      "source_file": "sloop.config.yaml"
+    },
+    {
+      "id": "docs_sloop_engineering_v1",
+      "label": "Sloop Engineering V1 Operation",
+      "file_type": "document",
+      "source_file": "docs/sloop-engineering-v1.md"
+    },
+    {
+      "id": "codex_skills_dispatcher_skill",
+      "label": "Dispatcher Skill",
+      "file_type": "document",
+      "source_file": ".codex/skills/dispatcher/SKILL.md"
+    },
+    {
+      "id": "codex_skills_product_lead_skill",
+      "label": "Product Lead Skill",
+      "file_type": "document",
+      "source_file": ".codex/skills/product-lead/SKILL.md"
+    },
+    {
+      "id": "codex_skills_qa_sdet_skill",
+      "label": "QA/SDET Skill",
+      "file_type": "document",
+      "source_file": ".codex/skills/qa-sdet/SKILL.md"
+    },
+    {
+      "id": "codex_skills_staff_reviewer_skill",
+      "label": "Staff Reviewer Skill",
+      "file_type": "document",
+      "source_file": ".codex/skills/staff-reviewer/SKILL.md"
+    },
+    {
+      "id": "codex_skills_worker_skill",
+      "label": "Worker Skill",
+      "file_type": "document",
+      "source_file": ".codex/skills/worker/SKILL.md"
+    },
+    {
+      "id": "codex_skills_triage_staging_skill",
+      "label": "Triage Staging Skill",
+      "file_type": "document",
+      "source_file": ".codex/skills/triage-staging/SKILL.md"
+    },
+    {
+      "id": "github_workflows_pr_checks",
+      "label": "PR Checks Workflow",
+      "file_type": "code",
+      "source_file": ".github/workflows/pr-checks.yml"
+    }
+  ],
+  "edges": [
+    {
+      "source": "codex_skills_dispatcher_skill",
+      "target": "codex_skills_worker_skill",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".codex/skills/dispatcher/SKILL.md"
+    },
+    {
+      "source": "codex_skills_dispatcher_skill",
+      "target": "codex_skills_qa_sdet_skill",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".codex/skills/dispatcher/SKILL.md"
+    },
+    {
+      "source": "codex_skills_dispatcher_skill",
+      "target": "codex_skills_staff_reviewer_skill",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".codex/skills/dispatcher/SKILL.md"
+    },
+    {
+      "source": "codex_skills_dispatcher_skill",
+      "target": "codex_skills_triage_staging_skill",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": ".codex/skills/dispatcher/SKILL.md"
+    },
+    {
+      "source": "codex_skills_product_lead_skill",
+      "target": "codex_skills_dispatcher_skill",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".codex/skills/product-lead/SKILL.md"
+    },
+    {
+      "source": "docs_sloop_engineering_v1",
+      "target": "github_workflows_pr_checks",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/sloop-engineering-v1.md"
+    },
+    {
+      "source": "sloop_config_yaml",
+      "target": "github_workflows_pr_checks",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "sloop.config.yaml"
+    },
+    {
+      "source": "codex_skills_qa_sdet_skill",
+      "target": "codex_skills_staff_reviewer_skill",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".codex/skills/qa-sdet/SKILL.md"
+    },
+    {
+      "source": "codex_skills_worker_skill",
+      "target": "readme",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": ".codex/skills/worker/SKILL.md"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "sloop_sequential_flow",
+      "label": "Sloop Sequential Engineering Flow",
+      "nodes": [
+        "codex_skills_product_lead_skill",
+        "codex_skills_dispatcher_skill",
+        "codex_skills_worker_skill",
+        "codex_skills_qa_sdet_skill",
+        "codex_skills_staff_reviewer_skill"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/sloop-engineering-v1.md"
+    },
+    {
+      "id": "sloop_verification_stack",
+      "label": "Sloop Verification Stack",
+      "nodes": [
+        "github_workflows_pr_checks",
+        "codex_skills_qa_sdet_skill",
+        "codex_skills_staff_reviewer_skill"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": "sloop.config.yaml"
+    }
+  ],
+  "input_tokens": 8697,
+  "output_tokens": 1154,
+  "failed_chunks": 0
+}

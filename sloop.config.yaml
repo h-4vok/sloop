@@ -1,0 +1,168 @@
+schemaVersion:
+  # Version of the tracked configuration contract.
+  1
+repository:
+  remote:
+    # Git remote used for Sloop branches.
+    origin
+  baseBranch:
+    # Pull-request target and healthy base branch.
+    main
+  branchPrefix:
+    # Prefix for issue work branches.
+    codex/issue-
+workspace:
+  mode:
+    # Workspace isolation strategy.
+    checkout
+  path:
+    # Checkout path used in checkout mode.
+    .
+  worktreeRoot:
+    # Parent directory for ephemeral worktrees.
+    .sloop/worktrees
+github:
+  labels:
+    eligible:
+      # Label that makes an issue eligible.
+      Automation Ready
+    claimed:
+      # Label applied while an issue is claimed.
+      Automation Claimed
+    blocked:
+      # Label applied to blocked work.
+      Automation Blocked
+    priority:
+      # Priority labels in highest-first order.
+      - 'Priority: P0'
+      - 'Priority: P1'
+      - 'Priority: P2'
+  roleMarkers:
+    worker:
+      # Leading marker for Worker evidence.
+      '[Worker]'
+    qa:
+      # Leading marker for QA review evidence.
+      '[QA/SDET Review]'
+    staff:
+      # Leading marker for Staff review evidence.
+      '[Staff Review]'
+workflow:
+  humanMergeWait:
+    # Wait for a human to merge an approved PR.
+    true
+  reviewOrder:
+    # Review roles in execution order.
+    - qa
+    - staff
+  verification:
+    # Safe verification commands as argv arrays.
+    - - npm
+      - test
+    - - npm
+      - run
+      - build
+    - - npm
+      - run
+      - format:check
+  requiredChecks:
+    # Required GitHub check names.
+    - pr-checks
+agents:
+  worker:
+    argv:
+      # worker runner argv; never evaluated by a shell.
+      - codex
+      - exec
+      - --sandbox
+      - danger-full-access
+    timeout:
+      # worker runner timeout in milliseconds.
+      10m
+    retries:
+      # worker runner retry count.
+      0
+  qa:
+    argv:
+      # qa runner argv; never evaluated by a shell.
+      - codex
+      - exec
+      - --sandbox
+      - danger-full-access
+    timeout:
+      # qa runner timeout in milliseconds.
+      10m
+    retries:
+      # qa runner retry count.
+      0
+  staff:
+    argv:
+      # staff runner argv; never evaluated by a shell.
+      - codex
+      - exec
+      - --sandbox
+      - danger-full-access
+    timeout:
+      # staff runner timeout in milliseconds.
+      10m
+    retries:
+      # staff runner retry count.
+      0
+skills:
+  scope:
+    # Installation scope for required skills.
+    repository
+  required:
+    # Required Sloop skill names.
+    - dispatcher
+    - worker
+    - qa-sdet
+    - staff-reviewer
+health:
+  enabled:
+    # Whether base health gates new work.
+    true
+  command:
+    # Health probe argv; never evaluated by a shell.
+    - gh
+    - run
+    - list
+    - --branch
+    - main
+  timeout:
+    # Health probe timeout.
+    1m
+loop:
+  interval:
+    # Delay between foreground-loop polls.
+    5m
+  taskName:
+    # Human-readable scheduled task name.
+    Sloop
+schedule:
+  enabled:
+    # Whether scheduler reconciliation is requested.
+    false
+  expression:
+    # Platform scheduler expression.
+    ''
+logging:
+  directory:
+    # Directory for sensitive local run logs.
+    .sloop/logs
+  retention:
+    # Log retention duration.
+    30d
+  roleInvocation:
+    # Record redacted role invocation metadata.
+    true
+arbiter:
+  reviewRounds:
+    # Maximum review rounds before Arbiter intervention.
+    3
+  stagnatingAppearances:
+    # Repeated appearances before a finding is stagnating.
+    2
+  decisions:
+    # Maximum Arbiter decisions for one issue.
+    2
