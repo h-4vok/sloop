@@ -1,17 +1,19 @@
-#!/usr/bin/env node
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type {
+  AgentRunner,
+  CliControl,
+  GitHubProvider,
+  GitProvider,
+  HealthGate,
+  LockStore,
+  RunEventSink,
+  Scheduler,
+  Workspace,
+} from './core/boundaries.js';
 
 export type Status =
   | 'queued'
@@ -110,7 +112,7 @@ export type PullRequest = {
 };
 
 type Command = string[] | { command: string; args: string[]; timeoutMs?: number; retries?: number };
-type Config = {
+export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
   staffReviewCommand?: Command;
@@ -125,27 +127,17 @@ type Config = {
   logRoleInvocation?: boolean;
   lockTtlMs?: number;
 };
-type Issue = { number: number; title: string; body?: string };
-type Deps = {
-  root: string;
-  load: () => State;
-  save: (s: State) => void;
-  eligible: () => Issue[];
-  comment: (i: number, b: string) => void;
-  run: (s: Spec) => Promise<string>;
-  pullRequest?: (pr: number) => Promise<PullRequest> | PullRequest;
-  now: () => number;
-  pid: () => number;
-  processAlive?: (pid: number) => boolean;
-  sleep?: (ms: number) => Promise<void>;
-  onReclaim?: () => void;
-  prepareWorkerBranch?: (issue: number) => { branch: string; mainBaseSha: string };
-  checkoutWorkerBranch?: (branch: string) => void;
-  updatePullRequestBody?: (pr: number, body: string) => void | Promise<void>;
-  pullRequestBody?: (pr: number) => string | Promise<string>;
-  prComment?: (pr: number, body: string) => void | Promise<void>;
-};
-type Spec = {
+export type Issue = { number: number; title: string; body?: string };
+export type Deps = Workspace<State> &
+  CliControl<Config> &
+  GitHubProvider<Issue, PullRequest> &
+  AgentRunner<Spec> &
+  HealthGate &
+  Scheduler &
+  RunEventSink &
+  LockStore &
+  GitProvider;
+export type Spec = {
   command: string;
   args: string[];
   timeoutMs: number;
@@ -168,7 +160,7 @@ const skills = {
   staff: 'staff-reviewer',
 } as const;
 
-function readState(file = stateFile): State {
+export function readState(file = stateFile): State {
   if (!existsSync(file)) return {};
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
@@ -180,7 +172,7 @@ function readState(file = stateFile): State {
   }
 }
 
-function writeState(s: State, file = stateFile): void {
+export function writeState(s: State, file = stateFile): void {
   mkdirSync(join(file, '..'), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n');
@@ -314,7 +306,7 @@ function ghJson<T>(args: string[]): T {
   }
 }
 
-function eligible(): Issue[] {
+export function eligible(): Issue[] {
   return ghJson<Issue[]>([
     'issue',
     'list',
@@ -329,7 +321,7 @@ function eligible(): Issue[] {
   ]).sort((a, b) => a.number - b.number);
 }
 
-function pullRequest(pr: number): PullRequest {
+export function pullRequest(pr: number): PullRequest {
   const raw = ghJson<any>([
     'pr',
     'view',
@@ -365,7 +357,7 @@ function pullRequest(pr: number): PullRequest {
   };
 }
 
-function updatePullRequestBody(pr: number, body: string): void {
+export function updatePullRequestBody(pr: number, body: string): void {
   const temp = join(tmpdir(), `sloop-pr-${process.pid}-${Date.now()}.md`);
   try {
     writeFileSync(temp, body, 'utf8');
@@ -375,7 +367,7 @@ function updatePullRequestBody(pr: number, body: string): void {
   }
 }
 
-function commentPullRequest(pr: number, body: string): void {
+export function commentPullRequest(pr: number, body: string): void {
   gh(['pr', 'comment', String(pr), '--body', body]);
 }
 
@@ -396,7 +388,7 @@ function commentPullRequestOnce(pr: number, body: string): void {
     commentPullRequest(pr, body);
 }
 
-function pullRequestBody(pr: number): string {
+export function pullRequestBody(pr: number): string {
   return ghJson<{ body?: string }>(['pr', 'view', String(pr), '--json', 'body']).body ?? '';
 }
 
@@ -510,7 +502,7 @@ export function runCommand(spec: Spec | undefined): Promise<string> {
   return attempt(0);
 }
 
-function defaultProcessAlive(pid: number): boolean {
+export function defaultProcessAlive(pid: number): boolean {
   if (!pid || pid < 0) return false;
   try {
     process.kill(pid, 0);
@@ -536,7 +528,7 @@ function hasPersistedRecoveryContext(state: State): boolean {
 
 function isStaleWorker(s: State, cfg: Config, d: Deps): boolean {
   if (!isWorkerStatus(s.status)) return false;
-  if (typeof s.workerPid === 'number') return !(d.processAlive ?? defaultProcessAlive)(s.workerPid);
+  if (typeof s.workerPid === 'number') return !d.processAlive(s.workerPid);
   const lastHeartbeat = s.workerHeartbeatAt ?? s.workerStartedAt;
   return Boolean(lastHeartbeat && d.now() - lastHeartbeat > (cfg.workerLeaseMs ?? 900000));
 }
@@ -819,16 +811,13 @@ async function waitForEvidence(
   prNumber: number,
   predicate: (pr: PullRequest) => boolean,
 ): Promise<PullRequest> {
-  if (!d.pullRequest) throw new Error('GitHub PR evidence adapter is required');
   const deadline = d.now() + (cfg.evidenceTimeoutMs ?? 60000);
   let latest: PullRequest | undefined;
   do {
     latest = await d.pullRequest(prNumber);
     if (predicate(latest)) return latest;
     if (d.now() >= deadline) break;
-    await (d.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(
-      cfg.evidencePollIntervalMs ?? 2000,
-    );
+    await d.sleep(cfg.evidencePollIntervalMs ?? 2000);
   } while (d.now() < deadline);
   return latest!;
 }
@@ -859,7 +848,6 @@ async function waitForCi(
   issue: number,
   prNumber: number,
 ): Promise<{ passed: boolean; evidence: PullRequest; feedback?: string }> {
-  if (!d.pullRequest) throw new Error('GitHub PR evidence adapter is required');
   const required = cfg.requiredPrChecks ?? ['pr-checks'];
   const deadline = d.now() + (cfg.checkTimeoutMs ?? 900000);
   let latest = await d.pullRequest(prNumber);
@@ -898,9 +886,7 @@ async function waitForCi(
     console.error(
       `[sloop] issue #${issue}: esperando checks del PR #${prNumber}: ${checkFeedback(checks, required)}`,
     );
-    await (d.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(
-      cfg.checkPollIntervalMs ?? 5000,
-    );
+    await d.sleep(cfg.checkPollIntervalMs ?? 5000);
     latest = await d.pullRequest(prNumber);
   }
 }
@@ -997,15 +983,14 @@ async function runWorker(
   const metadata = workerMetadata(output, pr);
   if (!metadata.pr || metadata.base !== (cfg.baseBranch ?? 'main'))
     throw new Error('Worker must report an existing PR based on main');
-  if (!d.pullRequest) throw new Error('GitHub PR evidence adapter is required');
-  const currentBody = await (d.pullRequestBody ?? pullRequestBody)(metadata.pr);
+  const currentBody = await d.pullRequestBody(metadata.pr);
   const normalizedBody = withIssueClosingReference(
     currentBody,
     issue.number,
     d.load().linkedClosingIssues ?? [],
   );
   if (normalizedBody !== currentBody.trim())
-    await (d.updatePullRequestBody ?? updatePullRequestBody)(metadata.pr, normalizedBody);
+    await d.updatePullRequestBody(metadata.pr, normalizedBody);
   d.save({ ...d.load(), pr: metadata.pr, workerPid: undefined, workerHeartbeatAt: d.now() });
   const evidence = await waitForEvidence(d, cfg, metadata.pr, (candidate) => {
     const head = candidate.headRefOid;
@@ -1115,7 +1100,7 @@ async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: numb
   status(d, issue.number, 'review_cap_pending', { reviewRound: round, reviewCap: cap });
   const notice = `[HITL Review Cap] round=${round} cap=${effectiveMaxRounds(cfg, current)} sha=${current.headSha ?? 'unknown'} outstanding=${cap.outstandingFindingIds.join(',') || 'none'}. Resolve with npm run sloop -- --resolve-review-cap --steer "..." plus --additional-rounds N, --waive <Q/S>, --waive-all-outstanding, or --abandon.`;
   d.comment(issue.number, notice);
-  if (current.pr) await d.prComment?.(current.pr, notice);
+  if (current.pr) await d.prComment(current.pr, notice);
 }
 
 async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
@@ -1343,7 +1328,7 @@ function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
   );
 }
 
-function resolveReviewCap(args: string[], cfg: Config): void {
+export function resolveReviewCap(args: string[], cfg: Config): void {
   const stored = readState();
   const steer = argumentValues(args, '--steer').at(-1)?.trim();
   if (!steer) throw new Error('--resolve-review-cap requires --steer <text>');
@@ -1439,7 +1424,7 @@ function resolveReviewCap(args: string[], cfg: Config): void {
   publishHitlDecision(next, additionalRounds > 0 ? 'resume' : 'waive_ready_for_human_merge');
 }
 
-function linkIssueToActiveRun(issue: number): void {
+export function linkIssueToActiveRun(issue: number): void {
   if (!Number.isInteger(issue) || issue <= 0)
     throw new Error('--link-issue requires a positive issue number');
   const current = readState();
@@ -1462,57 +1447,36 @@ function linkIssueToActiveRun(issue: number): void {
 
 export function acquire(d: Deps, ttl: number): string {
   const token = randomUUID();
-  const lock = dispatcherLockPath(d.root);
-  mkdirSync(join(lock, '..'), { recursive: true });
+  const lockOwner = { pid: d.pid(), createdAt: d.now(), token };
   for (let attempt = 0; attempt < 3; attempt++)
-    try {
-      mkdirSync(lock);
-      writeState({ pid: d.pid(), createdAt: d.now(), token } as any, join(lock, 'owner.json'));
-      return token;
-    } catch {
-      const owner = join(lock, 'owner.json');
+    if (d.tryAcquire(lockOwner)) return token;
+    else {
       let stale = false;
       try {
-        const x: any = JSON.parse(readFileSync(owner, 'utf8'));
-        try {
-          process.kill(x.pid, 0);
-          stale = false;
-        } catch {
-          stale = d.now() - x.createdAt > ttl;
-        }
+        const owner = d.readOwner();
+        stale = !d.processAlive(owner.pid) && d.now() - owner.createdAt > ttl;
       } catch {
         stale = true;
       }
       if (stale) {
-        const reclaimed = join(lock, 'reclaiming');
-        if (existsSync(reclaimed)) {
+        if (!d.tryBeginReclaim(lockOwner)) {
           let markerStale = false;
           try {
-            const marker: any = JSON.parse(readFileSync(join(reclaimed, 'owner.json'), 'utf8'));
-            try {
-              process.kill(marker.pid, 0);
-            } catch {
-              markerStale = d.now() - marker.createdAt > ttl;
-            }
+            const marker = d.readReclaimOwner();
+            markerStale = !d.processAlive(marker.pid) && d.now() - marker.createdAt > ttl;
           } catch {
-            markerStale = d.now() - statSync(reclaimed).mtimeMs > ttl;
+            markerStale = d.reclaimAgeMs(d.now()) > ttl;
           }
           if (!markerStale) throw new Error('another dispatcher is reclaiming the lock');
-          rmSync(reclaimed, { recursive: true, force: true });
+          d.abandonReclaim();
+          if (!d.tryBeginReclaim(lockOwner)) continue;
         }
         try {
-          mkdirSync(reclaimed);
-          writeState(
-            { pid: d.pid(), createdAt: d.now(), token } as any,
-            join(reclaimed, 'owner.json'),
-          );
-          d.onReclaim?.();
-          writeState({ pid: d.pid(), createdAt: d.now(), token } as any, join(lock, 'owner.json'));
-          rmSync(reclaimed, { recursive: true, force: true });
+          d.onReclaim();
+          d.finishReclaim(lockOwner);
           return token;
         } catch {
-          if (existsSync(reclaimed) && !d.onReclaim)
-            rmSync(reclaimed, { recursive: true, force: true });
+          d.abandonReclaim();
           continue;
         }
       } else throw new Error('another dispatcher is already running');
@@ -1568,7 +1532,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
             throw new Error(
               `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
             );
-          (d.checkoutWorkerBranch ?? ((branch) => checkoutWorkerBranch(branch, d.root)))(persisted);
+          d.checkoutWorkerBranch(persisted);
           status(d, issue.number, 'worker_recovery_pending', {
             pr: d.load().pr,
             workerRecoveryCount: d.load().workerRecoveryCount ?? 0,
@@ -1580,9 +1544,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
         } else {
           claimNewIssue(d, issue.number);
           d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          const prepared = (d.prepareWorkerBranch ?? ((number) => prepareWorkerBranch(number)))(
-            issue.number,
-          );
+          const prepared = d.prepareWorkerBranch(issue.number);
           d.save({
             ...d.load(),
             branch: prepared.branch,
@@ -1610,62 +1572,42 @@ export async function dispatch(cfg: Config, d: Deps): Promise<void> {
       }
     }
   } finally {
-    const owner = join(dispatcherLockPath(d.root), 'owner.json');
-    try {
-      if (JSON.parse(readFileSync(owner, 'utf8')).token === lockToken)
-        rmSync(dispatcherLockPath(d.root), { recursive: true, force: true });
-    } catch {
-      /* lock already recovered */
-    }
+    d.release(lockToken);
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
+export async function runDispatcherCli(args: string[], d: Deps): Promise<void> {
   if (args.includes('--status')) {
     const supportedStatusArgs =
       (args.length === 1 && args[0] === '--status') ||
       (args.length === 2 && args.includes('--verbose'));
     if (!supportedStatusArgs) throw new Error('--status accepts only the optional --verbose flag');
-    const current = readState();
-    const displayed = args.includes('--verbose')
-      ? current
-      : {
-          issue: current.issue,
-          pr: current.pr,
-          status: current.status,
-          lastError: current.lastError,
-        };
-    console.log(JSON.stringify(displayed, null, 2));
+    console.log(JSON.stringify(d.status(args.includes('--verbose')), null, 2));
     return;
   }
   if (args.includes('--verbose')) throw new Error('--verbose is supported only with --status');
-  const cfg: Config = existsSync(join(root, 'sloop.config.json'))
-    ? JSON.parse(readFileSync(join(root, 'sloop.config.json'), 'utf8'))
-    : {};
+  const cfg = d.loadConfig();
   if (args.includes('--list')) {
-    const listedIssues = eligible().map(({ number, title }) => ({ number, title }));
-    console.log(JSON.stringify(listedIssues, null, 2));
+    console.log(JSON.stringify(d.list(), null, 2));
     return;
   }
   if (args.includes('--recover-lock')) {
-    console.log(recoverStaleLock(root));
+    console.log(d.recoverLock());
     return;
   }
   if (args.includes('--reset')) {
-    const state = readState();
-    writeState(resetRunState(state));
+    d.reset();
     console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
     return;
   }
   if (args.includes('--resolve-review-cap')) {
-    resolveReviewCap(args, cfg);
+    d.resolveReviewCap(args, cfg);
     console.log('Resolución HITL registrada.');
     return;
   }
   const linkIssueIndex = args.indexOf('--link-issue');
   if (linkIssueIndex >= 0) {
-    linkIssueToActiveRun(Number(args[linkIssueIndex + 1]));
+    d.linkIssue(Number(args[linkIssueIndex + 1]));
     console.log(`Issue #${args[linkIssueIndex + 1]} vinculada al PR activo.`);
     return;
   }
@@ -1673,32 +1615,19 @@ async function main() {
   if (recoveryIndex >= 0) {
     const issue = Number(args[recoveryIndex + 1]);
     const prIndex = args.indexOf('--pr');
-    const pr = prIndex >= 0 ? Number(args[prIndex + 1]) : readState().pr;
-    if (!Number.isInteger(issue) || issue < 1)
-      throw new Error('--prepare-recovery requires an issue number');
-    if (!pr || !Number.isInteger(pr))
-      throw new Error('--prepare-recovery requires --pr or an existing state.pr');
-    writeState(prepareRecovery(readState(), issue, pr, Date.now(), cfg.workerLeaseMs ?? 900000));
+    const requestedPr = prIndex >= 0 ? Number(args[prIndex + 1]) : undefined;
+    const pr = d.prepareRecovery(issue, requestedPr, cfg);
     console.log(`Recovery preparado para issue #${issue}, PR #${pr}. Ejecutá npm run sloop.`);
     return;
   }
-  await dispatch(cfg, {
-    root,
-    load: () => readState(),
-    save: writeState,
-    eligible,
-    comment: (i, body) => gh(['issue', 'comment', String(i), '--body', body]),
-    run: runCommand,
-    pullRequest,
-    prComment: commentPullRequest,
-    now: Date.now,
-    pid: () => process.pid,
-    processAlive: defaultProcessAlive,
-  });
+  await dispatch(cfg, d);
 }
 
-if (process.argv[1]?.endsWith('dispatcher.js'))
-  void main().catch((e) => {
-    console.error(`[dispatcher] ${e instanceof Error ? e.message : String(e)}`);
-    process.exitCode = 1;
-  });
+// Preserve the repository's legacy direct entry point; the installed bin uses cli.ts.
+if (process.argv[1]?.replaceAll('\\', '/').endsWith('/dispatcher.js'))
+  void import('./adapters.js').then(({ productionDependencies }) =>
+    runDispatcherCli(process.argv.slice(2), productionDependencies()).catch((error) => {
+      console.error(`[dispatcher] ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    }),
+  );

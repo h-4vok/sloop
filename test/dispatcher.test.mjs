@@ -1,13 +1,5 @@
 import assert from 'node:assert/strict';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -27,6 +19,7 @@ import {
   withIssueClosingReference,
   resetRunState,
   runCommand,
+  runDispatcherCli,
 } from '../dist/dispatcher.js';
 
 test('Windows batch commands use cmd.exe without Node shell mode', () => {
@@ -198,6 +191,23 @@ function harness(
       saves.push(structuredClone(next));
       state = next;
     },
+    loadConfig: () => ({ ...baseConfig, ...overrides.config }),
+    status: (verbose) =>
+      verbose
+        ? state
+        : { issue: state.issue, pr: state.pr, status: state.status, lastError: state.lastError },
+    list: () => issues.map(({ number, title }) => ({ number, title })),
+    recoverLock: () => 'recovered',
+    reset: () => {
+      state = resetRunState(state, () => false);
+    },
+    resolveReviewCap: () => {},
+    linkIssue: () => {},
+    prepareRecovery: (issue, requestedPr) => {
+      const number = requestedPr ?? state.pr;
+      state = prepareRecovery(state, issue, number, Date.now(), 100);
+      return number;
+    },
     eligible: () => issues,
     comment: (issue, body) => comments.push([issue, body]),
     run: async (spec) => {
@@ -264,14 +274,32 @@ function harness(
       prBodyUpdates.push({ number, body });
     },
     pullRequestBody: () => pr.body,
+    prComment: (number, body) => {
+      assert.equal(number, pr.number);
+      pr.comments.push({ body });
+    },
     now: () => Date.now(),
     pid: () => process.pid,
     processAlive: (pid) => pid > 0 && pid !== -1,
     sleep: async () => {},
+    onReclaim: () => {},
+    tryAcquire: () => true,
+    readOwner: () => {
+      throw new Error('lock owner unavailable');
+    },
+    tryBeginReclaim: () => true,
+    readReclaimOwner: () => {
+      throw new Error('reclaim owner unavailable');
+    },
+    reclaimAgeMs: () => 0,
+    finishReclaim: () => {},
+    abandonReclaim: () => {},
+    release: () => {},
     prepareWorkerBranch: (issue) => ({
       branch: workerBranchName(issue),
       mainBaseSha: 'main-sha-1',
     }),
+    checkoutWorkerBranch: () => {},
   };
 
   return {
@@ -291,6 +319,69 @@ function harness(
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
+
+test('public CLI commands invoke only the injected control seams', async () => {
+  const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });
+  const calls = [];
+  h.deps.loadConfig = () => (calls.push(['loadConfig']), h.cfg);
+  h.deps.status = (verbose) => (calls.push(['status', verbose]), { status: 'injected' });
+  h.deps.list = () => (calls.push(['list']), [{ number: 28, title: 'injected' }]);
+  h.deps.recoverLock = () => (calls.push(['recoverLock']), 'injected recovery');
+  h.deps.reset = () => calls.push(['reset']);
+  h.deps.resolveReviewCap = (args, config) => calls.push(['resolveReviewCap', args, config]);
+  h.deps.linkIssue = (issue) => calls.push(['linkIssue', issue]);
+  h.deps.prepareRecovery = (issue, pr, config) => (
+    calls.push(['prepareRecovery', issue, pr, config]),
+    49
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await runDispatcherCli(['--status', '--verbose'], h.deps);
+    await runDispatcherCli(['--list'], h.deps);
+    await runDispatcherCli(['--recover-lock'], h.deps);
+    await runDispatcherCli(['--reset'], h.deps);
+    await runDispatcherCli(
+      ['--resolve-review-cap', '--steer', 'continue', '--additional-rounds', '1'],
+      h.deps,
+    );
+    await runDispatcherCli(['--link-issue', '29'], h.deps);
+    await runDispatcherCli(['--prepare-recovery', '28', '--pr', '49'], h.deps);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(
+    calls.map(([name]) => name),
+    [
+      'status',
+      'loadConfig',
+      'list',
+      'loadConfig',
+      'recoverLock',
+      'loadConfig',
+      'reset',
+      'loadConfig',
+      'resolveReviewCap',
+      'loadConfig',
+      'linkIssue',
+      'loadConfig',
+      'prepareRecovery',
+    ],
+  );
+  assert.deepEqual(
+    calls.find(([name]) => name === 'status'),
+    ['status', true],
+  );
+  assert.deepEqual(
+    calls.find(([name]) => name === 'linkIssue'),
+    ['linkIssue', 29],
+  );
+  assert.deepEqual(calls.find(([name]) => name === 'prepareRecovery').slice(0, 3), [
+    'prepareRecovery',
+    28,
+    49,
+  ]);
+});
 
 test('commands use argv, exit codes, retries, timeout and no shell contract', async () => {
   assert.deepEqual(command(['node', '-e', 'process.exit(0)'], 42, true).args, [
@@ -971,13 +1062,24 @@ test('active live run remains exclusive while stale recovery is allowed', async 
 
 test('stale locks recover safely and reclaim markers are atomic', () => {
   const h = harness();
-  const lock = dispatcherLockPath(h.root);
-  mkdirSync(lock, { recursive: true });
-  writeFileSync(join(lock, 'owner.json'), '{stale');
+  const calls = [];
+  h.deps.tryAcquire = () => (calls.push('tryAcquire'), false);
+  h.deps.readOwner = () => {
+    calls.push('readOwner');
+    throw new Error('corrupt owner');
+  };
+  h.deps.tryBeginReclaim = () => (calls.push('tryBeginReclaim'), true);
+  h.deps.finishReclaim = () => calls.push('finishReclaim');
+  h.deps.onReclaim = () => calls.push('onReclaim');
   const first = acquire(h.deps, 1);
   assert.match(first, /^[0-9a-f-]+$/);
-  assert.throws(() => acquire(h.deps, 1), /already running/);
-  rmSync(lock, { recursive: true, force: true });
+  assert.deepEqual(calls, [
+    'tryAcquire',
+    'readOwner',
+    'tryBeginReclaim',
+    'onReclaim',
+    'finishReclaim',
+  ]);
 });
 
 test('status remains concise by default and returns exact verbose diagnostics only on request', () => {
@@ -1347,19 +1449,26 @@ test('recoverStaleLock refuses a live owner', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('dead reclaim marker recovers after its TTL', () => {
+test('lock reclaim uses injected storage and process liveness seams', () => {
   const h = harness();
-  const lock = dispatcherLockPath(h.root);
-  const marker = join(lock, 'reclaiming');
-  mkdirSync(marker, { recursive: true });
-  writeFileSync(join(lock, 'owner.json'), '{stale');
-  writeFileSync(
-    join(marker, 'owner.json'),
-    JSON.stringify({ pid: 'dead', createdAt: Date.now() - 100 }),
-  );
-  utimesSync(marker, new Date(Date.now() - 100), new Date(Date.now() - 100));
-  const token = acquire(h.deps, 1);
+  const calls = [];
+  h.deps.now = () => 100;
+  h.deps.tryAcquire = () => false;
+  h.deps.readOwner = () => ({ pid: 41, createdAt: 0, token: 'old' });
+  h.deps.processAlive = (pid) => (calls.push(`processAlive:${pid}`), false);
+  h.deps.tryBeginReclaim = (() => {
+    let attempt = 0;
+    return () => ++attempt > 1;
+  })();
+  h.deps.readReclaimOwner = () => ({ pid: 42, createdAt: 0, token: 'reclaimer' });
+  h.deps.abandonReclaim = () => calls.push('abandonReclaim');
+  h.deps.finishReclaim = () => calls.push('finishReclaim');
+  const token = acquire(h.deps, 10);
   assert.match(token, /^[0-9a-f-]+$/);
-  assert.equal(existsSync(join(lock, 'reclaiming')), false);
-  rmSync(lock, { recursive: true, force: true });
+  assert.deepEqual(calls, [
+    'processAlive:41',
+    'processAlive:42',
+    'abandonReclaim',
+    'finishReclaim',
+  ]);
 });

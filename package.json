@@ -3,17 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "sloop": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test",
-    "loop": "node dist/dispatcher.js",
-    "sloop": "node dist/dispatcher.js",
+    "loop": "node dist/cli.js",
+    "sloop": "node dist/cli.js",
+    "link:local": "npm run build && npm link",
+    "unlink:local": "npm unlink --global sloop",
+    "help": "node dist/cli.js --help",
+    "version": "node dist/cli.js --version",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
-  "dependencies": {
-    "playwright": "^1.55.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.0.0",
     "prettier": "^3.6.2",
