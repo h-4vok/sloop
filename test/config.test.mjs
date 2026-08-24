@@ -109,6 +109,64 @@ test('invalid documents provide exact YAML paths', () => {
   assert.throws(() => loadConfigText('schemaVersion: ['), /\$: invalid YAML:/);
 });
 
+test('argv rejects shell interpreters across supported platforms', () => {
+  for (const [command, expectedPath] of [
+    [['sh', '-c', 'rm -rf /tmp/x'], '$.health.command[0]'],
+    [['/bin/bash', '-c', 'echo unsafe'], '$.health.command[0]'],
+    [['C:\\Windows\\System32\\cmd.exe', '/c', 'echo unsafe'], '$.health.command[0]'],
+    [['pwsh.exe', '-Command', 'Write-Output unsafe'], '$.health.command[0]'],
+    [['env', 'zsh', '-c', 'echo unsafe'], '$.health.command[1]'],
+  ])
+    assert.throws(
+      () =>
+        configRegistry
+          .find(({ path }) => path === 'health.command')
+          .parser(command, '$.health.command'),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(`${expectedPath}: shell interpreters are forbidden`),
+    );
+});
+
+test('malformed containers and list fields produce validation diagnostics', () => {
+  for (const [source, expected] of [
+    ['schemaVersion: 1\nrepository: invalid\n', '$.repository: expected a YAML mapping'],
+    ['schemaVersion: 1\nworkflow:\n  reviewOrder: qa\n', '$.workflow.reviewOrder: expected a list'],
+    ['schemaVersion: 1\nworkflow: invalid\n', '$.workflow: expected a YAML mapping'],
+    ['schemaVersion: 1\ngithub:\n  labels: invalid\n', '$.github.labels: expected a YAML mapping'],
+  ])
+    assert.throws(
+      () => loadConfigText(source),
+      (error) => error instanceof ConfigValidationError && error.message.includes(expected),
+    );
+});
+
+test('credential-bearing values are rejected while ordinary public values remain fingerprinted', () => {
+  for (const [remote, expectedPath] of [
+    ['https://x-access-token:ghp_example@example.com/org/repo.git', '$.repository.remote'],
+    ['github_pat_1234567890_example', '$.repository.remote'],
+    ['ghp_1234567890example', '$.repository.remote'],
+  ]) {
+    const source = canonical.replace(
+      'remote:\n    # Git remote used for Sloop branches.\n    origin',
+      `remote: "${remote}"`,
+    );
+    assert.throws(
+      () => loadConfigText(source),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(`${expectedPath}: credentials are not accepted`),
+    );
+  }
+  const publicRemote = loadConfigText(
+    canonical.replace(
+      'remote:\n    # Git remote used for Sloop branches.\n    origin',
+      'remote: upstream',
+    ),
+  );
+  assert.notEqual(configFingerprint(publicRemote), configFingerprint(loadConfigText(canonical)));
+});
+
 test('JSON input is rejected with init guidance', () => {
   const root = mkdtempSync(join(tmpdir(), 'sloop-config-'));
   try {

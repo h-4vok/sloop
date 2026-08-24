@@ -88,6 +88,13 @@ const durationParser = (value: unknown, path: string): number => {
   const result = Number(match[1]) * multiplier;
   return Number.isSafeInteger(result) ? result : fail(path, 'duration is too large');
 };
+const shellExecutable = (argument: string): boolean => {
+  const basename = argument.replace(/\\/g, '/').split('/').at(-1)!.toLowerCase();
+  return (
+    /^(?:a|ba|c|da|fi|k|tc|z)?sh(?:\.exe)?$/.test(basename) ||
+    /^(?:cmd|powershell|pwsh)(?:\.exe)?$/.test(basename)
+  );
+};
 const argvParser = (value: unknown, path: string): readonly string[] => {
   const argv = listParser(value, path);
   if (argv.length === 0) fail(path, 'argv must contain an executable');
@@ -97,6 +104,8 @@ const argvParser = (value: unknown, path: string): readonly string[] => {
         `${path}[${index}]`,
         'shell operators are forbidden; provide an argv array without a shell',
       );
+    if (shellExecutable(arg))
+      fail(`${path}[${index}]`, 'shell interpreters are forbidden; invoke the executable directly');
   }
   return argv;
 };
@@ -422,6 +431,43 @@ function unknownKeys(value: unknown, allowed: unknown, path = '$'): ConfigDiagno
     return unknownKeys(child, allowed[key], childPath);
   });
 }
+function containerShapes(
+  value: Record<string, unknown>,
+  allowed: Record<string, unknown>,
+  path = '$',
+): ConfigDiagnostic[] {
+  return Object.entries(allowed).flatMap(([key, child]) => {
+    if (!plainObject(child) || !(key in value)) return [];
+    const childPath = `${path}.${key}`;
+    if (!plainObject(value[key])) return [{ path: childPath, message: 'expected a YAML mapping' }];
+    return containerShapes(value[key], child, childPath);
+  });
+}
+function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
+  if (typeof value === 'string') {
+    const hasUrlUserinfo = /^[a-z][a-z\d+.-]*:\/\/[^\s/@]+(?::[^\s/@]*)?@/i.test(value);
+    const hasRecognizedToken =
+      /(?:^|[^A-Za-z0-9])(?:github_pat_[A-Za-z0-9_]{10,}|gh[pousr]_[A-Za-z0-9]{10,})(?:$|[^A-Za-z0-9])/i.test(
+        value,
+      );
+    return hasUrlUserinfo || hasRecognizedToken
+      ? [
+          {
+            path,
+            message:
+              'credentials are not accepted in sloop.config.yaml; use the external environment',
+          },
+        ]
+      : [];
+  }
+  if (Array.isArray(value))
+    return value.flatMap((child, index) => credentialDiagnostics(child, `${path}[${index}]`));
+  if (plainObject(value))
+    return Object.entries(value).flatMap(([key, child]) =>
+      credentialDiagnostics(child, `${path}.${key}`),
+    );
+  return [];
+}
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -433,7 +479,12 @@ function deepFreeze<T>(value: T): T {
 export function parseConfig(value: unknown): SloopConfig {
   if (!plainObject(value))
     throw new ConfigValidationError([{ path: '$', message: 'expected a YAML mapping' }]);
-  const diagnostics = unknownKeys(value, allowedTree());
+  const allowed = allowedTree();
+  const diagnostics = [
+    ...unknownKeys(value, allowed),
+    ...containerShapes(value, allowed),
+    ...credentialDiagnostics(value),
+  ];
   const output: Record<string, unknown> = {};
   for (const metadata of configRegistry) {
     const raw = getPath(value, metadata.path);
@@ -453,12 +504,13 @@ export function parseConfig(value: unknown): SloopConfig {
       path: '$.schemaVersion',
       message: 'unsupported schema version; expected 1',
     });
-  const order = getPath(output, 'workflow.reviewOrder') as readonly string[];
+  const order = getPath(output, 'workflow.reviewOrder');
   if (
-    order.length !== 2 ||
-    new Set(order).size !== 2 ||
-    !order.includes('qa') ||
-    !order.includes('staff')
+    Array.isArray(order) &&
+    (order.length !== 2 ||
+      new Set(order).size !== 2 ||
+      !order.includes('qa') ||
+      !order.includes('staff'))
   )
     diagnostics.push({
       path: '$.workflow.reviewOrder',
@@ -469,8 +521,8 @@ export function parseConfig(value: unknown): SloopConfig {
   );
   if (new Set(markers).size !== markers.length)
     diagnostics.push({ path: '$.github.roleMarkers', message: 'role markers must be unique' });
-  const priorities = getPath(output, 'github.labels.priority') as readonly string[];
-  if (new Set(priorities).size !== priorities.length)
+  const priorities = getPath(output, 'github.labels.priority');
+  if (Array.isArray(priorities) && new Set(priorities).size !== priorities.length)
     diagnostics.push({
       path: '$.github.labels.priority',
       message: 'priority labels must be unique',
