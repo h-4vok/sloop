@@ -168,6 +168,22 @@ test('malformed containers and list fields produce validation diagnostics', () =
     );
 });
 
+test('inherited property names are rejected as unknown keys at exact paths', () => {
+  for (const [source, expectedPath] of [
+    ['schemaVersion: 1\n"constructor": invalid\n', '$.constructor'],
+    ['schemaVersion: 1\n"toString": invalid\n', '$.toString'],
+    ['schemaVersion: 1\n"hasOwnProperty": invalid\n', '$.hasOwnProperty'],
+    ['schemaVersion: 1\n"__proto__": invalid\n', '$.__proto__'],
+    ['schemaVersion: 1\nrepository:\n  "constructor": invalid\n', '$.repository.constructor'],
+  ])
+    assert.throws(
+      () => loadConfigText(source),
+      (error) =>
+        error instanceof ConfigValidationError &&
+        error.message.includes(`${expectedPath}: unknown configuration key`),
+    );
+});
+
 test('credential-bearing values are rejected while ordinary public values remain fingerprinted', () => {
   for (const [remote, expectedPath] of [
     ['https://x-access-token:ghp_example@example.com/org/repo.git', '$.repository.remote'],
@@ -200,6 +216,9 @@ test('credential-bearing headers and assignments are rejected in argv fields', (
       ['curl', '-H', 'Authorization: Bearer secret-value', 'https://example.com'],
       '$.health.command[2]',
     ],
+    [['curl', '-H', 'Authorization: token opaque-secret'], '$.health.command[2]'],
+    [['curl', '-H', 'Private-Token: opaque-secret'], '$.health.command[2]'],
+    [['curl', '--header', 'X-Api-Key: opaque-secret'], '$.health.command[2]'],
     [
       ['curl', '--header=Authorization: Bearer secret-value', 'https://example.com'],
       '$.health.command[1]',

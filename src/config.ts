@@ -428,15 +428,24 @@ function getPath(target: Record<string, unknown>, path: string): unknown {
     .reduce<unknown>((value, key) => (plainObject(value) ? value[key] : undefined), target);
 }
 function allowedTree(): Record<string, unknown> {
-  const tree: Record<string, unknown> = {};
-  for (const item of configRegistry) setPath(tree, item.path, true);
+  const tree: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const item of configRegistry) {
+    const parts = item.path.split('.');
+    let current = tree;
+    for (const part of parts.slice(0, -1)) {
+      if (!Object.hasOwn(current, part))
+        current[part] = Object.create(null) as Record<string, unknown>;
+      current = current[part] as Record<string, unknown>;
+    }
+    current[parts.at(-1)!] = true;
+  }
   return tree;
 }
 function unknownKeys(value: unknown, allowed: unknown, path = '$'): ConfigDiagnostic[] {
   if (!plainObject(value) || !plainObject(allowed)) return [];
   return Object.entries(value).flatMap(([key, child]) => {
     const childPath = `${path}.${key}`;
-    if (!(key in allowed))
+    if (!Object.hasOwn(allowed, key))
       return [
         {
           path: childPath,
@@ -468,7 +477,7 @@ function credentialDiagnostics(value: unknown, path = '$'): ConfigDiagnostic[] {
         value,
       );
     const hasCredentialMaterial =
-      /(?:^|[=\s])(?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+\S+/i.test(
+      /(?:^|[=\s])(?:authorization|proxy-authorization|private-token|x-api-key|api-key)\s*:\s*\S+/i.test(
         value,
       ) ||
       /(?:^|[\s,;])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[=:]\s*\S+/i.test(
