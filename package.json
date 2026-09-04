@@ -11,6 +11,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "test": "npm run build && node --test",
     "loop": "node dist/cli.js",
     "sloop": "node dist/cli.js",

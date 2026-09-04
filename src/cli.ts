@@ -9,7 +9,12 @@ const packageJson = JSON.parse(
 
 export const HELP = `Sloop ${packageJson.version}
 
-Usage: sloop [option]
+Usage: sloop <command> [option]
+
+Read-only commands:
+  status [--verbose] [--json]  Validate and show repository context
+  issues list [--json]         List eligible issues
+  doctor                       Run all runtime prerequisite checks
 
 Options:
   --help                 Show this help
@@ -29,21 +34,86 @@ export function requireSupportedNode(version: string): void {
   }
 }
 
-export async function runCli(args: string[], nodeVersion = process.version): Promise<void> {
-  requireSupportedNode(nodeVersion);
-  if (args.includes('--help')) {
+export function emitDispatcherFailure(error: unknown): number {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[sloop] ${message}`);
+  return error && typeof error === 'object' && 'exitCode' in error ? (error.exitCode as number) : 2;
+}
+
+type RuntimeModule = typeof import('./runtime.js');
+type DispatcherModule = typeof import('./dispatcher.js');
+type AdaptersModule = typeof import('./adapters.js');
+
+export interface RunCliModules {
+  runtime: Pick<
+    RuntimeModule,
+    | 'emitNodeVersionFailure'
+    | 'emitUsageFailure'
+    | 'parseReadOnlyCommand'
+    | 'runDispatcherPreflight'
+    | 'runReadOnlyCommand'
+  >;
+  dispatcher: Pick<DispatcherModule, 'runDispatcherCli'>;
+  adapters: Pick<AdaptersModule, 'productionDependencies'>;
+}
+
+export async function runCli(
+  args: string[],
+  nodeVersion = process.version,
+  modules?: RunCliModules,
+): Promise<void> {
+  const runtime = modules?.runtime ?? (await import('./runtime.js'));
+  const {
+    emitNodeVersionFailure,
+    emitUsageFailure,
+    parseReadOnlyCommand,
+    runDispatcherPreflight,
+    runReadOnlyCommand,
+  } = runtime;
+  try {
+    requireSupportedNode(nodeVersion);
+  } catch {
+    process.exitCode = emitNodeVersionFailure(args, nodeVersion);
+    return;
+  }
+  if (args.length === 1 && args[0] === '--help') {
     console.log(HELP);
     return;
   }
-  if (args.includes('--version')) {
+  if (args.length === 1 && args[0] === '--version') {
     console.log(packageJson.version);
     return;
   }
-  const [{ runDispatcherCli }, { productionDependencies }] = await Promise.all([
-    import('./dispatcher.js'),
-    import('./adapters.js'),
-  ]);
-  await runDispatcherCli(args, productionDependencies());
+  try {
+    const command = parseReadOnlyCommand(args);
+    if (command) {
+      process.exitCode = runReadOnlyCommand(command);
+      return;
+    }
+  } catch (error) {
+    process.exitCode = emitUsageFailure(
+      args,
+      error instanceof Error ? error.message : String(error),
+    );
+    return;
+  }
+  const [{ runDispatcherCli }, { productionDependencies }] = modules
+    ? [modules.dispatcher, modules.adapters]
+    : await Promise.all([import('./dispatcher.js'), import('./adapters.js')]);
+  const preflight = runDispatcherPreflight(args);
+  if (!preflight.root || !preflight.config || !preflight.repository) {
+    process.exitCode = preflight.code;
+    return;
+  }
+  try {
+    const result = await runDispatcherCli(
+      args,
+      productionDependencies(preflight.root, preflight.config, preflight.repository),
+    );
+    process.exitCode = result;
+  } catch (error) {
+    process.exitCode = emitDispatcherFailure(error);
+  }
 }
 
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {
@@ -53,6 +123,6 @@ if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {
       : process.version;
   void runCli(process.argv.slice(2), version).catch((error) => {
     console.error(`[sloop] ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
+    process.exitCode = 2;
   });
 }
