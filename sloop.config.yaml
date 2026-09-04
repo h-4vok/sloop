@@ -28,10 +28,10 @@ github:
       Automation Ready
     claimed:
       # Label applied while an issue is claimed.
-      Automation Claimed
+      'Sloop: In Progress'
     blocked:
       # Label applied to blocked work.
-      Automation Blocked
+      'Sloop: Blocked'
     priority:
       # Priority labels in highest-first order.
       - 'Priority: P0'

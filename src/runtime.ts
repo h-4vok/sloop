@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadConfigText, type SloopConfig } from './config.js';
+import { resolveExecutable, runSyncCommand } from './process.js';
 
 export const EXIT = Object.freeze({ ok: 0, preflight: 2, busy: 3, blocked: 4, external: 5 });
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
@@ -39,12 +39,14 @@ const productionIo = (): RuntimeIo => ({
   run(file, args, cwd) {
     try {
       return {
-        stdout: execFileSync(file, [...args], {
-          cwd,
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-        }),
+        stdout: runSyncCommand(
+          resolveExecutable(file),
+          [...args],
+          undefined,
+          process.platform,
+          process.env.ComSpec,
+          cwd ?? process.cwd(),
+        ),
         stderr: '',
         status: 0,
       };

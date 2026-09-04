@@ -38,8 +38,8 @@ function harness(overrides = {}) {
       stdout: JSON.stringify(
         [
           'Automation Ready',
-          'Automation Claimed',
-          'Automation Blocked',
+          'Sloop: In Progress',
+          'Sloop: Blocked',
           'Priority: P0',
           'Priority: P1',
           'Priority: P2',

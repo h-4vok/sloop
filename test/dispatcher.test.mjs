@@ -13,6 +13,7 @@ import {
   prepareWorkerBranch,
   prepareRecovery,
   recoverStaleLock,
+  resolveExecutable,
   runSyncCommand,
   redactDiagnostic,
   workerBranchName,
@@ -35,6 +36,28 @@ test('Windows batch commands use cmd.exe without Node shell mode', () => {
       args: ['/d', '/s', '/v:off', '/c', '""C:\\tools\\codex.cmd" "exec" "--full-auto""'],
       windowsVerbatimArguments: true,
     },
+  );
+});
+
+test('Windows executable resolution selects an npm command shim', () => {
+  assert.equal(
+    resolveExecutable('codex', 'win32', () => [
+      'C:\\Program Files\\nodejs\\codex',
+      'C:\\Program Files\\nodejs\\codex.cmd',
+      'C:\\tools\\codex.exe',
+    ]),
+    'C:\\Program Files\\nodejs\\codex.cmd',
+  );
+});
+
+test('executable resolution leaves Unix commands and explicit paths unchanged', () => {
+  const unexpectedLookup = () => {
+    throw new Error('lookup should not run');
+  };
+  assert.equal(resolveExecutable('codex', 'linux', unexpectedLookup), 'codex');
+  assert.equal(
+    resolveExecutable('C:\\tools\\codex.exe', 'win32', unexpectedLookup),
+    'C:\\tools\\codex.exe',
   );
 });
 
