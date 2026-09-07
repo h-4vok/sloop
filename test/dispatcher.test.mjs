@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import {
   acquire,
   childProcessInvocation,
+  CliFailure,
   command,
   dispatcherLockPath,
   dispatch,
@@ -343,6 +344,19 @@ function harness(
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
+
+test('post-preflight external adapter failures preserve exit 5', async () => {
+  const h = harness([{ number: 1, title: 'one', body: 'acceptance criteria' }]);
+  h.deps.comment = () => {
+    throw new CliFailure(5, 'gh issue comment failed: service unavailable');
+  };
+
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.equal(h.state().status, 'claimed');
+});
 
 test('public CLI commands invoke only the injected control seams', async () => {
   const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });
@@ -768,6 +782,30 @@ test('new branch preparation uses main updated by fetch', () => {
   }
 });
 
+test('worker branch preparation classifies a failed fetch as an external dependency failure', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-git-fetch-failure-'));
+  const runGit = (args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  try {
+    runGit(['init', '-b', 'main']);
+    runGit(['config', 'user.email', 'test@example.com']);
+    runGit(['config', 'user.name', 'Test']);
+    writeFileSync(join(root, 'README.md'), 'main');
+    runGit(['add', 'README.md']);
+    runGit(['commit', '-m', 'initial']);
+    runGit(['remote', 'add', 'origin', join(root, 'missing-remote')]);
+
+    assert.throws(
+      () => prepareWorkerBranch(31, root),
+      (error) => error instanceof CliFailure && error.exitCode === 5,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('dispatcher rejects a PR whose worker branch violates the convention', async () => {
   const h = harness([{ number: 1, title: 'branch validation' }], {
     headRefName: 'codex/other-branch',
@@ -926,6 +964,18 @@ test('new branch preparation failure is persisted and does not leave a claimed r
   assert.equal(h.state().lastErrorVerbose, 'fetch failed');
 });
 
+test('dispatcher preserves the external exit class from post-preflight branch preparation', async () => {
+  const h = harness([{ number: 1, title: 'a' }]);
+  h.deps.prepareWorkerBranch = () => {
+    throw new CliFailure(5, 'git fetch failed: service unavailable');
+  };
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.notEqual(h.state().status, 'blocked');
+});
+
 function assertPersistedDiagnostic(state, phase, diagnostic, context) {
   assert.ok((state.lastError.match(/[.!?]+/g) ?? []).length <= 4, state.lastError);
   assert.match(state.lastError, new RegExp(`during ${phase}`));
@@ -1020,8 +1070,23 @@ test('blocked issue with PR context enters recovery instead of a fresh claim', a
 });
 
 test('recovery rejects a non-deterministic persisted branch', async () => {
+  const now = Date.now();
   const h = harness([{ number: 1, title: 'a' }], {
-    initialState: prepareRecovery({ completedIssues: [1], branch: 'main' }, 1, 14, Date.now(), 100),
+    initialState: {
+      issue: 1,
+      pr: 14,
+      branch: 'main',
+      status: 'worker_running',
+      workerRunId: 'corrupt-recovery-state',
+      workerPid: -1,
+      workerStartedAt: now - 1000,
+      workerHeartbeatAt: now - 1000,
+      workerRecoveryCount: 0,
+      reviewRound: 1,
+      completedIssues: [],
+      drainStatus: 'running',
+      updatedAt: now,
+    },
   });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'worker_recovery_pending');
@@ -1314,7 +1379,7 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   const state = prepareRecovery(
     {
       pr: 15,
-      branch: 'codex/issue-1',
+      branch: 'main',
       headSha: 'head-15',
       mainBaseSha: 'main-10',
       reviewRound: 4,
@@ -1329,6 +1394,7 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
     100,
   );
   assert.equal(state.pr, 15);
+  assert.equal(state.branch, 'codex/issue-1');
   assert.equal(state.status, 'worker_running');
   assert.deepEqual(state.completedIssues, [2]);
   assert.equal(state.workerPid, -1);
@@ -1337,6 +1403,14 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   assert.equal(state.lastQaFeedback, 'fix the boundary case');
   assert.equal(state.taskContext, 'recovered task context');
   assert.equal(state.headSha, 'head-15');
+});
+
+test('prepareRecovery persists the canonical branch from empty state', () => {
+  const state = prepareRecovery({}, 31, 54, 1000, 100);
+  assert.equal(state.issue, 31);
+  assert.equal(state.pr, 54);
+  assert.equal(state.branch, 'codex/issue-31');
+  assert.equal(state.status, 'worker_running');
 });
 
 test('no-work done state clears all prior run context', async () => {

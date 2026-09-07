@@ -18,7 +18,10 @@ const canonical = canonicalConfigYaml();
 
 test('tracked canonical YAML is the exact registry-generated document', () => {
   assert.equal(
-    readFileSync(join(import.meta.dirname, '..', 'sloop.config.yaml'), 'utf8'),
+    readFileSync(join(import.meta.dirname, '..', 'sloop.config.yaml'), 'utf8').replace(
+      /\r\n/g,
+      '\n',
+    ),
     canonical,
   );
 });
