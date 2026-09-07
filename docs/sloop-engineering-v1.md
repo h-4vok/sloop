@@ -3,6 +3,7 @@
 ## Execution
 
 1. Product Lead completes the requirements, criteria, risks, and out-of-scope items; only then applies `Automation Ready`.
+   Product Lead changes only the issue contract; it does not modify code or create a PR. A Worker handoff must be explicit, name the issue, and pass the dependency plus `Automation Ready` gates.
 2. Dispatcher runs `npm run sloop` manually, selects the lowest-numbered open issue, and writes local state. It never starts another active task.
 3. Worker creates or updates a PR whose base is `main`; the Worker publishes `[Worker]` evidence in the PR.
 4. GitHub Actions owns format, test, and build gates. The dispatcher polls the required PR checks and never executes `npm test` as a local gate.

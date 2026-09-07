@@ -15,7 +15,9 @@ import type {
   RunEventSink,
   Scheduler,
   Workspace,
+  ReviewCapOptions,
 } from './core/boundaries.js';
+import type { DispatcherCommand } from './runtime.js';
 
 export type Status =
   | 'queued'
@@ -1279,14 +1281,6 @@ export function resetRunState(state: State, processAlive = defaultProcessAlive):
   };
 }
 
-function argumentValues(args: string[], flag: string): string[] {
-  const values: string[] = [];
-  for (let index = 0; index < args.length; index++)
-    if (args[index] === flag && args[index + 1] && !args[index + 1].startsWith('--'))
-      values.push(args[index + 1]);
-  return values;
-}
-
 function activeRunForHitl(state: State): Required<Pick<State, 'issue' | 'pr'>> & State {
   if (state.status !== 'review_cap_pending' || !state.issue || !state.pr)
     throw new Error(
@@ -1324,22 +1318,18 @@ function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
 }
 
 export function resolveReviewCap(
-  args: string[],
+  options: ReviewCapOptions,
   cfg: Config,
   statePath = stateFile,
   cwd = defaultRoot,
   repository?: string,
 ): void {
   const stored = readState(statePath);
-  const steer = argumentValues(args, '--steer').at(-1)?.trim();
-  if (!steer) throw new Error('--resolve-review-cap requires --steer <text>');
-  const abandon = args.includes('--abandon');
-  const waiveAll = args.includes('--waive-all-outstanding');
-  const waived = argumentValues(args, '--waive').flatMap((value) => value.split(','));
-  const additionalRaw = argumentValues(args, '--additional-rounds').at(-1);
-  const additionalRounds = additionalRaw === undefined ? 0 : Number(additionalRaw);
-  if (!Number.isInteger(additionalRounds) || additionalRounds < 0)
-    throw new Error('--additional-rounds must be a non-negative integer');
+  const steer = options.steer.trim();
+  const abandon = options.abandon;
+  const waiveAll = options.waiveAllOutstanding;
+  const waived = [...options.waivedFindingIds];
+  const additionalRounds = options.additionalRounds;
   if (abandon && (waiveAll || waived.length || additionalRounds))
     throw new Error('--abandon cannot be combined with waivers or additional rounds');
   if (!abandon && !waiveAll && !waived.length && additionalRounds === 0)
@@ -1594,51 +1584,44 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   }
 }
 
-export async function runDispatcherCli(args: string[], d: Deps): Promise<0 | 4> {
-  if (args.includes('--status')) {
-    const supportedStatusArgs =
-      (args.length === 1 && args[0] === '--status') ||
-      (args.length === 2 && args.includes('--verbose'));
-    if (!supportedStatusArgs) throw new Error('--status accepts only the optional --verbose flag');
-    console.log(JSON.stringify(d.status(args.includes('--verbose')), null, 2));
-    return 0;
+export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Promise<0 | 4> {
+  switch (command.kind) {
+    case 'status':
+      console.log(JSON.stringify(d.status(command.verbose), null, 2));
+      return 0;
+    case 'list':
+      console.log(JSON.stringify(d.list(), null, 2));
+      return 0;
+    case 'recover-lock':
+      console.log(d.recoverLock());
+      return 0;
+    case 'reset':
+      d.reset();
+      console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
+      return 0;
+    case 'resolve-review-cap': {
+      const cfg = d.loadConfig();
+      d.resolveReviewCap(command.options, cfg);
+      console.log('Resolución HITL registrada.');
+      return 0;
+    }
+    case 'link-issue':
+      d.linkIssue(command.issue);
+      console.log(`Issue #${command.issue} vinculada al PR activo.`);
+      return 0;
+    case 'prepare-recovery': {
+      const cfg = d.loadConfig();
+      const pr = d.prepareRecovery(command.issue, command.pr, cfg);
+      console.log(
+        `Recovery preparado para issue #${command.issue}, PR #${pr}. Ejecutá npm run sloop.`,
+      );
+      return 0;
+    }
+    case 'workflow': {
+      const cfg = d.loadConfig();
+      return dispatch(cfg, d);
+    }
   }
-  if (args.includes('--verbose')) throw new Error('--verbose is supported only with --status');
-  const cfg = d.loadConfig();
-  if (args.includes('--list')) {
-    console.log(JSON.stringify(d.list(), null, 2));
-    return 0;
-  }
-  if (args.includes('--recover-lock')) {
-    console.log(d.recoverLock());
-    return 0;
-  }
-  if (args.includes('--reset')) {
-    d.reset();
-    console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
-    return 0;
-  }
-  if (args.includes('--resolve-review-cap')) {
-    d.resolveReviewCap(args, cfg);
-    console.log('Resolución HITL registrada.');
-    return 0;
-  }
-  const linkIssueIndex = args.indexOf('--link-issue');
-  if (linkIssueIndex >= 0) {
-    d.linkIssue(Number(args[linkIssueIndex + 1]));
-    console.log(`Issue #${args[linkIssueIndex + 1]} vinculada al PR activo.`);
-    return 0;
-  }
-  const recoveryIndex = args.indexOf('--prepare-recovery');
-  if (recoveryIndex >= 0) {
-    const issue = Number(args[recoveryIndex + 1]);
-    const prIndex = args.indexOf('--pr');
-    const requestedPr = prIndex >= 0 ? Number(args[prIndex + 1]) : undefined;
-    const pr = d.prepareRecovery(issue, requestedPr, cfg);
-    console.log(`Recovery preparado para issue #${issue}, PR #${pr}. Ejecutá npm run sloop.`);
-    return 0;
-  }
-  return dispatch(cfg, d);
 }
 
 // The legacy path remains callable for compatibility, but crosses the same startup boundary.

@@ -16,12 +16,13 @@
     "test": "npm run build && node --test",
     "loop": "node dist/cli.js",
     "sloop": "node dist/cli.js",
-    "link:local": "npm run build && npm link",
+    "link:local": "npm unlink --global sloop && npm run build && npm link",
     "unlink:local": "npm unlink --global sloop",
     "help": "node dist/cli.js --help",
     "version": "node dist/cli.js --version",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "allchecks": "npm run build && npm run typecheck && npm run link:local && npm run test && npm run format:check"
   },
   "dependencies": {
     "@openai/codex": "^0.149.1",

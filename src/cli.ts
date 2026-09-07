@@ -49,7 +49,7 @@ export interface RunCliModules {
     RuntimeModule,
     | 'emitNodeVersionFailure'
     | 'emitUsageFailure'
-    | 'parseReadOnlyCommand'
+    | 'parseCliCommand'
     | 'runDispatcherPreflight'
     | 'runReadOnlyCommand'
   >;
@@ -66,7 +66,7 @@ export async function runCli(
   const {
     emitNodeVersionFailure,
     emitUsageFailure,
-    parseReadOnlyCommand,
+    parseCliCommand,
     runDispatcherPreflight,
     runReadOnlyCommand,
   } = runtime;
@@ -76,20 +76,9 @@ export async function runCli(
     process.exitCode = emitNodeVersionFailure(args, nodeVersion);
     return;
   }
-  if (args.length === 1 && args[0] === '--help') {
-    console.log(HELP);
-    return;
-  }
-  if (args.length === 1 && args[0] === '--version') {
-    console.log(packageJson.version);
-    return;
-  }
+  let command: Awaited<ReturnType<typeof parseCliCommand>>;
   try {
-    const command = parseReadOnlyCommand(args);
-    if (command) {
-      process.exitCode = runReadOnlyCommand(command);
-      return;
-    }
+    command = parseCliCommand(args);
   } catch (error) {
     process.exitCode = emitUsageFailure(
       args,
@@ -97,23 +86,53 @@ export async function runCli(
     );
     return;
   }
-  const [{ runDispatcherCli }, { productionDependencies }] = modules
-    ? [modules.dispatcher, modules.adapters]
-    : await Promise.all([import('./dispatcher.js'), import('./adapters.js')]);
-  const preflight = runDispatcherPreflight(args);
-  if (!preflight.root || !preflight.config || !preflight.repository) {
-    process.exitCode = preflight.code;
-    return;
-  }
   try {
+    if (command.kind === 'help') {
+      console.log(helpFor(command.target));
+      return;
+    }
+    if (command.kind === 'version') {
+      console.log(packageJson.version);
+      return;
+    }
+    if (command.kind === 'read-only') {
+      process.exitCode = runReadOnlyCommand(command.command);
+      return;
+    }
+    const [{ runDispatcherCli }, { productionDependencies }] = modules
+      ? [modules.dispatcher, modules.adapters]
+      : await Promise.all([import('./dispatcher.js'), import('./adapters.js')]);
+    const preflight = runDispatcherPreflight(command.command);
+    if (!preflight.root || !preflight.config || !preflight.repository) {
+      process.exitCode = preflight.code;
+      return;
+    }
     const result = await runDispatcherCli(
-      args,
+      command.command,
       productionDependencies(preflight.root, preflight.config, preflight.repository),
     );
     process.exitCode = result;
   } catch (error) {
     process.exitCode = emitDispatcherFailure(error);
   }
+}
+
+function helpFor(target: string): string {
+  if (target === 'sloop') return HELP;
+  const usage: Record<string, string> = {
+    status: 'Usage: sloop status [--verbose] [--json]',
+    'issues list': 'Usage: sloop issues list [--json]',
+    doctor: 'Usage: sloop doctor',
+    '--status': 'Usage: sloop --status [--verbose]',
+    '--list': 'Usage: sloop --list',
+    '--recover-lock': 'Usage: sloop --recover-lock',
+    '--reset': 'Usage: sloop --reset',
+    '--prepare-recovery': 'Usage: sloop --prepare-recovery N [--pr N]',
+    '--resolve-review-cap':
+      'Usage: sloop --resolve-review-cap --steer <text> [--additional-rounds N] [--waive Q<n>,S<n>] [--waive-all-outstanding] [--abandon]',
+    '--link-issue': 'Usage: sloop --link-issue N',
+  };
+  return usage[target] ?? HELP;
 }
 
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {

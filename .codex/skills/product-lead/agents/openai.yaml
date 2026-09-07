@@ -1,4 +1,4 @@
 interface:
   display_name: 'product-lead'
   short_description: 'Reusable product-lead workflow'
-  default_prompt: 'Use the product-lead workflow for this repository.'
+  default_prompt: 'Use $product-lead to prepare one issue only; update its GitHub contract and do not implement code.'
