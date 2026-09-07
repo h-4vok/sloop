@@ -60,6 +60,12 @@ test('config show and scalar setters remain non-interactive while config wizard 
   assert.equal(await runConfigCommand(root, []), 2);
 });
 
+test('config show accepts full sections as well as leaves', async () => {
+  const { root } = fixture();
+  assert.equal(await runConfigCommand(root, ['show', 'workspace']), 0);
+  assert.equal(await runConfigCommand(root, ['show']), 0);
+});
+
 test('unknown wizard scopes fail with valid-path guidance before entering the TTY wizard', async () => {
   const { root } = fixture();
   assert.equal(await runConfigCommand(root, ['definitely.not.a.path']), 2);

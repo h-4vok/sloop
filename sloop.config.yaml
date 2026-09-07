@@ -169,8 +169,7 @@ logging:
     # Record redacted role invocation metadata.
     true
 arbiter:
-  mode:
-    experimental
+  mode: experimental
   command:
     - npm
     - run

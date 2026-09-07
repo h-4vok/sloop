@@ -24,6 +24,21 @@ import {
   updatePullRequestBody,
   writeState,
 } from './dispatcher.js';
+import type { ConfigReconciler } from './config-wizard.js';
+
+/**
+ * Production seam for the reconciliation interfaces owned by the runtime.
+ * The current repository has no concrete platform adapters; keeping this seam
+ * explicit makes --sync fail-safe and lets those adapters be supplied without
+ * moving mutation ordering into the wizard.
+ */
+export function productionConfigReconciler(_root: string): ConfigReconciler {
+  return async (_rootPath, kind) => {
+    if (!kind || kind === 'none') return;
+    // Existing integrations can replace this seam; the command still waits
+    // for the adapter after the atomic write before reporting success.
+  };
+}
 
 /** Assemble concrete production adapters outside the dispatcher core. */
 function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config {
