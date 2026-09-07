@@ -26,7 +26,17 @@ export type ConfigReconciler = (
 ) => void | Promise<void>;
 
 /** The runtime may provide the existing reconciler adapters; tests can observe ordering here. */
-export const reconcileConfig: ConfigReconciler = async () => {};
+/**
+ * The CLI must provide a concrete adapter when one exists.  Keeping the
+ * default deliberately failing is safer than claiming that --sync worked
+ * while silently doing nothing (the repository currently has no production
+ * skill/scheduler/workspace reconciler implementation).
+ */
+export const reconcileConfig: ConfigReconciler = async (_root, kind) => {
+  throw new Error(
+    `No production reconciler is available for ${kind}; use --no-sync or configure an adapter.`,
+  );
+};
 
 export async function runConfigCommand(
   root: string,
