@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  renameSync,
-  rmSync,
-  appendFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -41,7 +34,7 @@ export async function runConfigCommand(
   reconciler: ConfigReconciler = reconcileConfig,
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
-  const init = args.length === 0;
+  const init = args.includes('--init');
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
   const sync = flags[0];
   const positional = args.filter((a) => !a.startsWith('--'));
@@ -141,13 +134,28 @@ async function wizard(
         continue;
       }
       if (field.dependencies.length && !dependenciesSatisfied(current, field)) {
-        console.log(`${path}: requires ${field.dependencies.join(', ')}; skipped`);
-        continue;
+        for (const dependency of field.dependencies) {
+          const [dependencyPath, expected] = dependency.split('=');
+          if (String(configValue(current as never, dependencyPath!)) !== expected) {
+            const dependencyField = getConfigField(dependencyPath!);
+            if (!dependencyField)
+              throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
+            const answer = await askField(rl, dependencyField, current);
+            if (!answer.trim())
+              throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
+            const value = parseWizardValue(dependencyField, answer.trim());
+            next = updateConfigText(next, dependencyPath!, value);
+            current = loadConfigText(next);
+            changed.push(
+              `${dependencyPath}: ${display(configValue(current, dependencyPath!))} -> ${display(value)}`,
+            );
+          }
+        }
+        if (!dependenciesSatisfied(current, field))
+          throw new Error(`${path} requires companion path ${field.dependencies.join(', ')}`);
       }
       const old = configValue(current, path);
-      const answer = await rl.question(
-        `${path}\n  ${field.explanation}\n  options: ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  recommendation: ${field.recommendation}\n  value [${display(old)}]: `,
-      );
+      const answer = await askField(rl, field, current);
       if (!answer.trim()) continue;
       const value = parseWizardValue(field, answer.trim());
       next = updateConfigText(next, path, value);
@@ -160,12 +168,19 @@ async function wizard(
         : 'No changes proposed.',
     );
     if (!changed.length || (await rl.question('> ')).trim().toLowerCase() !== 'y') return 0;
+    const gitignore =
+      init && (await rl.question('Add .sloop/ to .gitignore? [Y/n] ')).trim().toLowerCase() !== 'n'
+        ? prepareGitignore(root)
+        : undefined;
+    const before = existsSync(file) ? readFileSync(file, 'utf8') : undefined;
     atomicWrite(file, next);
-    if (
-      init &&
-      (await rl.question('Add .sloop/ to .gitignore? [Y/n] ')).trim().toLowerCase() !== 'n'
-    )
-      addGitignore(root);
+    try {
+      if (gitignore) atomicWrite(gitignore.file, gitignore.content);
+    } catch (error) {
+      if (before === undefined) rmSync(file, { force: true });
+      else atomicWrite(file, before);
+      throw error;
+    }
     if (sync === '--sync') {
       const kinds = new Set(
         changed.map((line) => getConfigField(line.split(':', 1)[0]!)?.requiredReconciler),
@@ -187,6 +202,15 @@ function dependenciesSatisfied(cfg: unknown, field: FieldMetadata): boolean {
     return String(configValue(cfg as never, p!)) === v;
   });
 }
+async function askField(
+  rl: ReturnType<typeof createInterface>,
+  field: FieldMetadata,
+  cfg: unknown,
+): Promise<string> {
+  return rl.question(
+    `${field.path}\n  ${field.explanation}\n  options: ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  recommendation: ${field.recommendation}\n  value [${display(configValue(cfg as never, field.path))}]: `,
+  );
+}
 function parseWizardValue(field: FieldMetadata, raw: string): unknown {
   if (field.type === 'list')
     return field.parser(
@@ -199,11 +223,15 @@ function parseWizardValue(field: FieldMetadata, raw: string): unknown {
 function display(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
-function addGitignore(root: string): void {
+function prepareGitignore(root: string): { file: string; content: string } {
   const file = join(root, '.gitignore');
   const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
-  if (!text.split(/\r?\n/).includes('.sloop/'))
-    appendFileSync(file, `${text && !text.endsWith('\n') ? '\n' : ''}.sloop/\n`);
+  return {
+    file,
+    content: text.split(/\r?\n/).includes('.sloop/')
+      ? text
+      : `${text && !text.endsWith('\n') ? '\n' : ''}.sloop/\n`,
+  };
 }
 function atomicWrite(file: string, content: string): void {
   const temp = `${file}.${randomUUID()}.tmp`;
