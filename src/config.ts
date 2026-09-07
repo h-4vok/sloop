@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { Document, isAlias, parseDocument, visit, type Node } from 'yaml';
 
@@ -402,7 +402,16 @@ export const configRegistry = deepFreeze([
       `agents.${role}.argv`,
       'argv',
       argvParser,
-      ['codex', 'exec', '--sandbox', 'danger-full-access'],
+      [
+        'codex',
+        'exec',
+        '--sandbox',
+        'danger-full-access',
+        '--model',
+        'gpt-5.6-luna',
+        '-c',
+        'model_reasoning_effort=low',
+      ],
       `${role} runner argv; never evaluated by a shell.`,
     ),
     f(
@@ -777,6 +786,34 @@ export function updateConfigFile(file: string, path: string, value: unknown): vo
   } finally {
     rmSync(temporary, { force: true });
   }
+}
+
+export function configValue(config: SloopConfig, path: string): unknown {
+  return getPath(config as unknown as Record<string, unknown>, path);
+}
+
+export function configPaths(prefix = ''): readonly string[] {
+  return configRegistry
+    .filter((field) => !prefix || field.path === prefix || field.path.startsWith(`${prefix}.`))
+    .map((field) => field.path);
+}
+
+export function parseConfigValue(field: FieldMetadata, value: string): unknown {
+  if (field.type === 'list' || field.type === 'argv')
+    throw new ConfigValidationError([
+      { path: `$.${field.path}`, message: 'complex values require the interactive wizard' },
+    ]);
+  if (field.type === 'boolean')
+    return field.parser(
+      value === 'true' ? true : value === 'false' ? false : value,
+      `$.${field.path}`,
+    );
+  if (field.type === 'integer') return field.parser(Number(value), `$.${field.path}`);
+  return field.parser(value, `$.${field.path}`);
+}
+
+export function configFileExists(file: string): boolean {
+  return existsSync(file);
 }
 
 export function canonicalConfigYaml(): string {
