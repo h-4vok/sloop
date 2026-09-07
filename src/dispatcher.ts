@@ -1231,6 +1231,7 @@ export function prepareRecovery(
     ...state,
     issue,
     pr,
+    branch: workerBranchName(issue),
     status: 'worker_running',
     workerRunId: randomUUID(),
     workerPid: -1,
