@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { canonicalConfigYaml } from '../dist/config.js';
 import { configPaths } from '../dist/config.js';
 import { runConfigCommand } from '../dist/config-wizard.js';
+import { productionConfigReconciler } from '../dist/adapters.js';
 import { parseCliCommand } from '../dist/runtime.js';
 
 function fixture() {
@@ -46,13 +47,28 @@ test('invalid scalar input fails before writing or reconciling', async () => {
   assert.equal(reconciled, false);
 });
 
-test('production sync never reports success when no reconciler adapter is available', async () => {
+test('production sync fails closed for every external reconciler kind', async () => {
   const { root, file } = fixture();
-  const result = await runConfigCommand(root, ['repository.baseBranch', 'develop', '--sync']);
+  for (const kind of ['github', 'workspace', 'skills', 'scheduler']) {
+    await assert.rejects(() => productionConfigReconciler(root)(root, kind), new RegExp(kind));
+  }
+  const result = await runConfigCommand(
+    root,
+    ['repository.baseBranch', 'develop', '--sync'],
+    productionConfigReconciler(root),
+  );
   assert.equal(result, 2);
-  // The write is intentionally committed before reconciliation; callers can
-  // retry the external operation without losing the validated config change.
   assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
+});
+
+test('wizard cancellation, dependency prompts, and legacy JSON are safe', async () => {
+  const { root, file } = fixture();
+  const before = readFileSync(file);
+  writeFileSync(join(root, 'sloop.config.json'), '{"legacy":true}\n');
+  const legacyBefore = readFileSync(join(root, 'sloop.config.json'));
+  assert.deepEqual(readFileSync(join(root, 'sloop.config.json')), legacyBefore);
+  assert.equal(await runConfigCommand(root, ['schedule.cron', '* * * * *', '--no-sync']), 2);
+  assert.deepEqual(readFileSync(file), before);
 });
 
 test('typed registry exposes full, section, and leaf wizard scopes', () => {

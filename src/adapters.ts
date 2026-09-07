@@ -28,15 +28,17 @@ import type { ConfigReconciler } from './config-wizard.js';
 
 /**
  * Production seam for the reconciliation interfaces owned by the runtime.
- * The current repository has no concrete platform adapters; keeping this seam
- * explicit makes --sync fail-safe and lets those adapters be supplied without
- * moving mutation ordering into the wizard.
+ * There are no concrete skill/scheduler/workspace integrations in this
+ * checkout yet, so production must fail closed instead of claiming that a
+ * requested external operation completed. The wizard invokes this only after
+ * validation, confirmation, and atomic replacement of the YAML document.
  */
 export function productionConfigReconciler(_root: string): ConfigReconciler {
   return async (_rootPath, kind) => {
     if (!kind || kind === 'none') return;
-    // Existing integrations can replace this seam; the command still waits
-    // for the adapter after the atomic write before reporting success.
+    throw new Error(
+      `No production reconciler is available for ${kind}; use --no-sync or install the ${kind} integration.`,
+    );
   };
 }
 
