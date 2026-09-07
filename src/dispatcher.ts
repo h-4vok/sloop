@@ -1242,7 +1242,11 @@ export function prepareWorkerBranch(
 ): { branch: string; mainBaseSha: string } {
   const branch = workerBranchName(issue);
   const baseRef = `${remote}/${baseBranch}`;
-  execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
+  try {
+    execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
+  } catch (error) {
+    throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+  }
   const mainBaseSha = execFileSync('git', ['rev-parse', baseRef], {
     cwd,
     encoding: 'utf8',

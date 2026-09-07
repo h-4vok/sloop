@@ -776,6 +776,30 @@ test('new branch preparation uses main updated by fetch', () => {
   }
 });
 
+test('worker branch preparation classifies a failed fetch as an external dependency failure', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-git-fetch-failure-'));
+  const runGit = (args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  try {
+    runGit(['init', '-b', 'main']);
+    runGit(['config', 'user.email', 'test@example.com']);
+    runGit(['config', 'user.name', 'Test']);
+    writeFileSync(join(root, 'README.md'), 'main');
+    runGit(['add', 'README.md']);
+    runGit(['commit', '-m', 'initial']);
+    runGit(['remote', 'add', 'origin', join(root, 'missing-remote')]);
+
+    assert.throws(
+      () => prepareWorkerBranch(31, root),
+      (error) => error instanceof CliFailure && error.exitCode === 5,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('dispatcher rejects a PR whose worker branch violates the convention', async () => {
   const h = harness([{ number: 1, title: 'branch validation' }], {
     headRefName: 'codex/other-branch',
@@ -932,6 +956,18 @@ test('new branch preparation failure is persisted and does not leave a claimed r
   assert.equal(h.state().status, 'blocked');
   assert.match(h.state().lastError, /The loop stopped during blocked/);
   assert.equal(h.state().lastErrorVerbose, 'fetch failed');
+});
+
+test('dispatcher preserves the external exit class from post-preflight branch preparation', async () => {
+  const h = harness([{ number: 1, title: 'a' }]);
+  h.deps.prepareWorkerBranch = () => {
+    throw new CliFailure(5, 'git fetch failed: service unavailable');
+  };
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.notEqual(h.state().status, 'blocked');
 });
 
 function assertPersistedDiagnostic(state, phase, diagnostic, context) {
