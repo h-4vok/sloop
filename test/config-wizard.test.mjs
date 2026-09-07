@@ -65,7 +65,7 @@ test('scalar setters apply without a TTY and reconcile only after the atomic wri
   );
   assert.equal(result, 0);
   assert.deepEqual(events, [['github', true]]);
-  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
+  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?main/);
 });
 
 test('invalid scalar input fails before writing or reconciling', async () => {
@@ -95,7 +95,7 @@ test('production sync fails closed for every external reconciler kind', async ()
     productionConfigReconciler(root),
   );
   assert.equal(result, 2);
-  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
+  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?main/);
 });
 
 test('wizard cancellation, dependency prompts, and legacy JSON are safe', async () => {
@@ -158,8 +158,8 @@ test('production sync never reports success when no reconciler is installed', as
   const before = readFileSync(file, 'utf8');
   const result = await runConfigCommand(root, ['repository.baseBranch', 'develop', '--sync']);
   assert.equal(result, 2);
-  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
-  assert.notEqual(readFileSync(file, 'utf8'), before);
+  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?main/);
+  assert.equal(readFileSync(file, 'utf8'), before);
 });
 
 test('complex setters fail without changing the document', async () => {

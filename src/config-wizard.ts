@@ -25,6 +25,9 @@ export type ConfigReconciler = (
   root: string,
   reconciler: FieldMetadata['requiredReconciler'],
 ) => void | Promise<void>;
+export type ConfigReconcilerWithPreflight = ConfigReconciler & {
+  preflight?: (root: string, reconciler: FieldMetadata['requiredReconciler']) => void;
+};
 export type WizardIO = {
   input: Readable & { isTTY?: boolean };
   output: Writable & { isTTY?: boolean };
@@ -42,11 +45,17 @@ export const reconcileConfig: ConfigReconciler = async (_root, kind) => {
     `No production reconciler is available for ${kind}; use --no-sync or configure an adapter.`,
   );
 };
+(reconcileConfig as ConfigReconcilerWithPreflight).preflight = (_root, kind) => {
+  if (kind !== 'none')
+    throw new Error(
+      `No production reconciler is available for ${kind}; use --no-sync or configure an adapter.`,
+    );
+};
 
 export async function runConfigCommand(
   root: string,
   args: readonly string[],
-  reconciler: ConfigReconciler = reconcileConfig,
+  reconciler: ConfigReconcilerWithPreflight = reconcileConfig,
   io: WizardIO = { input, output },
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
@@ -98,7 +107,7 @@ async function setter(
   path: string,
   raw: string,
   sync: string | undefined,
-  reconciler: ConfigReconciler,
+  reconciler: ConfigReconcilerWithPreflight,
 ): Promise<number> {
   const field = getConfigField(path);
   if (!field) return fail(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
@@ -115,6 +124,8 @@ async function setter(
     const value = parseConfigValue(field, raw);
     const next = updateConfigText(source, path, value);
     loadConfigText(next);
+    if (sync === '--sync' && field.requiredReconciler !== 'none')
+      reconciler.preflight?.(root, field.requiredReconciler);
     console.log(
       `Preview\n${path}: ${display(configValue(cfg, path))} -> ${display(value)}\nConfirm changes? [y/N]`,
     );
@@ -139,7 +150,7 @@ async function wizard(
   scope: string | undefined,
   init: boolean,
   sync?: string,
-  reconciler: ConfigReconciler = reconcileConfig,
+  reconciler: ConfigReconcilerWithPreflight = reconcileConfig,
   io: WizardIO = { input, output },
 ): Promise<number> {
   const legacy = join(root, 'sloop.config.json');
@@ -186,6 +197,12 @@ async function wizard(
       changed.push(`${path}: ${display(old)} -> ${display(value)}`);
     }
     loadConfigText(next);
+    if (sync === '--sync') {
+      const kinds = new Set(
+        changed.map((line) => getConfigField(line.split(':', 1)[0]!)?.requiredReconciler),
+      );
+      for (const kind of kinds) if (kind && kind !== 'none') reconciler.preflight?.(root, kind);
+    }
     console.log(
       changed.length
         ? `Preview\n${changed.join('\n')}\nConfirm changes? [y/N]`
