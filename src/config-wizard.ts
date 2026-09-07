@@ -27,7 +27,19 @@ const CANONICAL = new Set([
   'github.labels.priority',
   'workflow.reviewOrder',
 ]);
-export async function runConfigCommand(root: string, args: readonly string[]): Promise<number> {
+export type ConfigReconciler = (
+  root: string,
+  reconciler: FieldMetadata['requiredReconciler'],
+) => void | Promise<void>;
+
+/** The runtime may provide the existing reconciler adapters; tests can observe ordering here. */
+export const reconcileConfig: ConfigReconciler = async () => {};
+
+export async function runConfigCommand(
+  root: string,
+  args: readonly string[],
+  reconciler: ConfigReconciler = reconcileConfig,
+): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
   const init = args.length === 0;
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
@@ -36,14 +48,14 @@ export async function runConfigCommand(root: string, args: readonly string[]): P
   if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
   if (positional[0] === 'show') return show(file, positional[1]);
   if (!init && positional.length >= 2)
-    return setter(file, positional[0]!, positional.slice(1).join(' '), sync);
+    return setter(root, file, positional[0]!, positional.slice(1).join(' '), sync, reconciler);
   if (!input.isTTY || !output.isTTY)
     return fail(
       init
         ? 'sloop init requires a TTY'
         : 'sloop config wizard requires a TTY; scalar setters and config show do not',
     );
-  return wizard(root, file, positional[0], init, sync);
+  return wizard(root, file, positional[0], init, sync, reconciler);
 }
 function fail(message: string): number {
   console.error(message);
@@ -64,7 +76,14 @@ function show(file: string, path?: string): number {
     return fail(String(e instanceof Error ? e.message : e));
   }
 }
-async function setter(file: string, path: string, raw: string, sync?: string): Promise<number> {
+async function setter(
+  root: string,
+  file: string,
+  path: string,
+  raw: string,
+  sync: string | undefined,
+  reconciler: ConfigReconciler,
+): Promise<number> {
   const field = getConfigField(path);
   if (!field) return fail(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
   if (CANONICAL.has(path)) return fail(`${path} is canonical and read-only in v1; see #55`);
@@ -83,11 +102,14 @@ async function setter(file: string, path: string, raw: string, sync?: string): P
     console.log(
       `Preview\n${path}: ${display(configValue(cfg, path))} -> ${display(value)}\nConfirm changes? [y/N]`,
     );
-    if ((await rl.question('> ')).trim().toLowerCase() !== 'y') return 0;
+    if (input.isTTY && output.isTTY && (await rl.question('> ')).trim().toLowerCase() !== 'y')
+      return 0;
     atomicWrite(file, next);
     console.log('Configuration written atomically.');
-    if (sync === '--sync')
-      console.log(`Synchronization requested for ${field.requiredReconciler}.`);
+    if (sync === '--sync') {
+      await reconciler(root, field.requiredReconciler);
+      console.log(`Synchronization completed for ${field.requiredReconciler}.`);
+    }
     return 0;
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
@@ -101,6 +123,7 @@ async function wizard(
   scope: string | undefined,
   init: boolean,
   sync?: string,
+  reconciler: ConfigReconciler = reconcileConfig,
 ): Promise<number> {
   const legacy = join(root, 'sloop.config.json');
   if (init && existsSync(legacy))
@@ -143,8 +166,13 @@ async function wizard(
       (await rl.question('Add .sloop/ to .gitignore? [Y/n] ')).trim().toLowerCase() !== 'n'
     )
       addGitignore(root);
-    if (sync === '--sync')
-      console.log('Synchronization requested after atomic configuration write.');
+    if (sync === '--sync') {
+      const kinds = new Set(
+        changed.map((line) => getConfigField(line.split(':', 1)[0]!)?.requiredReconciler),
+      );
+      for (const kind of kinds) if (kind && kind !== 'none') await reconciler(root, kind);
+      console.log('Synchronization completed after atomic configuration write.');
+    }
     console.log('Configuration written atomically.');
     return 0;
   } catch (e) {
