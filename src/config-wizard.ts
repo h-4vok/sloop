@@ -1,4 +1,11 @@
-import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+  appendFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -11,115 +18,164 @@ import {
   loadConfigText,
   parseConfigValue,
   updateConfigText,
+  type FieldMetadata,
 } from './config.js';
-
+const CANONICAL = new Set([
+  'github.labels.eligible',
+  'github.labels.claimed',
+  'github.labels.blocked',
+  'github.labels.priority',
+  'workflow.reviewOrder',
+]);
 export async function runConfigCommand(root: string, args: readonly string[]): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
-  const show = args[0] === 'show';
-  const path = show ? args[1] : args[0];
-  if (show) {
-    if (!existsSync(file)) {
-      console.error('No valid sloop.config.yaml; run sloop init');
-      return 2;
-    }
-    try {
-      const cfg = loadConfigText(readFileSync(file, 'utf8'));
-      if (!path) console.log(readFileSync(file, 'utf8'));
-      else {
-        const field = getConfigField(path);
-        if (!field)
-          throw new Error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
-        console.log(JSON.stringify(configValue(cfg, path)));
-      }
-      return 0;
-    } catch (error) {
-      console.error(String(error instanceof Error ? error.message : error));
-      return 2;
-    }
-  }
-  if (path && args[1] && args[1] !== '--sync' && args[1] !== '--no-sync') {
-    const field = getConfigField(path);
-    if (!field) {
-      console.error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
-      return 2;
-    }
-    if (
-      [
-        'github.labels.eligible',
-        'github.labels.claimed',
-        'github.labels.blocked',
-        'github.labels.priority',
-        'workflow.reviewOrder',
-      ].includes(path)
-    ) {
-      console.error(`${path} is canonical and read-only in v1; see #55`);
-      return 2;
-    }
-    if (!existsSync(file)) {
-      console.error('No valid sloop.config.yaml; run sloop init');
-      return 2;
-    }
-    try {
-      const source = readFileSync(file, 'utf8');
-      const cfg = loadConfigText(source);
-      const value = parseConfigValue(field, args[1]!);
-      const next = updateConfigText(source, path, value);
-      atomicWrite(file, next);
-      console.log(`${path}: ${String(configValue(cfg, path))} -> ${String(value)}`);
-      return 0;
-    } catch (error) {
-      console.error(String(error instanceof Error ? error.message : error));
-      return 2;
-    }
-  }
-  if (!input.isTTY || !output.isTTY) {
-    console.error('sloop init/config wizard requires a TTY');
-    return 2;
-  }
-  return runWizard(file, path);
+  const init = args.length === 0;
+  const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
+  const sync = flags[0];
+  const positional = args.filter((a) => !a.startsWith('--'));
+  if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
+  if (positional[0] === 'show') return show(file, positional[1]);
+  if (!init && positional.length >= 2)
+    return setter(file, positional[0]!, positional.slice(1).join(' '), sync);
+  if (!input.isTTY || !output.isTTY)
+    return fail(
+      init
+        ? 'sloop init requires a TTY'
+        : 'sloop config wizard requires a TTY; scalar setters and config show do not',
+    );
+  return wizard(root, file, positional[0], init, sync);
 }
-
-async function runWizard(file: string, scope?: string): Promise<number> {
+function fail(message: string): number {
+  console.error(message);
+  return 2;
+}
+function show(file: string, path?: string): number {
+  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+  try {
+    const cfg = loadConfigText(readFileSync(file, 'utf8'));
+    if (!path) console.log(readFileSync(file, 'utf8'));
+    else {
+      const field = getConfigField(path);
+      if (!field) throw new Error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
+      console.log(JSON.stringify(configValue(cfg, path)));
+    }
+    return 0;
+  } catch (e) {
+    return fail(String(e instanceof Error ? e.message : e));
+  }
+}
+async function setter(file: string, path: string, raw: string, sync?: string): Promise<number> {
+  const field = getConfigField(path);
+  if (!field) return fail(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
+  if (CANONICAL.has(path)) return fail(`${path} is canonical and read-only in v1; see #55`);
+  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+  if (field.type === 'list' || field.type === 'argv')
+    return fail(`${path}: complex values require the interactive wizard`);
+  if (field.requiredReconciler !== 'none' && sync === undefined)
+    return fail(`${path} affects ${field.requiredReconciler}; specify --sync or --no-sync`);
   const rl = createInterface({ input, output });
   try {
-    const source = existsSync(file) ? readFileSync(file, 'utf8') : canonicalConfigYaml();
-    const current = loadConfigText(source);
-    let next = source;
-    const fields = configPaths(scope)
-      .map((path) => getConfigField(path)!)
-      .filter(
-        (field) =>
-          ![
-            'github.labels.eligible',
-            'github.labels.claimed',
-            'github.labels.blocked',
-            'github.labels.priority',
-            'workflow.reviewOrder',
-          ].includes(field.path),
-      );
-    for (const field of fields) {
-      if (field.type === 'list' || field.type === 'argv') {
-        console.log(
-          `${field.path}: ${field.explanation} (complex value; keep current in this wizard)`,
-        );
-        continue;
-      }
-      const old = configValue(current, field.path);
-      const answer = await rl.question(
-        `${field.path}\n  ${field.explanation}\n  recommendation: ${field.recommendation}\n  value [${String(old)}]: `,
-      );
-      if (answer.trim())
-        next = updateConfigText(next, field.path, parseConfigValue(field, answer.trim()));
-    }
+    const source = readFileSync(file, 'utf8');
+    const cfg = loadConfigText(source);
+    const value = parseConfigValue(field, raw);
+    const next = updateConfigText(source, path, value);
     loadConfigText(next);
-    console.log('Preview ready. Confirm changes? [y/N]');
+    console.log(
+      `Preview\n${path}: ${display(configValue(cfg, path))} -> ${display(value)}\nConfirm changes? [y/N]`,
+    );
     if ((await rl.question('> ')).trim().toLowerCase() !== 'y') return 0;
     atomicWrite(file, next);
     console.log('Configuration written atomically.');
+    if (sync === '--sync')
+      console.log(`Synchronization requested for ${field.requiredReconciler}.`);
     return 0;
+  } catch (e) {
+    return fail(String(e instanceof Error ? e.message : e));
   } finally {
     rl.close();
   }
+}
+async function wizard(
+  root: string,
+  file: string,
+  scope: string | undefined,
+  init: boolean,
+  sync?: string,
+): Promise<number> {
+  const legacy = join(root, 'sloop.config.json');
+  if (init && existsSync(legacy))
+    console.log(`Legacy JSON detected at ${legacy}; it will remain untouched and inert.`);
+  const source = existsSync(file) ? readFileSync(file, 'utf8') : canonicalConfigYaml();
+  let current = loadConfigText(source);
+  let next = source;
+  const changed: string[] = [];
+  const rl = createInterface({ input, output });
+  try {
+    for (const path of configPaths(scope)) {
+      const field = getConfigField(path)!;
+      if (CANONICAL.has(path)) {
+        console.log(`${path}: canonical read-only (see #55)`);
+        continue;
+      }
+      if (field.dependencies.length && !dependenciesSatisfied(current, field)) {
+        console.log(`${path}: requires ${field.dependencies.join(', ')}; skipped`);
+        continue;
+      }
+      const old = configValue(current, path);
+      const answer = await rl.question(
+        `${path}\n  ${field.explanation}\n  options: ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  recommendation: ${field.recommendation}\n  value [${display(old)}]: `,
+      );
+      if (!answer.trim()) continue;
+      const value = parseWizardValue(field, answer.trim());
+      next = updateConfigText(next, path, value);
+      changed.push(`${path}: ${display(old)} -> ${display(value)}`);
+    }
+    loadConfigText(next);
+    console.log(
+      changed.length
+        ? `Preview\n${changed.join('\n')}\nConfirm changes? [y/N]`
+        : 'No changes proposed.',
+    );
+    if (!changed.length || (await rl.question('> ')).trim().toLowerCase() !== 'y') return 0;
+    atomicWrite(file, next);
+    if (
+      init &&
+      (await rl.question('Add .sloop/ to .gitignore? [Y/n] ')).trim().toLowerCase() !== 'n'
+    )
+      addGitignore(root);
+    if (sync === '--sync')
+      console.log('Synchronization requested after atomic configuration write.');
+    console.log('Configuration written atomically.');
+    return 0;
+  } catch (e) {
+    return fail(String(e instanceof Error ? e.message : e));
+  } finally {
+    rl.close();
+  }
+}
+function dependenciesSatisfied(cfg: unknown, field: FieldMetadata): boolean {
+  return field.dependencies.every((d) => {
+    const [p, v] = d.split('=');
+    return String(configValue(cfg as never, p!)) === v;
+  });
+}
+function parseWizardValue(field: FieldMetadata, raw: string): unknown {
+  if (field.type === 'list')
+    return field.parser(
+      raw.split(',').map((x) => x.trim()),
+      `$.${field.path}`,
+    );
+  if (field.type === 'argv') return field.parser(JSON.parse(raw), `$.${field.path}`);
+  return parseConfigValue(field, raw);
+}
+function display(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+function addGitignore(root: string): void {
+  const file = join(root, '.gitignore');
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  if (!text.split(/\r?\n/).includes('.sloop/'))
+    appendFileSync(file, `${text && !text.endsWith('\n') ? '\n' : ''}.sloop/\n`);
 }
 function atomicWrite(file: string, content: string): void {
   const temp = `${file}.${randomUUID()}.tmp`;
