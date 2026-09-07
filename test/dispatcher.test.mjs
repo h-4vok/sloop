@@ -1,18 +1,20 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
   acquire,
   childProcessInvocation,
+  CliFailure,
   command,
   dispatcherLockPath,
   dispatch,
   prepareWorkerBranch,
   prepareRecovery,
   recoverStaleLock,
+  resolveExecutable,
   runSyncCommand,
   redactDiagnostic,
   workerBranchName,
@@ -35,6 +37,28 @@ test('Windows batch commands use cmd.exe without Node shell mode', () => {
       args: ['/d', '/s', '/v:off', '/c', '""C:\\tools\\codex.cmd" "exec" "--full-auto""'],
       windowsVerbatimArguments: true,
     },
+  );
+});
+
+test('Windows executable resolution selects an npm command shim', () => {
+  assert.equal(
+    resolveExecutable('codex', 'win32', () => [
+      'C:\\Program Files\\nodejs\\codex',
+      'C:\\Program Files\\nodejs\\codex.cmd',
+      'C:\\tools\\codex.exe',
+    ]),
+    'C:\\Program Files\\nodejs\\codex.cmd',
+  );
+});
+
+test('executable resolution leaves Unix commands and explicit paths unchanged', () => {
+  const unexpectedLookup = () => {
+    throw new Error('lookup should not run');
+  };
+  assert.equal(resolveExecutable('codex', 'linux', unexpectedLookup), 'codex');
+  assert.equal(
+    resolveExecutable('C:\\tools\\codex.exe', 'win32', unexpectedLookup),
+    'C:\\tools\\codex.exe',
   );
 });
 
@@ -319,6 +343,19 @@ function harness(
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
+
+test('post-preflight external adapter failures preserve exit 5', async () => {
+  const h = harness([{ number: 1, title: 'one', body: 'acceptance criteria' }]);
+  h.deps.comment = () => {
+    throw new CliFailure(5, 'gh issue comment failed: service unavailable');
+  };
+
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.equal(h.state().status, 'claimed');
+});
 
 test('public CLI commands invoke only the injected control seams', async () => {
   const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });
@@ -739,6 +776,30 @@ test('new branch preparation uses main updated by fetch', () => {
   }
 });
 
+test('worker branch preparation classifies a failed fetch as an external dependency failure', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-git-fetch-failure-'));
+  const runGit = (args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  try {
+    runGit(['init', '-b', 'main']);
+    runGit(['config', 'user.email', 'test@example.com']);
+    runGit(['config', 'user.name', 'Test']);
+    writeFileSync(join(root, 'README.md'), 'main');
+    runGit(['add', 'README.md']);
+    runGit(['commit', '-m', 'initial']);
+    runGit(['remote', 'add', 'origin', join(root, 'missing-remote')]);
+
+    assert.throws(
+      () => prepareWorkerBranch(31, root),
+      (error) => error instanceof CliFailure && error.exitCode === 5,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('dispatcher rejects a PR whose worker branch violates the convention', async () => {
   const h = harness([{ number: 1, title: 'branch validation' }], {
     headRefName: 'codex/other-branch',
@@ -895,6 +956,18 @@ test('new branch preparation failure is persisted and does not leave a claimed r
   assert.equal(h.state().status, 'blocked');
   assert.match(h.state().lastError, /The loop stopped during blocked/);
   assert.equal(h.state().lastErrorVerbose, 'fetch failed');
+});
+
+test('dispatcher preserves the external exit class from post-preflight branch preparation', async () => {
+  const h = harness([{ number: 1, title: 'a' }]);
+  h.deps.prepareWorkerBranch = () => {
+    throw new CliFailure(5, 'git fetch failed: service unavailable');
+  };
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.notEqual(h.state().status, 'blocked');
 });
 
 function assertPersistedDiagnostic(state, phase, diagnostic, context) {
@@ -1072,7 +1145,10 @@ test('active live run remains exclusive while stale recovery is allowed', async 
       workerHeartbeatAt: Date.now(),
     },
   });
-  await assert.rejects(() => dispatch(h.cfg, h.deps), /active run exists/);
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error.exitCode === 3 && /active run exists/.test(error.message),
+  );
 });
 
 test('stale locks recover safely and reclaim markers are atomic', () => {
@@ -1097,12 +1173,9 @@ test('stale locks recover safely and reclaim markers are atomic', () => {
   ]);
 });
 
-test('status remains concise by default and returns exact verbose diagnostics only on request', () => {
-  const h = harness();
-  mkdirSync(join(h.root, '.sloop'), { recursive: true });
-  writeFileSync(
-    join(h.root, '.sloop', 'state.json'),
-    JSON.stringify({
+test('status remains concise by default and returns exact verbose diagnostics only on request', async () => {
+  const injected = harness([], {
+    initialState: {
       issue: 9,
       pr: 42,
       status: 'worker_running',
@@ -1110,38 +1183,24 @@ test('status remains concise by default and returns exact verbose diagnostics on
       lastErrorVerbose: 'line one\nUnicode: café\nline three',
       branch: 'codex/issue-9',
       workerRecoveryCount: 3,
-    }),
-  );
-  const status = spawnSync(
-    process.execPath,
-    [join(process.cwd(), 'dist', 'dispatcher.js'), '--status'],
-    {
-      cwd: h.root,
-      encoding: 'utf8',
     },
-  );
-  assert.equal(status.status, 0);
-  assert.deepEqual(JSON.parse(status.stdout), {
+  });
+  const output = [];
+  const originalLog = console.log;
+  console.log = (value) => output.push(value);
+  try {
+    await runDispatcherCli(['--status'], injected.deps);
+    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(JSON.parse(output[0]), {
     issue: 9,
     pr: 42,
     status: 'worker_running',
     lastError: 'short summary',
   });
-  const verbose = spawnSync(
-    process.execPath,
-    [join(process.cwd(), 'dist', 'dispatcher.js'), '--status', '--verbose'],
-    { cwd: h.root, encoding: 'utf8' },
-  );
-  assert.equal(verbose.status, 0);
-  assert.deepEqual(JSON.parse(verbose.stdout), {
-    issue: 9,
-    pr: 42,
-    status: 'worker_running',
-    lastError: 'short summary',
-    lastErrorVerbose: 'line one\nUnicode: café\nline three',
-    branch: 'codex/issue-9',
-    workerRecoveryCount: 3,
-  });
+  assert.deepEqual(JSON.parse(output[1]), injected.state());
 });
 
 test('status rejects unsupported flag combinations', () => {
@@ -1157,50 +1216,31 @@ test('status rejects unsupported flag combinations', () => {
       { cwd: h.root, encoding: 'utf8' },
     );
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /--status accepts only the optional --verbose flag/);
+    assert.match(result.stderr, /mixed, duplicate, unknown, or unsupported/);
     assert.equal(result.stdout, '');
   }
 });
 
-test('--list prints only issue number and title while eligible issues retain body data', () => {
-  const h = harness();
-  const fakeBin = mkdtempSync(join(tmpdir(), 'sloop-list-bin-'));
-  const stub = join(fakeBin, 'gh-stub.mjs');
-  writeFileSync(
-    stub,
-    `process.stdout.write(JSON.stringify([
-      { number: 25, title: 'Structured agent output', body: 'internal acceptance criteria' },
-      { number: 7, title: 'Earlier issue', body: 'other internal context' }
-    ]));\n`,
-  );
-
-  if (process.platform === 'win32') {
-    writeFileSync(join(fakeBin, 'gh.cmd'), '@echo off\r\nnode "%~dp0gh-stub.mjs" %*\r\n');
-  } else {
-    const gh = join(fakeBin, 'gh');
-    writeFileSync(gh, `#!/bin/sh\nexec node "${stub}" "$@"\n`);
-    chmodSync(gh, 0o755);
-  }
-
+test('--list prints only issue number and title while eligible issues retain body data', async () => {
+  const injectedIssues = [
+    { number: 7, title: 'Earlier issue', body: 'other internal context' },
+    { number: 25, title: 'Structured agent output', body: 'internal acceptance criteria' },
+  ];
+  const injected = harness(injectedIssues);
+  let output;
+  const originalLog = console.log;
+  console.log = (value) => (output = value);
   try {
-    const result = spawnSync(
-      process.execPath,
-      [join(process.cwd(), 'dist', 'dispatcher.js'), '--list'],
-      {
-        cwd: h.root,
-        encoding: 'utf8',
-        env: { ...process.env, PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}` },
-      },
-    );
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), [
-      { number: 7, title: 'Earlier issue' },
-      { number: 25, title: 'Structured agent output' },
-    ]);
-    assert.doesNotMatch(result.stdout, /body|internal acceptance criteria|other internal context/);
+    await runDispatcherCli(['--list'], injected.deps);
   } finally {
-    rmSync(fakeBin, { recursive: true, force: true });
+    console.log = originalLog;
   }
+  assert.deepEqual(
+    JSON.parse(output),
+    injectedIssues.map(({ number, title }) => ({ number, title })),
+  );
+  assert.doesNotMatch(output, /body|internal acceptance criteria|other internal context/);
+  assert.deepEqual(injected.deps.eligible(), injectedIssues);
 });
 
 test('diagnostic redaction preserves safe multiline output and hides common credentials', () => {
@@ -1273,72 +1313,60 @@ test('diagnostic redaction removes URL userinfo and complete cookie header value
   assert.doesNotMatch(output, /alice|supersecret|session=one|csrf=two|session=three/);
 });
 
-test('legacy lastError-only state remains readable in both status modes', () => {
-  const h = harness();
-  mkdirSync(join(h.root, '.sloop'), { recursive: true });
-  writeFileSync(
-    join(h.root, '.sloop', 'state.json'),
-    JSON.stringify({ issue: 9, status: 'blocked', lastError: 'legacy failure summary' }),
-  );
-  for (const args of [['--status'], ['--status', '--verbose']]) {
-    const result = spawnSync(
-      process.execPath,
-      [join(process.cwd(), 'dist', 'dispatcher.js'), ...args],
-      {
-        cwd: h.root,
-        encoding: 'utf8',
-      },
-    );
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), {
+test('legacy lastError-only state remains readable in both status modes', async () => {
+  const injected = harness([], {
+    initialState: { issue: 9, status: 'blocked', lastError: 'legacy failure summary' },
+  });
+  const output = [];
+  const originalLog = console.log;
+  console.log = (value) => output.push(value);
+  try {
+    await runDispatcherCli(['--status'], injected.deps);
+    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+  } finally {
+    console.log = originalLog;
+  }
+  for (const value of output)
+    assert.deepEqual(JSON.parse(value), {
       issue: 9,
       status: 'blocked',
       lastError: 'legacy failure summary',
     });
-  }
 });
 
-test('successful state without errors remains unchanged in both status modes', () => {
-  const h = harness();
-  mkdirSync(join(h.root, '.sloop'), { recursive: true });
-  writeFileSync(
-    join(h.root, '.sloop', 'state.json'),
-    JSON.stringify({ issue: 9, status: 'claimed' }),
-  );
-  for (const args of [['--status'], ['--status', '--verbose']]) {
-    const result = spawnSync(
-      process.execPath,
-      [join(process.cwd(), 'dist', 'dispatcher.js'), ...args],
-      {
-        cwd: h.root,
-        encoding: 'utf8',
-      },
-    );
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), { issue: 9, status: 'claimed' });
+test('successful state without errors remains unchanged in both status modes', async () => {
+  const injected = harness([], { initialState: { issue: 9, status: 'claimed' } });
+  const output = [];
+  const originalLog = console.log;
+  console.log = (value) => output.push(value);
+  try {
+    await runDispatcherCli(['--status'], injected.deps);
+    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+  } finally {
+    console.log = originalLog;
   }
+  for (const value of output) assert.deepEqual(JSON.parse(value), { issue: 9, status: 'claimed' });
 });
 
-test('verbose status preserves quotes and shell-like diagnostic text exactly', () => {
-  const h = harness();
-  const diagnostic = 'stdout: "quoted"\nstderr: $(whoami) & echo %PATH%\nexit=17';
-  mkdirSync(join(h.root, '.sloop'), { recursive: true });
-  writeFileSync(
-    join(h.root, '.sloop', 'state.json'),
-    JSON.stringify({
+test('verbose status preserves quotes and shell-like diagnostic text exactly', async () => {
+  const injectedDiagnostic = 'stdout: "quoted"\nstderr: $(whoami) & echo %PATH%\nexit=17';
+  const injected = harness([], {
+    initialState: {
       issue: 9,
       status: 'blocked',
       lastError: 'short summary',
-      lastErrorVerbose: diagnostic,
-    }),
-  );
-  const verbose = spawnSync(
-    process.execPath,
-    [join(process.cwd(), 'dist', 'dispatcher.js'), '--status', '--verbose'],
-    { cwd: h.root, encoding: 'utf8' },
-  );
-  assert.equal(verbose.status, 0, verbose.stderr);
-  assert.equal(JSON.parse(verbose.stdout).lastErrorVerbose, diagnostic);
+      lastErrorVerbose: injectedDiagnostic,
+    },
+  });
+  let output;
+  const originalLog = console.log;
+  console.log = (value) => (output = value);
+  try {
+    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(JSON.parse(output).lastErrorVerbose, injectedDiagnostic);
 });
 
 test('prepareRecovery preserves PR and removes only the issue from completion', () => {
@@ -1468,7 +1496,10 @@ test('recoverStaleLock refuses a live owner', () => {
   const lock = dispatcherLockPath(root);
   mkdirSync(lock, { recursive: true });
   writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: 9999 }));
-  assert.throws(() => recoverStaleLock(root, () => true), /owner PID 9999 is still running/);
+  assert.throws(
+    () => recoverStaleLock(root, () => true),
+    (error) => error.exitCode === 3 && /owner PID 9999 is still running/.test(error.message),
+  );
   assert.equal(existsSync(lock), true);
   rmSync(root, { recursive: true, force: true });
 });

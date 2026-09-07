@@ -6,16 +6,27 @@ Sloop is a sequential engineering harness that claims GitHub issues, guides a Wo
 
 ```text
 npm ci
-copy sloop.config.json.example sloop.config.json
 npm run build
 npm run link:local
 sloop --help
 sloop --list
 ```
 
-The package remains private and is installed only as a link to this checkout. Node.js 22 or newer is required. After linking, `sloop` resolves its compiled code from this checkout and can be invoked from any working directory; the working directory remains the target repository whose `sloop.config.json` and `.sloop` state are used. Configure each role command explicitly in `sloop.config.json`.
+The package remains private and is installed only as a link to this checkout. Node.js 22 or newer is required. After linking, `sloop` resolves its compiled code from this checkout and can be invoked from any subdirectory of a repository. Runtime configuration comes from the tracked `sloop.config.yaml` in the configured base commit.
 
 Remove the global link with `npm run unlink:local`. This is also the rollback if a build or runtime-asset check fails. The repository-local `npm run sloop -- <args>` workflow remains available.
+
+## Read-only runtime commands
+
+```text
+sloop status [--verbose] [--json]
+sloop issues list [--json]
+sloop doctor
+```
+
+Sloop discovers the one containing Git repository from the current directory; v1 has no repository override. JSON mode writes exactly one envelope to stdout with `command`, `status`, `phase`, `summary`, `result`, `diagnostics`, and `references` fields. Human successes go to stdout and failures go to stderr.
+
+Process exits are stable: `0` completed/idle/waiting, `2` usage/configuration/preflight, `3` busy/already owned, `4` workflow blocked, and `5` external dependency/service failure.
 
 ## Operating model
 
