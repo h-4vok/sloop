@@ -6,13 +6,21 @@ export interface Workspace<State> {
 }
 
 /** Public command handling that belongs to the platform adapter, not the loop core. */
+export type ReviewCapOptions = Readonly<{
+  steer: string;
+  additionalRounds: number;
+  waivedFindingIds: readonly string[];
+  waiveAllOutstanding: boolean;
+  abandon: boolean;
+}>;
+
 export interface CliControl<Config> {
   loadConfig(): Config;
   status(verbose: boolean): unknown;
   list(): unknown;
   recoverLock(): string;
   reset(): void;
-  resolveReviewCap(args: string[], config: Config): void;
+  resolveReviewCap(options: ReviewCapOptions, config: Config): void;
   linkIssue(issue: number): void;
   prepareRecovery(issue: number, pr: number | undefined, config: Config): number;
 }

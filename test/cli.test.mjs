@@ -36,6 +36,32 @@ test('help and version cannot mask unsupported or mixed command arguments', () =
   }
 });
 
+test('unknown argv fails before dispatcher loading or preflight', async () => {
+  const output = captureConsole();
+  process.exitCode = undefined;
+  try {
+    await runCli(['--tuvieja'], process.version, {
+      runtime: {
+        emitNodeVersionFailure: assert.fail,
+        emitUsageFailure: () => 2,
+        parseCliCommand: () => {
+          throw new Error('unknown option --tuvieja');
+        },
+        runDispatcherPreflight: assert.fail,
+        runReadOnlyCommand: assert.fail,
+      },
+      dispatcher: { runDispatcherCli: assert.fail },
+      adapters: { productionDependencies: assert.fail },
+    });
+    assert.equal(process.exitCode, 2);
+  } finally {
+    process.exitCode = undefined;
+    output.restore();
+  }
+  assert.deepEqual(output.stdout, []);
+  assert.deepEqual(output.stderr, []);
+});
+
 test('help and version work outside the Sloop checkout', () => {
   const outside = mkdtempSync(join(tmpdir(), 'sloop-cli-outside-'));
   try {
@@ -131,7 +157,7 @@ test('runCli preserves the public busy exit and human stream contract', async ()
       runtime: {
         emitNodeVersionFailure: assert.fail,
         emitUsageFailure: assert.fail,
-        parseReadOnlyCommand: () => undefined,
+        parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
         runDispatcherPreflight: () => ({
           code: 0,
           diagnostics: [],
@@ -165,7 +191,10 @@ test('runCli preserves the public blocked exit and JSON stream contract', async 
       runtime: {
         emitNodeVersionFailure: assert.fail,
         emitUsageFailure: assert.fail,
-        parseReadOnlyCommand: () => ({ kind: 'status', json: true, verbose: false }),
+        parseCliCommand: () => ({
+          kind: 'read-only',
+          command: { command: 'status', json: true, verbose: false },
+        }),
         runDispatcherPreflight: assert.fail,
         runReadOnlyCommand: () => {
           console.log(
