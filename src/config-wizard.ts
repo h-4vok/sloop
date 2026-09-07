@@ -26,7 +26,12 @@ export type ConfigReconciler = (
 ) => void | Promise<void>;
 
 /** The runtime may provide the existing reconciler adapters; tests can observe ordering here. */
-export const reconcileConfig: ConfigReconciler = async () => {};
+export const reconcileConfig: ConfigReconciler = async (_root, reconciler) => {
+  if (reconciler !== 'none')
+    throw new Error(
+      `No production reconciler is available for ${reconciler}; use --no-sync or install the ${reconciler} integration.`,
+    );
+};
 
 export async function runConfigCommand(
   root: string,

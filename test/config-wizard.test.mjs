@@ -64,3 +64,26 @@ test('unknown wizard scopes fail with valid-path guidance before entering the TT
   const { root } = fixture();
   assert.equal(await runConfigCommand(root, ['definitely.not.a.path']), 2);
 });
+
+test('production sync never reports success when no reconciler is installed', async () => {
+  const { root, file } = fixture();
+  const before = readFileSync(file, 'utf8');
+  const result = await runConfigCommand(root, ['repository.baseBranch', 'develop', '--sync']);
+  assert.equal(result, 2);
+  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
+  assert.notEqual(readFileSync(file, 'utf8'), before);
+});
+
+test('complex setters fail without changing the document', async () => {
+  const { root, file } = fixture();
+  const before = readFileSync(file);
+  assert.equal(await runConfigCommand(root, ['skills.required', 'foo', '--no-sync']), 2);
+  assert.deepEqual(readFileSync(file), before);
+});
+
+test('show reports the complete document and typed leaf values', async () => {
+  const { root, file } = fixture();
+  assert.equal(await runConfigCommand(root, ['show']), 0);
+  assert.equal(await runConfigCommand(root, ['show', 'schedule.enabled']), 0);
+  assert.ok(readFileSync(file, 'utf8').includes('# Platform scheduler expression.'));
+});
