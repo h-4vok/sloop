@@ -68,6 +68,15 @@ test('scalar setters apply without a TTY and reconcile only after the atomic wri
   assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?main/);
 });
 
+test('scalar setters replace an existing configuration file', async () => {
+  const { root, file } = fixture();
+  const before = readFileSync(file, 'utf8');
+  assert.match(before, /baseBranch:[\s\S]*?\n    main/);
+  assert.equal(await runConfigCommand(root, ['repository.baseBranch', 'develop', '--no-sync']), 0);
+  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?\n    develop/);
+  assert.notEqual(readFileSync(file, 'utf8'), before);
+});
+
 test('invalid scalar input fails before writing or reconciling', async () => {
   const { root, file } = fixture();
   const before = readFileSync(file);

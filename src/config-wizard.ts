@@ -281,10 +281,27 @@ function prepareGitignore(root: string): { file: string; content: string } {
 }
 function atomicWrite(file: string, content: string): void {
   const temp = `${file}.${randomUUID()}.tmp`;
+  const backup = `${file}.${randomUUID()}.bak`;
   try {
     writeFileSync(temp, content, { flag: 'wx' });
-    renameSync(temp, file);
+    if (process.platform !== 'win32' || !existsSync(file)) {
+      renameSync(temp, file);
+      return;
+    }
+
+    // Windows does not allow renameSync to replace an existing file. Move the
+    // old destination out of the way, install the fully-written temp file,
+    // and restore the old file if the second rename fails.
+    renameSync(file, backup);
+    try {
+      renameSync(temp, file);
+    } catch (error) {
+      renameSync(backup, file);
+      throw error;
+    }
+    rmSync(backup, { force: true });
   } finally {
     rmSync(temp, { force: true });
+    rmSync(backup, { force: true });
   }
 }
