@@ -169,6 +169,16 @@ logging:
     # Record redacted role invocation metadata.
     true
 arbiter:
+  mode:
+    experimental
+  command:
+    - npm
+    - run
+    - arbiter-fixture
+  classifier:
+    - npm
+    - run
+    - arbiter-fixture
   reviewRounds:
     # Maximum review rounds before Arbiter intervention.
     3
