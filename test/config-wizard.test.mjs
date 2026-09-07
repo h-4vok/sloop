@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { canonicalConfigYaml } from '../dist/config.js';
+import { configPaths } from '../dist/config.js';
 import { runConfigCommand } from '../dist/config-wizard.js';
 import { parseCliCommand } from '../dist/runtime.js';
 
@@ -52,6 +53,25 @@ test('production sync never reports success when no reconciler adapter is availa
   // The write is intentionally committed before reconciliation; callers can
   // retry the external operation without losing the validated config change.
   assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
+});
+
+test('typed registry exposes full, section, and leaf wizard scopes', () => {
+  const all = configPaths();
+  const workspace = configPaths('workspace');
+  const leaf = configPaths('workspace.mode');
+  assert.ok(all.length > workspace.length);
+  assert.ok(workspace.length > leaf.length);
+  assert.deepEqual(leaf, ['workspace.mode']);
+  assert.ok(workspace.every((path) => path === 'workspace' || path.startsWith('workspace.')));
+});
+
+test('complex and canonical setters fail before changing bytes', async () => {
+  const { root, file } = fixture();
+  const before = readFileSync(file);
+  assert.equal(await runConfigCommand(root, ['workflow.reviewOrder', 'qa', '--no-sync']), 2);
+  assert.deepEqual(readFileSync(file), before);
+  assert.equal(await runConfigCommand(root, ['github.labels.eligible', 'other', '--no-sync']), 2);
+  assert.deepEqual(readFileSync(file), before);
 });
 
 test('init and config retain distinct command identity', () => {
