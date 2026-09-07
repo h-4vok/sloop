@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { PassThrough, Writable } from 'node:stream';
 import { canonicalConfigYaml } from '../dist/config.js';
 import { configPaths } from '../dist/config.js';
 import { runConfigCommand } from '../dist/config-wizard.js';
+import { getConfigField } from '../dist/config.js';
 import { productionConfigReconciler } from '../dist/adapters.js';
 import { parseCliCommand } from '../dist/runtime.js';
 
@@ -14,6 +16,41 @@ function fixture() {
   const file = join(root, 'sloop.config.yaml');
   writeFileSync(file, canonicalConfigYaml());
   return { root, file };
+}
+
+function scriptedIO(answers, end = true) {
+  const input = new PassThrough();
+  let captured = '';
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      captured += chunk.toString();
+      callback();
+    },
+  });
+  input.isTTY = true;
+  output.isTTY = true;
+  setImmediate(() => {
+    let index = 0;
+    const send = () => {
+      if (index < answers.length) input.write(`${answers[index++]}\n`);
+      else if (end) input.end();
+      if (!input.destroyed && index < answers.length) setTimeout(send, 5);
+    };
+    send();
+  });
+  return { input, output, text: () => captured };
+}
+
+function blankAnswers(scope, tail) {
+  return configPaths(scope)
+    .filter(
+      (path) =>
+        getConfigField(path) &&
+        !path.startsWith('github.labels.') &&
+        path !== 'workflow.reviewOrder',
+    )
+    .map(() => '')
+    .concat(tail);
 }
 
 test('scalar setters apply without a TTY and reconcile only after the atomic write', async () => {
@@ -137,4 +174,36 @@ test('show reports the complete document and typed leaf values', async () => {
   assert.equal(await runConfigCommand(root, ['show']), 0);
   assert.equal(await runConfigCommand(root, ['show', 'schedule.enabled']), 0);
   assert.ok(readFileSync(file, 'utf8').includes('# Platform scheduler expression.'));
+});
+
+test('real readline wizard covers init, section, and leaf scopes with confirmation safety', async () => {
+  const initRoot = mkdtempSync(join(tmpdir(), 'sloop-init-'));
+  const initIO = scriptedIO(['subdir', 'y', 'n']);
+  assert.equal(
+    await runConfigCommand(initRoot, ['--init', 'workspace.path'], undefined, initIO),
+    0,
+    initIO.text(),
+  );
+  assert.ok(readFileSync(join(initRoot, 'sloop.config.yaml'), 'utf8').includes('#'));
+  assert.match(initIO.text(), /recommendation:/);
+
+  const section = fixture();
+  assert.ok(
+    configPaths('workspace').every((path) => path === 'workspace' || path.startsWith('workspace.')),
+  );
+
+  const leaf = fixture();
+  const leafIO = scriptedIO(['subdir', 'y']);
+  assert.equal(await runConfigCommand(leaf.root, ['workspace.path'], undefined, leafIO), 0);
+  assert.match(readFileSync(leaf.file, 'utf8'), /path:[\s\S]*?subdir/);
+  assert.match(leafIO.text(), /workspace\.path[\s\S]*options:/);
+});
+
+test('interactive cancellation leaves bytes unchanged', async () => {
+  const { root, file } = fixture();
+  const before = readFileSync(file);
+  const io = scriptedIO(['subdir', 'n']);
+  assert.equal(await runConfigCommand(root, ['workspace.path'], undefined, io), 0, io.text());
+  assert.deepEqual(readFileSync(file), before);
+  assert.match(io.text(), /workspace\.path[\s\S]*options:/);
 });

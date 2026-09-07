@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'nod
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
+import type { Readable, Writable } from 'node:stream';
 import { stdin as input, stdout as output } from 'node:process';
 import {
   canonicalConfigYaml,
@@ -24,6 +25,10 @@ export type ConfigReconciler = (
   root: string,
   reconciler: FieldMetadata['requiredReconciler'],
 ) => void | Promise<void>;
+export type WizardIO = {
+  input: Readable & { isTTY?: boolean };
+  output: Writable & { isTTY?: boolean };
+};
 
 /** The runtime may provide the existing reconciler adapters; tests can observe ordering here. */
 /**
@@ -42,6 +47,7 @@ export async function runConfigCommand(
   root: string,
   args: readonly string[],
   reconciler: ConfigReconciler = reconcileConfig,
+  io: WizardIO = { input, output },
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
   const init = args.includes('--init');
@@ -58,13 +64,13 @@ export async function runConfigCommand(
     return fail(`unknown path ${positional[0]}; valid paths: ${configPaths().join(', ')}`);
   if (!init && positional.length >= 2)
     return setter(root, file, positional[0]!, positional.slice(1).join(' '), sync, reconciler);
-  if (!input.isTTY || !output.isTTY)
+  if (!io.input.isTTY || !io.output.isTTY)
     return fail(
       init
         ? 'sloop init requires a TTY'
         : 'sloop config wizard requires a TTY; scalar setters and config show do not',
     );
-  return wizard(root, file, positional[0], init, sync, reconciler);
+  return wizard(root, file, positional[0], init, sync, reconciler, io);
 }
 function fail(message: string): number {
   console.error(message);
@@ -134,6 +140,7 @@ async function wizard(
   init: boolean,
   sync?: string,
   reconciler: ConfigReconciler = reconcileConfig,
+  io: WizardIO = { input, output },
 ): Promise<number> {
   const legacy = join(root, 'sloop.config.json');
   if (init && existsSync(legacy))
@@ -142,7 +149,7 @@ async function wizard(
   let current = loadConfigText(source);
   let next = source;
   const changed: string[] = [];
-  const rl = createInterface({ input, output });
+  const rl = createInterface({ input: io.input, output: io.output });
   try {
     for (const path of configPaths(scope)) {
       const field = getConfigField(path)!;
