@@ -402,7 +402,16 @@ export const configRegistry = deepFreeze([
       `agents.${role}.argv`,
       'argv',
       argvParser,
-      ['codex', 'exec', '--sandbox', 'danger-full-access'],
+      [
+        'codex',
+        'exec',
+        '--sandbox',
+        'danger-full-access',
+        '--model',
+        'gpt-5.6-luna',
+        '-c',
+        'model_reasoning_effort=low',
+      ],
       `${role} runner argv; never evaluated by a shell.`,
     ),
     f(
