@@ -45,6 +45,15 @@ test('invalid scalar input fails before writing or reconciling', async () => {
   assert.equal(reconciled, false);
 });
 
+test('production sync never reports success when no reconciler adapter is available', async () => {
+  const { root, file } = fixture();
+  const result = await runConfigCommand(root, ['repository.baseBranch', 'develop', '--sync']);
+  assert.equal(result, 2);
+  // The write is intentionally committed before reconciliation; callers can
+  // retry the external operation without losing the validated config change.
+  assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?develop/);
+});
+
 test('init and config retain distinct command identity', () => {
   assert.deepEqual(parseCliCommand(['init']), { kind: 'config', args: ['--init'] });
   assert.deepEqual(parseCliCommand(['config']), { kind: 'config', args: [] });
