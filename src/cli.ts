@@ -121,8 +121,15 @@ export async function runCli(
         stdout: console.log,
         stderr: console.error,
       });
-      const { runConfigCommand } = await import('./config-wizard.js');
-      process.exitCode = await runConfigCommand(root, command.args);
+      const [{ runConfigCommand }, { productionConfigReconciler }] = await Promise.all([
+        import('./config-wizard.js'),
+        import('./adapters.js'),
+      ]);
+      process.exitCode = await runConfigCommand(
+        root,
+        command.args,
+        productionConfigReconciler(root),
+      );
       return;
     }
     const [{ runDispatcherCli }, { productionDependencies }] = modules

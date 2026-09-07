@@ -10,6 +10,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "arbiter-fixture": "node arbiter-fixture.cjs",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",

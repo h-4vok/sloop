@@ -1,26 +1,29 @@
-# Config wizard Windows smoke procedure
+# Windows TTY smoke procedure
 
-Run these commands from a fresh temporary Git repository containing the built
-CLI. Record each exit code and the SHA-256 hash of `sloop.config.yaml` before
-and after every command. Use a real Windows console for the two interactive
-commands; use redirected input only for the scalar setter.
+Run this from a newly created temporary Git repository after `npm run build`.
+The commands below are intentionally isolated and use `--no-sync`; they do not
+touch `.sloop/state.json` or any external integration.
 
 ```powershell
+$root = Join-Path $env:TEMP ("sloop-wizard-smoke-" + [guid]::NewGuid())
+New-Item -ItemType Directory $root | Out-Null
+git -C $root init
 node dist/cli.js init
-# Expected: explanatory prompts, Preview old -> new, then a confirmation;
-# cancelling leaves the YAML absent (or byte-for-byte unchanged).
-
-node dist/cli.js config workspace.mode
-# Expected: only the workspace wizard scope is presented; cancellation leaves
-# the YAML hash unchanged.
-
+node dist/cli.js config show repository.baseBranch
 node dist/cli.js config repository.baseBranch develop --no-sync
-# Expected: exit 0 without a TTY, output includes old -> develop, and the
-# resulting YAML is valid. Diagnose failures with stderr, exit code, and hashes.
-
-node dist/cli.js config skills.required foo --no-sync
-# Expected: nonzero exit and wizard guidance; the YAML hash is unchanged.
+node dist/cli.js config workspace.mode worktree --no-sync
 ```
 
-This file is a copyable smoke procedure, not a claim that an interactive
-Windows console was available during automated verification.
+Expected diagnostics: `init` requires an interactive TTY and prints one
+explanatory prompt at a time, then a preview before writing. `config show` and
+the scalar setter work without a TTY; the setter prints old/new values. The
+`workspace.mode` command is a scalar setter and requires its dependent
+`workspace.worktreeRoot` when the complete document is validated; if that
+dependency is absent it exits non-zero and leaves the YAML unchanged. To test
+the wizard dependency prompt, run `node dist/cli.js config workspace` in the
+same TTY and cancel at confirmation; compare the YAML bytes before and after.
+
+If a command fails, capture its complete stderr and exit code, then inspect
+`sloop.config.yaml` with `Get-FileHash` before/after. Do not retry with
+`--sync` during this smoke test because this checkout intentionally fails
+closed when a production reconciler integration is unavailable.

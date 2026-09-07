@@ -24,6 +24,23 @@ import {
   updatePullRequestBody,
   writeState,
 } from './dispatcher.js';
+import type { ConfigReconciler } from './config-wizard.js';
+
+/**
+ * Production seam for the reconciliation interfaces owned by the runtime.
+ * There are no concrete skill/scheduler/workspace integrations in this
+ * checkout yet, so production must fail closed instead of claiming that a
+ * requested external operation completed. The wizard invokes this only after
+ * validation, confirmation, and atomic replacement of the YAML document.
+ */
+export function productionConfigReconciler(_root: string): ConfigReconciler {
+  return async (_rootPath, kind) => {
+    if (!kind || kind === 'none') return;
+    throw new Error(
+      `No production reconciler is available for ${kind}; use --no-sync or install the ${kind} integration.`,
+    );
+  };
+}
 
 /** Assemble concrete production adapters outside the dispatcher core. */
 function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config {

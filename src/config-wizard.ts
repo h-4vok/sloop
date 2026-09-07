@@ -26,11 +26,16 @@ export type ConfigReconciler = (
 ) => void | Promise<void>;
 
 /** The runtime may provide the existing reconciler adapters; tests can observe ordering here. */
-export const reconcileConfig: ConfigReconciler = async (_root, reconciler) => {
-  if (reconciler !== 'none')
-    throw new Error(
-      `No production reconciler is available for ${reconciler}; use --no-sync or install the ${reconciler} integration.`,
-    );
+/**
+ * The CLI must provide a concrete adapter when one exists.  Keeping the
+ * default deliberately failing is safer than claiming that --sync worked
+ * while silently doing nothing (the repository currently has no production
+ * skill/scheduler/workspace reconciler implementation).
+ */
+export const reconcileConfig: ConfigReconciler = async (_root, kind) => {
+  throw new Error(
+    `No production reconciler is available for ${kind}; use --no-sync or configure an adapter.`,
+  );
 };
 
 export async function runConfigCommand(
@@ -72,7 +77,8 @@ function show(file: string, path?: string): number {
     if (!path) console.log(readFileSync(file, 'utf8'));
     else {
       const field = getConfigField(path);
-      if (!field) throw new Error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
+      if (!field && configPaths(path).length === 0)
+        throw new Error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
       console.log(JSON.stringify(configValue(cfg, path)));
     }
     return 0;
