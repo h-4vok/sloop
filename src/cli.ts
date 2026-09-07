@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const packageJson = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
@@ -52,6 +53,7 @@ export interface RunCliModules {
     | 'parseCliCommand'
     | 'runDispatcherPreflight'
     | 'runReadOnlyCommand'
+    | 'discoverRepository'
   >;
   dispatcher: Pick<DispatcherModule, 'runDispatcherCli'>;
   adapters: Pick<AdaptersModule, 'productionDependencies'>;
@@ -97,6 +99,30 @@ export async function runCli(
     }
     if (command.kind === 'read-only') {
       process.exitCode = runReadOnlyCommand(command.command);
+      return;
+    }
+    if (command.kind === 'config') {
+      const { discoverRepository } = runtime;
+      const root = discoverRepository({
+        cwd: process.cwd(),
+        platform: process.platform,
+        nodeVersion: process.version,
+        run(file, args, cwd) {
+          const result = spawnSync(file, [...args], {
+            cwd: cwd ?? process.cwd(),
+            encoding: 'utf8',
+          });
+          return {
+            stdout: result.stdout ?? '',
+            stderr: result.stderr ?? '',
+            status: result.status ?? 1,
+          };
+        },
+        stdout: console.log,
+        stderr: console.error,
+      });
+      const { runConfigCommand } = await import('./config-wizard.js');
+      process.exitCode = await runConfigCommand(root, command.args);
       return;
     }
     const [{ runDispatcherCli }, { productionDependencies }] = modules
