@@ -40,6 +40,12 @@ export async function runConfigCommand(
   const positional = args.filter((a) => !a.startsWith('--'));
   if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
   if (positional[0] === 'show') return show(file, positional[1]);
+  if (
+    positional.length === 1 &&
+    !getConfigField(positional[0]!) &&
+    configPaths(positional[0]!).length === 0
+  )
+    return fail(`unknown path ${positional[0]}; valid paths: ${configPaths().join(', ')}`);
   if (!init && positional.length >= 2)
     return setter(root, file, positional[0]!, positional.slice(1).join(' '), sync, reconciler);
   if (!input.isTTY || !output.isTTY)
