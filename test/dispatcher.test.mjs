@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import {
   acquire,
   childProcessInvocation,
+  CliFailure,
   command,
   dispatcherLockPath,
   dispatch,
@@ -342,6 +343,19 @@ function harness(
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
+
+test('post-preflight external adapter failures preserve exit 5', async () => {
+  const h = harness([{ number: 1, title: 'one', body: 'acceptance criteria' }]);
+  h.deps.comment = () => {
+    throw new CliFailure(5, 'gh issue comment failed: service unavailable');
+  };
+
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.equal(h.state().status, 'claimed');
+});
 
 test('public CLI commands invoke only the injected control seams', async () => {
   const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });

@@ -1567,6 +1567,10 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         // dispatcher transition logic is being hardened.
         return 0;
       } catch (e) {
+        // Adapter boundaries classify busy and external dependency failures for
+        // automation. Do not convert those operational results into a workflow
+        // block merely because they happen after dispatch has started.
+        if (e instanceof CliFailure) throw e;
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[sloop] issue #${issue.number} bloqueada: ${message}`);
         const current = d.load();
