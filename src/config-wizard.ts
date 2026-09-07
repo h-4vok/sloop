@@ -160,6 +160,11 @@ async function wizard(
   let current = loadConfigText(source);
   let next = source;
   const changed: string[] = [];
+  // A first-time init must still create the canonical document when every
+  // prompt accepts its default. Keep this as a pending mutation so creation
+  // follows the same preview/confirmation/atomic-write transaction.
+  if (init && !existsSync(file))
+    changed.push('sloop.config.yaml: missing -> canonical v1 configuration');
   const rl = createInterface({ input: io.input, output: io.output });
   try {
     for (const path of configPaths(scope)) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PassThrough, Writable } from 'node:stream';
@@ -206,4 +206,28 @@ test('interactive cancellation leaves bytes unchanged', async () => {
   assert.equal(await runConfigCommand(root, ['workspace.path'], undefined, io), 0, io.text());
   assert.deepEqual(readFileSync(file), before);
   assert.match(io.text(), /workspace\.path[\s\S]*options:/);
+});
+
+test('init creates canonical YAML when a scoped prompt accepts its default', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-bare-init-'));
+  const io = scriptedIO(['', 'y', 'n']);
+  assert.equal(
+    await runConfigCommand(root, ['--init', 'workspace.path'], undefined, io),
+    0,
+    io.text(),
+  );
+  const file = join(root, 'sloop.config.yaml');
+  assert.ok(existsSync(file));
+  assert.ok(readFileSync(file, 'utf8').includes('#'));
+});
+
+test('init cancellation does not create YAML', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-bare-init-cancel-'));
+  const io = scriptedIO(['', 'n']);
+  assert.equal(
+    await runConfigCommand(root, ['--init', 'workspace.path'], undefined, io),
+    0,
+    io.text(),
+  );
+  assert.equal(existsSync(join(root, 'sloop.config.yaml')), false);
 });
