@@ -1014,8 +1014,23 @@ test('blocked issue with PR context enters recovery instead of a fresh claim', a
 });
 
 test('recovery rejects a non-deterministic persisted branch', async () => {
+  const now = Date.now();
   const h = harness([{ number: 1, title: 'a' }], {
-    initialState: prepareRecovery({ completedIssues: [1], branch: 'main' }, 1, 14, Date.now(), 100),
+    initialState: {
+      issue: 1,
+      pr: 14,
+      branch: 'main',
+      status: 'worker_running',
+      workerRunId: 'corrupt-recovery-state',
+      workerPid: -1,
+      workerStartedAt: now - 1000,
+      workerHeartbeatAt: now - 1000,
+      workerRecoveryCount: 0,
+      reviewRound: 1,
+      completedIssues: [],
+      drainStatus: 'running',
+      updatedAt: now,
+    },
   });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'worker_recovery_pending');
@@ -1308,7 +1323,7 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   const state = prepareRecovery(
     {
       pr: 15,
-      branch: 'codex/issue-1',
+      branch: 'main',
       headSha: 'head-15',
       mainBaseSha: 'main-10',
       reviewRound: 4,
@@ -1323,6 +1338,7 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
     100,
   );
   assert.equal(state.pr, 15);
+  assert.equal(state.branch, 'codex/issue-1');
   assert.equal(state.status, 'worker_running');
   assert.deepEqual(state.completedIssues, [2]);
   assert.equal(state.workerPid, -1);
@@ -1331,6 +1347,14 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   assert.equal(state.lastQaFeedback, 'fix the boundary case');
   assert.equal(state.taskContext, 'recovered task context');
   assert.equal(state.headSha, 'head-15');
+});
+
+test('prepareRecovery persists the canonical branch from empty state', () => {
+  const state = prepareRecovery({}, 31, 54, 1000, 100);
+  assert.equal(state.issue, 31);
+  assert.equal(state.pr, 54);
+  assert.equal(state.branch, 'codex/issue-31');
+  assert.equal(state.status, 'worker_running');
 });
 
 test('no-work done state clears all prior run context', async () => {
