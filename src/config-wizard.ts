@@ -1,4 +1,5 @@
-import { copyFileSync, existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -281,6 +282,7 @@ function prepareGitignore(root: string): { file: string; content: string } {
 }
 function atomicWrite(file: string, content: string): void {
   const temp = `${file}.${randomUUID()}.tmp`;
+  const backup = `${file}.${randomUUID()}.bak`;
   try {
     writeFileSync(temp, content, { flag: 'wx' });
     if (process.platform !== 'win32' || !existsSync(file)) {
@@ -288,11 +290,30 @@ function atomicWrite(file: string, content: string): void {
       return;
     }
 
-    // Windows does not allow renameSync to replace an existing file. Copy the
-    // complete, already-written document over the live destination so there
-    // is no interval in which the configuration path is absent.
-    copyFileSync(temp, file);
+    // Windows does not allow renameSync to replace an existing file. Use the
+    // native ReplaceFile operation through PowerShell; unlike a backup/rename
+    // sequence, it keeps the destination continuously bound to a complete
+    // old or new file if the process is interrupted.
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        '[System.IO.File]::Replace($env:SLOOP_CONFIG_TEMP, $env:SLOOP_CONFIG_DEST, $env:SLOOP_CONFIG_BACKUP)',
+      ],
+      {
+        stdio: 'ignore',
+        env: {
+          ...process.env,
+          SLOOP_CONFIG_TEMP: temp,
+          SLOOP_CONFIG_DEST: file,
+          SLOOP_CONFIG_BACKUP: backup,
+        },
+      },
+    );
   } finally {
     rmSync(temp, { force: true });
+    rmSync(backup, { force: true });
   }
 }
