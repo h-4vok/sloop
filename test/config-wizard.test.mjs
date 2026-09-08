@@ -117,6 +117,27 @@ test('wizard cancellation, dependency prompts, and legacy JSON are safe', async 
   assert.deepEqual(readFileSync(file), before);
 });
 
+test('dependency preview shows the captured old value', async () => {
+  const { root, file } = fixture();
+  const source = readFileSync(file, 'utf8').replace(
+    /  enabled:\n    # Whether base health gates new work\.\n    true/,
+    '  enabled:\n    # Whether base health gates new work.\n    false',
+  );
+  writeFileSync(file, source);
+  const io = scriptedIO(['true', '["gh","run","list"]', 'n']);
+  const logs = [];
+  const log = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    assert.equal(await runConfigCommand(root, ['health.command', '--no-sync'], undefined, io), 0);
+  } finally {
+    console.log = log;
+  }
+  assert.match(logs.join('\n'), /health\.enabled: false -> true/);
+  assert.doesNotMatch(logs.join('\n'), /health\.enabled: true -> true/);
+  assert.equal(readFileSync(file, 'utf8'), source);
+});
+
 test('typed registry exposes full, section, and leaf wizard scopes', () => {
   const all = configPaths();
   const workspace = configPaths('workspace');

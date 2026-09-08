@@ -185,11 +185,10 @@ async function wizard(
             if (!answer.trim())
               throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
             const value = parseWizardValue(dependencyField, answer.trim());
+            const old = configValue(current, dependencyPath!);
             next = updateConfigText(next, dependencyPath!, value);
             current = loadConfigText(next);
-            changed.push(
-              `${dependencyPath}: ${display(configValue(current, dependencyPath!))} -> ${display(value)}`,
-            );
+            changed.push(`${dependencyPath}: ${display(old)} -> ${display(value)}`);
           }
         }
         if (!dependenciesSatisfied(current, field))
