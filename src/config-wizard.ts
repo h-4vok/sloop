@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -281,7 +281,6 @@ function prepareGitignore(root: string): { file: string; content: string } {
 }
 function atomicWrite(file: string, content: string): void {
   const temp = `${file}.${randomUUID()}.tmp`;
-  const backup = `${file}.${randomUUID()}.bak`;
   try {
     writeFileSync(temp, content, { flag: 'wx' });
     if (process.platform !== 'win32' || !existsSync(file)) {
@@ -289,19 +288,11 @@ function atomicWrite(file: string, content: string): void {
       return;
     }
 
-    // Windows does not allow renameSync to replace an existing file. Move the
-    // old destination out of the way, install the fully-written temp file,
-    // and restore the old file if the second rename fails.
-    renameSync(file, backup);
-    try {
-      renameSync(temp, file);
-    } catch (error) {
-      renameSync(backup, file);
-      throw error;
-    }
-    rmSync(backup, { force: true });
+    // Windows does not allow renameSync to replace an existing file. Copy the
+    // complete, already-written document over the live destination so there
+    // is no interval in which the configuration path is absent.
+    copyFileSync(temp, file);
   } finally {
     rmSync(temp, { force: true });
-    rmSync(backup, { force: true });
   }
 }
