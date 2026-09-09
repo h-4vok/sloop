@@ -509,6 +509,22 @@ function isStaleWorker(s: State, cfg: Config, d: Deps): boolean {
   return Boolean(lastHeartbeat && d.now() - lastHeartbeat > (cfg.workerLeaseMs ?? 900000));
 }
 
+function recoveryEligibilityError(state: State, issue: number): Error {
+  const context = [
+    `status=${state.status ?? 'unknown'}`,
+    `pr=${state.pr ?? 'none'}`,
+    `branch=${state.branch ?? 'none'}`,
+    `reviewRound=${state.reviewRound ?? 'unknown'}`,
+  ].join(', ');
+  return new Error(
+    `Issue #${issue} cannot be recovered because it was not returned by the eligible-issues query. ` +
+      `Sloop requires the issue to be open and labeled "Automation Ready". ` +
+      `Persisted recovery context: ${context}. ` +
+      `Verify with "gh issue view ${issue} --json state,labels"; add the label if needed, ` +
+      `then run "sloop --prepare-recovery ${issue}${state.pr ? ` --pr ${state.pr}` : ''}" and retry "sloop".`,
+  );
+}
+
 function skillFor(status: Status | undefined): string {
   if (status === 'worker_running' || status === 'in_progress') return skills.work;
   if (status === 'worker_recovery_pending') return skills.recovery;
@@ -1483,7 +1499,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         ? d.eligible().find((candidate) => candidate.number === existingIssue)
         : d.eligible().find((candidate) => !processed.has(candidate.number));
       if (!issue) {
-        if (existingIssue) throw new Error(`issue #${existingIssue} is not eligible for recovery`);
+        if (existingIssue) throw recoveryEligibilityError(d.load(), existingIssue);
         d.save({
           completedIssues: d.load().completedIssues ?? [],
           mainGreen: d.load().mainGreen,

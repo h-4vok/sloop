@@ -920,6 +920,29 @@ test('recovery detects stale Worker state, starts a new Worker and reuses the ex
   );
 });
 
+test('recovery explains why an issue is not eligible', async () => {
+  const h = harness([], {
+    initialState: {
+      issue: 31,
+      status: 'worker_running',
+      pr: 54,
+      branch: 'codex/issue-31',
+      reviewRound: 9,
+      workerPid: -1,
+    },
+  });
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => {
+      assert.match(error.message, /Issue #31 cannot be recovered/);
+      assert.match(error.message, /Automation Ready/);
+      assert.match(error.message, /status=worker_running, pr=54, branch=codex\/issue-31/);
+      assert.match(error.message, /gh issue view 31/);
+      return true;
+    },
+  );
+});
+
 test('new branch preparation failure is persisted and does not leave a claimed run stuck', async () => {
   const h = harness([{ number: 1, title: 'a' }]);
   h.deps.prepareWorkerBranch = () => {
