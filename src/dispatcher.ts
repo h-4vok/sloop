@@ -1581,7 +1581,38 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
 export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Promise<0 | 4> {
   switch (command.kind) {
     case 'status':
-      console.log(JSON.stringify(d.status(command.verbose), null, 2));
+      {
+        const result = d.status(command.verbose) as {
+          issue?: number;
+          pr?: number;
+          status?: Status;
+          nextAction?: {
+            command: string;
+            description: string;
+            mutates: boolean;
+          };
+          [key: string]: unknown;
+        };
+        const issue = result.issue;
+        const pr = result.pr;
+        if (
+          !command.verbose &&
+          result.status === 'worker_recovery_pending' &&
+          typeof issue === 'number' &&
+          Number.isInteger(issue) &&
+          issue > 0 &&
+          typeof pr === 'number' &&
+          Number.isInteger(pr) &&
+          pr > 0
+        ) {
+          result.nextAction = {
+            command: `sloop --prepare-recovery ${issue} --pr ${pr}`,
+            description: 'Prepare local recovery for the failed Worker.',
+            mutates: true,
+          };
+        }
+        console.log(JSON.stringify(result, null, 2));
+      }
       return 0;
     case 'list':
       console.log(JSON.stringify(d.list(), null, 2));
