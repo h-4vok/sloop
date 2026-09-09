@@ -91,7 +91,10 @@ export function syncPrerequisites(
         root,
       ) || '[]',
     ) as { name: string; color: string; description: string }[];
-    if (existing.some((item) => item.name === label)) continue;
+    if (existing.some((item) => item.name === label)) {
+      out(`Label '${label}' already exists; preserved its metadata.`);
+      continue;
+    }
     runner(
       'gh',
       [
@@ -107,6 +110,7 @@ export function syncPrerequisites(
       ],
       root,
     );
+    out(`Label '${label}' installed.`);
   }
   const destination = safeSkillRoot(root, config);
   mkdirSync(destination, { recursive: true });
@@ -115,6 +119,7 @@ export function syncPrerequisites(
     const target = join(destination, name, 'SKILL.md');
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, readFileSync(source));
+    out(`Skill '${name}' installed at ${target}.`);
   }
   out(`Synchronized ${labels.length} labels and ${names.length} Sloop skills.`);
 }

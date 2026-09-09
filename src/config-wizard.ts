@@ -118,6 +118,7 @@ async function directInit(
     } else console.log(`${file} already exists; leaving it unchanged.`);
     return 0;
   }
+  const rl = createInterface({ input: io.input, output: io.output });
   try {
     atomicWrite(file, canonicalConfigYaml());
     console.log(`Created ${file} with default configuration.`);
@@ -125,17 +126,12 @@ async function directInit(
       forceSync ||
       (io.input.isTTY &&
         io.output.isTTY &&
-        (
-          await createInterface({ input: io.input, output: io.output }).question(
-            'Synchronize GitHub labels and Sloop skills now? [Y/n] ',
-          )
-        )
+        (await rl.question('Synchronize GitHub labels and Sloop skills now? [Y/n] '))
           .trim()
           .toLowerCase() !== 'n')
     ) {
       try {
         await reconciler(root, 'github');
-        await reconciler(root, 'skills');
       } catch (e) {
         return fail(`Synchronization failed: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -146,6 +142,8 @@ async function directInit(
     return 0;
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
+  } finally {
+    rl.close();
   }
 }
 function fail(message: string): number {
