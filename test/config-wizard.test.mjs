@@ -138,6 +138,21 @@ test('dependency preview shows the captured old value', async () => {
   assert.equal(readFileSync(file, 'utf8'), source);
 });
 
+test('wizard retries invalid enum values without restarting init', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-wizard-retry-'));
+  const io = scriptedIO(['pijs', 'checkout', 'n']);
+  const errors = [];
+  const error = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    assert.equal(await runConfigCommand(root, ['--init', 'workspace.mode'], undefined, io), 0);
+  } finally {
+    console.error = error;
+  }
+  assert.match(errors.join('\n'), /expected one of: checkout, worktree/);
+  assert.match(io.text(), /Leave empty to use "checkout" as default/);
+});
+
 test('typed registry exposes full, section, and leaf wizard scopes', () => {
   const all = configPaths();
   const workspace = configPaths('workspace');

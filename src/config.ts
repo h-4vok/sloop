@@ -258,7 +258,7 @@ const f = <T>(
     parser,
     default: defaultValue,
     explanation,
-    recommendation: `Use ${JSON.stringify(defaultValue)} unless repository policy requires otherwise.`,
+    recommendation: `Leave empty to use ${JSON.stringify(defaultValue)} as default. Change unless repository policy requires otherwise.`,
     ...extra,
   });
 

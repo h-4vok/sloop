@@ -181,10 +181,19 @@ async function wizard(
             const dependencyField = getConfigField(dependencyPath!);
             if (!dependencyField)
               throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
-            const answer = await askField(rl, dependencyField, current);
-            if (!answer.trim())
-              throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
-            const value = parseWizardValue(dependencyField, answer.trim());
+            let answer = await askField(rl, dependencyField, current);
+            let value: unknown;
+            while (true) {
+              try {
+                if (!answer.trim())
+                  throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
+                value = parseWizardValue(dependencyField, answer.trim());
+                break;
+              } catch (error) {
+                console.error(String(error instanceof Error ? error.message : error));
+                answer = await askField(rl, dependencyField, current);
+              }
+            }
             const old = configValue(current, dependencyPath!);
             next = updateConfigText(next, dependencyPath!, value);
             current = loadConfigText(next);
@@ -195,9 +204,18 @@ async function wizard(
           throw new Error(`${path} requires companion path ${field.dependencies.join(', ')}`);
       }
       const old = configValue(current, path);
-      const answer = await askField(rl, field, current);
+      let answer = await askField(rl, field, current);
       if (!answer.trim()) continue;
-      const value = parseWizardValue(field, answer.trim());
+      let value: unknown;
+      while (true) {
+        try {
+          value = parseWizardValue(field, answer.trim());
+          break;
+        } catch (error) {
+          console.error(String(error instanceof Error ? error.message : error));
+          answer = await askField(rl, field, current);
+        }
+      }
       next = updateConfigText(next, path, value);
       changed.push(`${path}: ${display(old)} -> ${display(value)}`);
     }
