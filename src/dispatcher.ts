@@ -12,6 +12,7 @@ import type {
   GitProvider,
   HealthGate,
   LockStore,
+  WorkspaceAdapter,
   RunEventSink,
   Scheduler,
   Workspace,
@@ -136,6 +137,7 @@ export type Deps = Workspace<State> &
   RunEventSink &
   LockStore &
   GitProvider & {
+    workspaceAdapter?: WorkspaceAdapter;
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
   };
@@ -994,7 +996,7 @@ async function runWorker(
     );
   if (evidence.baseRefName !== (cfg.baseBranch ?? 'main'))
     throw new Error(`PR #${metadata.pr} must target ${cfg.baseBranch ?? 'main'}`);
-  const expectedWorkerBranch = workerBranchName(issue.number);
+  const expectedWorkerBranch = d.load().branch ?? workerBranchName(issue.number);
   if (evidence.headRefName !== expectedWorkerBranch)
     throw new Error(
       `PR #${metadata.pr} must use worker branch ${expectedWorkerBranch}; found ${evidence.headRefName}`,
@@ -1569,14 +1571,24 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         } else {
           claimNewIssue(d, issue.number);
           d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          const prepared = d.prepareWorkerBranch(issue.number);
+          d.save({ ...d.load(), workerRunId: randomUUID() });
+          const prepared = d.workspaceAdapter
+            ? d.workspaceAdapter.prepare(issue.number)
+            : d.prepareWorkerBranch(issue.number);
           d.save({
             ...d.load(),
             branch: prepared.branch,
-            mainBaseSha: prepared.mainBaseSha,
+            mainBaseSha: 'baseSha' in prepared ? prepared.baseSha : prepared.mainBaseSha,
+            ...('headSha' in prepared ? { headSha: prepared.headSha } : {}),
+            ...('ownership' in prepared ? { workerRunId: prepared.ownership.runId } : {}),
           });
         }
-        await processIssue(cfg, d, issue);
+        try {
+          await processIssue(cfg, d, issue);
+        } finally {
+          const facts = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
+          if (facts) d.workspaceAdapter?.cleanup(facts);
+        }
         // Temporarily process exactly one issue per invocation. This prevents
         // state from one completed issue leaking into the next issue while the
         // dispatcher transition logic is being hardened.

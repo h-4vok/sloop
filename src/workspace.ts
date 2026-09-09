@@ -8,9 +8,11 @@ export type WorkspaceFacts = Readonly<{
   executionRoot: string;
   branch: string;
   baseSha: string;
+  headSha: string;
   ownership: Readonly<{ runId: string; issue: number; protocol: string }>;
 }>;
 export type WorkspaceOptions = Readonly<{
+  mode?: 'checkout' | 'worktree';
   repositoryRoot: string;
   remote: string;
   baseBranch: string;
@@ -20,7 +22,12 @@ export type WorkspaceOptions = Readonly<{
   worktreeRoot?: string;
   stateFile?: string;
 }>;
-type Registered = WorkspaceFacts & { repositoryRoot: string; pr?: number; orphaned?: boolean };
+type Registered = WorkspaceFacts & {
+  repositoryRoot: string;
+  worktreeRoot?: string;
+  pr?: number;
+  orphaned?: boolean;
+};
 const git = (args: string[], cwd: string) =>
   execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 const inside = (root: string, target: string) => {
@@ -54,8 +61,8 @@ const branch = (prefix: string, issue: number, root: string) => {
 };
 export function prepareCheckoutWorkspace(o: WorkspaceOptions): WorkspaceFacts {
   const root = resolve(o.repositoryRoot);
-  if (git(['status', '--porcelain'], root))
-    throw new Error('working tree is dirty; refusing workspace preparation');
+  const dirty = git(['status', '--porcelain=v1'], root);
+  if (dirty) throw new Error(`working tree is dirty; refusing workspace preparation:\n${dirty}`);
   git(['checkout', o.baseBranch], root);
   git(['pull', '--ff-only', o.remote, o.baseBranch], root);
   git(['fetch', o.remote, o.baseBranch], root);
@@ -67,6 +74,7 @@ export function prepareCheckoutWorkspace(o: WorkspaceOptions): WorkspaceFacts {
     executionRoot: root,
     branch: name,
     baseSha,
+    headSha: baseSha,
     ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
   };
 }
@@ -87,21 +95,28 @@ export function prepareWorktreeWorkspace(o: WorkspaceOptions): WorkspaceFacts {
     executionRoot,
     branch: name,
     baseSha,
+    headSha: baseSha,
     ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
   };
   const file = o.stateFile ?? resolve(root, '.sloop/state.json');
-  write(file, [...read(file), { ...facts, repositoryRoot: root }]);
+  write(file, [...read(file), { ...facts, repositoryRoot: root, worktreeRoot: parent }]);
   return facts;
 }
 export function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefined {
   const file = o.stateFile ?? resolve(o.repositoryRoot, '.sloop/state.json');
-  return read(file).find(
+  const root = resolve(o.repositoryRoot);
+  const parent = resolve(root, o.worktreeRoot ?? '.sloop/worktrees');
+  const found = read(file).find(
     (x) =>
-      x.repositoryRoot === resolve(o.repositoryRoot) &&
+      x.repositoryRoot === root &&
       x.ownership.runId === o.runId &&
       x.ownership.issue === o.issue &&
-      x.ownership.protocol === 'sloop-workspace-v1',
+      x.ownership.protocol === 'sloop-workspace-v1' &&
+      x.baseSha === git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root) &&
+      (o.worktreeRoot === undefined || inside(parent, x.executionRoot)) &&
+      (o.worktreeRoot === undefined || existsSync(x.executionRoot)),
   );
+  return found && found.headSha ? found : undefined;
 }
 export function listWorkspaces(
   repositoryRoot: string,
@@ -127,7 +142,7 @@ export function clearWorkspaces(
     if (
       x.repositoryRoot !== root ||
       x.ownership.protocol !== 'sloop-workspace-v1' ||
-      !inside(resolve(root, '.sloop/worktrees'), x.executionRoot) ||
+      !inside(resolve(x.worktreeRoot ?? resolve(root, '.sloop/worktrees')), x.executionRoot) ||
       !existsSync(x.executionRoot)
     ) {
       keep.push(x);
@@ -157,7 +172,7 @@ export function cleanupWorkspace(
       x.ownership.protocol === facts.ownership.protocol,
   );
   if (!entry) throw new Error('workspace ownership could not be verified');
-  const parent = resolve(root, '.sloop/worktrees');
+  const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
   if (!inside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
   git(['worktree', 'remove', '--force', entry.executionRoot], root);
   write(
