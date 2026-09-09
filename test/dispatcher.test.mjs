@@ -21,6 +21,7 @@ import {
   withIssueClosingReference,
   resetRunState,
   runCommand,
+  hasCommit,
   runDispatcherCli,
   maxRoundsForUserBudget,
 } from '../dist/dispatcher.js';
@@ -575,6 +576,11 @@ test('PR closing reference uses the claimed issue exactly once for creation and 
     'Summary\n\nCloses #17',
   );
   assert.throws(() => withIssueClosingReference('', 0), /issue number must be positive/);
+});
+
+test('Worker commit evidence accepts escaped newline delimiters from Windows comments', () => {
+  assert.equal(hasCommit('[Worker] round=2 commit=abc123\\n\\nVerification', 'abc123456789'), true);
+  assert.equal(hasCommit('[Worker] round=2 commit=abc123', 'def456789'), false);
 });
 
 test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async () => {

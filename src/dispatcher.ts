@@ -671,9 +671,12 @@ function roundFromBody(body: string | undefined): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-function hasCommit(body: string | undefined, headSha: string | undefined): boolean {
+export function hasCommit(body: string | undefined, headSha: string | undefined): boolean {
   if (!headSha) return true;
-  const match = body?.match(/\bcommit=([^\s]+)/i)?.[1];
+  // Some Windows callers pass escaped newlines (`\\n`) in comment bodies.
+  // Do not let the delimiter become part of the commit token, or valid
+  // Worker evidence will be rejected after the role has already exited.
+  const match = body?.match(/\bcommit=([^\s\\]+)/i)?.[1];
   return Boolean(match && headSha.startsWith(match));
 }
 
