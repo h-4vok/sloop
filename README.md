@@ -19,6 +19,9 @@ Remove the global link with `npm run unlink:local`. This is also the rollback if
 ## Read-only runtime commands
 
 ```text
+sloop config init [--wizard]
+sloop config install [--force]
+sloop config show
 sloop status [--verbose] [--json]
 sloop issues list [--json]
 sloop doctor

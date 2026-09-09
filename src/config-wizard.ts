@@ -15,6 +15,7 @@ import {
   updateConfigText,
   type FieldMetadata,
 } from './config.js';
+import { migrateSkillNames } from './sync.js';
 const CANONICAL = new Set([
   'github.labels.eligible',
   'github.labels.claimed',
@@ -61,12 +62,41 @@ export async function runConfigCommand(
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
   const init = args.includes('--init');
+  const installCommand = args.includes('--install');
+  const forceSync = args.includes('--force') || args.includes('--force-sync');
   const wizardMode = args.includes('--wizard');
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
   const sync = flags[0];
   const positional = args.filter((a) => !a.startsWith('--'));
+  if (installCommand) {
+    if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
+    if (!forceSync) {
+      if (!io.input.isTTY || !io.output.isTTY)
+        return fail(
+          'sloop config install requires a TTY; use --force for non-interactive installation',
+        );
+      const rl = createInterface({ input: io.input, output: io.output });
+      try {
+        const answer = await rl.question(
+          'Install configured GitHub labels and Sloop skills now? [Y/n] ',
+        );
+        if (answer.trim().toLowerCase() === 'n') {
+          console.log('Installation skipped.');
+          return 0;
+        }
+      } finally {
+        rl.close();
+      }
+    }
+    try {
+      await reconciler(root, 'github');
+      return 0;
+    } catch (e) {
+      return fail(`Synchronization failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
-  if (wizardMode && !init) return fail('--wizard is only valid with sloop init');
+  if (wizardMode && !init) return fail('--wizard is only valid with sloop config init');
   if (positional[0] === 'show') return show(file, positional[1]);
   if (
     positional.length === 1 &&
@@ -74,28 +104,64 @@ export async function runConfigCommand(
     configPaths(positional[0]!).length === 0
   )
     return fail(`unknown path ${positional[0]}; valid paths: ${configPaths().join(', ')}`);
-  if (init && !wizardMode) return directInit(file);
+  if (init && !wizardMode) return directInit(root, file, forceSync, reconciler, io);
   if (!init && positional.length >= 2)
     return setter(root, file, positional[0]!, positional.slice(1).join(' '), sync, reconciler);
   if (!io.input.isTTY || !io.output.isTTY)
     return fail(
       init
-        ? 'sloop init requires a TTY'
+        ? 'sloop config init requires a TTY'
         : 'sloop config wizard requires a TTY; scalar setters and config show do not',
     );
   return wizard(root, file, positional[0], init, sync, reconciler, io);
 }
-function directInit(file: string): number {
+async function directInit(
+  root: string,
+  file: string,
+  forceSync: boolean,
+  reconciler: ConfigReconcilerWithPreflight,
+  io: WizardIO,
+): Promise<number> {
   if (existsSync(file)) {
-    console.log(`${file} already exists; leaving it unchanged.`);
+    const source = readFileSync(file, 'utf8');
+    const migrated = migrateSkillNames(source);
+    if (migrated !== source) {
+      try {
+        loadConfigText(migrated);
+        atomicWrite(file, migrated);
+        console.log(`Migrated legacy skill names in ${file}.`);
+      } catch (e) {
+        return fail(String(e instanceof Error ? e.message : e));
+      }
+    } else console.log(`${file} already exists; leaving it unchanged.`);
     return 0;
   }
+  const rl = createInterface({ input: io.input, output: io.output });
   try {
     atomicWrite(file, canonicalConfigYaml());
     console.log(`Created ${file} with default configuration.`);
+    if (
+      forceSync ||
+      (io.input.isTTY &&
+        io.output.isTTY &&
+        (await rl.question('Synchronize GitHub labels and Sloop skills now? [Y/n] '))
+          .trim()
+          .toLowerCase() !== 'n')
+    ) {
+      try {
+        await reconciler(root, 'github');
+      } catch (e) {
+        return fail(`Synchronization failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else
+      console.log(
+        'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
+      );
     return 0;
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
+  } finally {
+    rl.close();
   }
 }
 function fail(message: string): number {
@@ -103,7 +169,7 @@ function fail(message: string): number {
   return 2;
 }
 function show(file: string, path?: string): number {
-  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
   try {
     const cfg = loadConfigText(readFileSync(file, 'utf8'));
     if (!path) console.log(readFileSync(file, 'utf8'));
@@ -129,7 +195,7 @@ async function setter(
   const field = getConfigField(path);
   if (!field) return fail(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
   if (CANONICAL.has(path)) return fail(`${path} is canonical and read-only in v1; see #55`);
-  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
   if (field.type === 'list' || field.type === 'argv')
     return fail(`${path}: complex values require the interactive wizard`);
   if (field.requiredReconciler !== 'none' && sync === undefined)
@@ -174,8 +240,9 @@ async function wizard(
   if (init && existsSync(legacy))
     console.log(`Legacy JSON detected at ${legacy}; it will remain untouched and inert.`);
   const source = existsSync(file) ? readFileSync(file, 'utf8') : canonicalConfigYaml();
-  let current = loadConfigText(source);
-  let next = source;
+  const initialSource = init ? migrateSkillNames(source) : source;
+  let current = loadConfigText(initialSource);
+  let next = initialSource;
   const changed: string[] = [];
   const asked = new Set<string>();
   const useColor = io.output === output && !process.env.NO_COLOR;
@@ -281,6 +348,18 @@ async function wizard(
       );
       for (const kind of kinds) if (kind && kind !== 'none') await reconciler(root, kind);
       console.log('Synchronization completed after atomic configuration write.');
+    }
+    if (init && sync !== '--sync' && io.input === input) {
+      const answer = (await rl.question('Synchronize GitHub labels and Sloop skills now? [Y/n] '))
+        .trim()
+        .toLowerCase();
+      if (answer !== 'n') {
+        await reconciler(root, 'github');
+        await reconciler(root, 'skills');
+      } else
+        console.log(
+          'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
+        );
     }
     console.log('Configuration written atomically.');
     return 0;

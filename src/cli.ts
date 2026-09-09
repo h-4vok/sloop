@@ -13,8 +13,10 @@ export const HELP = `Sloop ${packageJson.version}
 Usage: sloop <command> [option]
 
 Configuration:
-  init                   Create sloop.config.yaml with defaults
-  init --wizard          Configure sloop.config.yaml interactively
+  config init            Create sloop.config.yaml with defaults
+  config init --wizard   Configure sloop.config.yaml interactively
+  config install [--force]
+                         Install configured GitHub labels and Sloop skills
 
 Read-only commands:
   status [--verbose] [--json]  Validate and show repository context
