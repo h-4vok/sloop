@@ -56,7 +56,13 @@ jobs:
             echo "$tag existed without a GitHub Release; created the missing release without metadata mutation."
             exit 0
           fi
-          node --input-type=module -e "import {updateRepositoryMetadata} from './dist/release.js'; updateRepositoryMetadata(process.env.VERSION, new Date().toISOString().slice(0,10), Number(process.env.PR_NUMBER))"
+          export RELEASE_DATE=$(date -u +%F)
+          metadata_matches=$(node --input-type=module -e "import {hasReleaseMetadata} from './dist/release.js'; import {readFileSync} from 'node:fs'; console.log(hasReleaseMetadata(readFileSync('package.json','utf8'), readFileSync('CHANGELOG.md','utf8'), process.env.VERSION, process.env.RELEASE_DATE, Number(process.env.PR_NUMBER)))" )
+          if [ "$metadata_matches" = true ]; then
+            echo "Release metadata for $tag is already committed; resuming publication."
+          else
+            node --input-type=module -e "import {updateRepositoryMetadata} from './dist/release.js'; updateRepositoryMetadata(process.env.VERSION, process.env.RELEASE_DATE, Number(process.env.PR_NUMBER))"
+          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add package.json CHANGELOG.md

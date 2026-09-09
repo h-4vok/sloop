@@ -65,6 +65,20 @@ export function updateMetadata(
   };
 }
 
+export function hasReleaseMetadata(
+  packageText: string,
+  changelog: string,
+  version: string,
+  _date: string,
+  pr: number,
+): boolean {
+  const pkg = JSON.parse(packageText) as { version?: string };
+  const match = changelog.match(
+    /^## ([^ ]+) - (\d{4}-\d{2}-\d{2})\n\n- Merged pull request #(\d+)\./,
+  );
+  return pkg.version === version && match?.[1] === version && Number(match[3]) === pr;
+}
+
 export function updateRepositoryMetadata(version: string, date: string, pr: number): void {
   const result = updateMetadata(
     readFileSync('package.json', 'utf8'),

@@ -5,6 +5,7 @@ import {
   parseReleaseKind,
   nextVersion,
   updateMetadata,
+  hasReleaseMetadata,
   verifyReleaseState,
 } from '../dist/release.js';
 
@@ -34,6 +35,32 @@ test('updates package metadata and changelog with PR reference', () => {
   assert.equal(JSON.parse(result.packageText).version, '0.1.2');
   assert.match(result.changelog, /## 0\.1\.2 - 2026-09-09/);
   assert.match(result.changelog, /#72/);
+});
+
+test('recognizes metadata already committed after a partial publication push', () => {
+  const result = updateMetadata(
+    '{"name":"sloop","version":"0.1.1"}\n',
+    '# Changelog\n\nold\n',
+    '0.1.2',
+    '2026-09-10',
+    72,
+  );
+  assert.equal(
+    hasReleaseMetadata(result.packageText, result.changelog, '0.1.2', '2026-09-10', 72),
+    true,
+  );
+  assert.equal(
+    hasReleaseMetadata(result.packageText, result.changelog, '0.1.2', '2026-09-11', 72),
+    true,
+  );
+  assert.equal(
+    hasReleaseMetadata(result.packageText, result.changelog, '0.1.2', '2026-09-10', 73),
+    false,
+  );
+  assert.equal(
+    hasReleaseMetadata('{"version":"0.1.1"}', result.changelog, '0.1.2', '2026-09-10', 72),
+    false,
+  );
 });
 
 test('verifies an existing tag and release are idempotently consistent', () => {
