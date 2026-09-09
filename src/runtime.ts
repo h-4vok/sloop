@@ -512,6 +512,7 @@ export type CliCommand =
   | Readonly<{ kind: 'help'; target: string }>
   | Readonly<{ kind: 'version' }>
   | Readonly<{ kind: 'read-only'; command: ReadOnlyCommand }>
+  | Readonly<{ kind: 'config'; args: readonly string[] }>
   | Readonly<{ kind: 'dispatcher'; command: DispatcherCommand }>;
 
 function commandNameForDispatcher(command: DispatcherCommand): string {
@@ -651,6 +652,14 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
   }
   const readOnly = parseReadOnlyCommand(args);
   if (readOnly) return { kind: 'read-only', command: readOnly };
+  if (args[0] === 'init' || args[0] === 'config') {
+    if (args[0] === 'init') {
+      if (args.slice(1).some((arg) => arg !== '--wizard'))
+        throw new Error('usage: sloop init [--wizard]');
+      return { kind: 'config', args: ['--init', ...args.slice(1)] };
+    }
+    return { kind: 'config', args: args.slice(1) };
+  }
   return { kind: 'dispatcher', command: parseDispatcherCommand(args) };
 }
 
