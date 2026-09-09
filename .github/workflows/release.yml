@@ -1,0 +1,56 @@
+name: Release merged work
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run format:check
+      - name: Calculate release
+        id: release
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          kind=$(node --input-type=module -e "import {parseReleaseKind} from './dist/release.js'; console.log(parseReleaseKind(process.env.PR_TITLE))")
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          [ "$kind" = none ] && exit 0
+          latest=$(git tag --list 'v*' --sort=-version:refname | head -n1)
+          latest=${latest#v}; [ -n "$latest" ] || latest=$(node -p "require('./package.json').version")
+          version=$(node --input-type=module -e "import {nextVersion} from './dist/release.js'; console.log(nextVersion(process.argv[1], process.argv[2]))" "$latest" "$kind")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Publish release metadata
+        if: steps.release.outputs.kind != 'none'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          node --input-type=module -e "import {updateRepositoryMetadata} from './dist/release.js'; updateRepositoryMetadata(process.env.VERSION, new Date().toISOString().slice(0,10), Number(process.env.PR_NUMBER))"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package.json CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore(release): v$VERSION"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            test "$(git rev-list -n1 "v$VERSION")" = "$(git rev-parse HEAD)" || { echo "v$VERSION already points at different content" >&2; exit 1; }
+          else
+            git tag "v$VERSION"
+          fi
+          git push origin main "v$VERSION"
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "v$VERSION" --generate-notes
