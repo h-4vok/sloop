@@ -43,7 +43,6 @@ function requireSep(): string {
 }
 function asset(root: string, name: string): string {
   const candidates = [
-    join(root, '.codex', 'skills', name, 'SKILL.md'),
     join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'skills', name, 'SKILL.md'),
   ];
   const found = candidates.find(existsSync);
