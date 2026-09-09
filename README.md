@@ -1,6 +1,6 @@
 # Sloop
 
-Sloop is a sequential engineering harness that claims GitHub issues, guides a Worker through implementation, and gates the resulting pull request through CI, QA/SDET, and adversarial staff review. A human always controls merges.
+Sloop is a sequential engineering harness that claims GitHub issues, guides a Worker through implementation, and gates the resulting pull request through CI and QA/SDET. A human always controls merges.
 
 ## Getting started
 
@@ -30,7 +30,7 @@ Process exits are stable: `0` completed/idle/waiting, `2` usage/configuration/pr
 
 ## Operating model
 
-Sloop operates only against `main`. For each eligible issue it prepares `codex/issue-<number>` from `origin/main`, opens or resumes one PR targeting `main`, then requires CI, QA/SDET, and Staff review before marking it ready for a human merge. See [the operating specification](docs/sloop-engineering-v1.md) and [role guides](docs/roles/).
+Sloop operates only against `main`. For each eligible issue it prepares `codex/issue-<number>` from `origin/main`, opens or resumes one PR targeting `main`, then requires CI and QA/SDET before marking it ready for a human merge. See [the operating specification](docs/sloop-engineering-v1.md) and [role guides](docs/roles/).
 
 Local runtime state is `.sloop/state.json` and is intentionally untracked. There is no automatic migration from prior runtime state: archive or remove it, then begin with a clean `.sloop` state.
 
@@ -44,4 +44,4 @@ npm test
 
 ## Skills
 
-The duplicated Codex skills are `product-lead`, `dispatcher`, `worker`, `staff-reviewer`, `qa-sdet`, and `triage-staging`.
+The duplicated Codex skills are `product-lead`, `dispatcher`, `worker`, `qa-sdet`, and `triage-staging`.

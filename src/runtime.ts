@@ -29,6 +29,7 @@ export type RuntimeIo = Readonly<{
   platform: NodeJS.Platform;
   nodeVersion: string;
   run: (file: string, args: readonly string[], cwd?: string) => CommandResult;
+  readFile: (file: string) => string;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
 }>;
@@ -64,6 +65,7 @@ const productionIo = (): RuntimeIo => ({
       };
     }
   },
+  readFile: (file) => readFileSync(file, 'utf8'),
   stdout: (text) => process.stdout.write(`${text}\n`),
   stderr: (text) => process.stderr.write(`${text}\n`),
 });
@@ -149,42 +151,24 @@ export function discoverRepository(io: RuntimeIo): string {
 }
 
 function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref: string } {
-  const local = io.run('git', ['show', 'HEAD:sloop.config.yaml'], root);
-  if (local.status !== 0)
+  const file = join(root, 'sloop.config.yaml');
+  let source: string;
+  try {
+    source = io.readFile(file);
+  } catch {
     throw diagnostic(
       'configuration',
-      'sloop.config.yaml is absent from HEAD.',
-      'Commit a valid sloop.config.yaml before running Sloop.',
+      'sloop.config.yaml is absent from the working tree.',
+      'Create a valid sloop.config.yaml in the repository root.',
     );
-  let bootstrap: SloopConfig;
-  try {
-    bootstrap = loadConfigText(local.stdout);
-  } catch (error) {
-    throw diagnostic('configuration', String(error), 'Repair and commit sloop.config.yaml.');
   }
-  const ref = `${bootstrap.repository.remote}/${bootstrap.repository.baseBranch}`;
-  const base = io.run('git', ['show', `${ref}:sloop.config.yaml`], root);
-  if (base.status !== 0)
-    throw diagnostic(
-      'base-configuration',
-      `sloop.config.yaml is absent from configured base commit ${ref}.`,
-      `Fetch ${bootstrap.repository.remote} and ensure ${bootstrap.repository.baseBranch} contains a valid sloop.config.yaml.`,
-    );
   try {
-    const config = loadConfigText(base.stdout);
-    if (
-      config.repository.remote !== bootstrap.repository.remote ||
-      config.repository.baseBranch !== bootstrap.repository.baseBranch
-    )
-      throw new Error(
-        `configured base selector changed between HEAD and ${ref}; repository.remote and repository.baseBranch must match`,
-      );
-    return { config, ref };
+    return { config: loadConfigText(source), ref: 'working-tree' };
   } catch (error) {
     throw diagnostic(
-      'base-configuration',
+      'configuration',
       String(error),
-      `Repair sloop.config.yaml on ${ref} and fetch the updated branch.`,
+      'Repair sloop.config.yaml in the working tree.',
     );
   }
 }
@@ -395,14 +379,6 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
   if (tree.status !== 0)
     failures.push(
       diagnostic('working-tree', 'Working tree status failed.', 'Repair the Git checkout.'),
-    );
-  else if (clean(tree.stdout))
-    failures.push(
-      diagnostic(
-        'working-tree',
-        'The working tree is not clean.',
-        'Commit or stash local changes.',
-      ),
     );
   const branch = io.run('git', ['symbolic-ref', '--short', 'HEAD'], root);
   const branchName = clean(branch.stdout);

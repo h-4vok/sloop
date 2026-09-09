@@ -31,9 +31,6 @@ export type Status =
   | 'qa_review_pending'
   | 'qa_changes_requested'
   | 'qa_approved'
-  | 'staff_review_pending'
-  | 'staff_changes_requested'
-  | 'staff_approved'
   | 'review_cap_pending'
   | 'abandon_pending'
   | 'abandoned'
@@ -57,7 +54,6 @@ export type State = {
   lastErrorVerbose?: string;
   lastCiFeedback?: string;
   lastQaFeedback?: string;
-  lastStaffFeedback?: string;
   taskContext?: string;
   workerRunId?: string;
   workerPid?: number;
@@ -119,7 +115,6 @@ type Command = string[] | { command: string; args: string[]; timeoutMs?: number;
 export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
-  staffReviewCommand?: Command;
   qaCommand?: Command;
   requiredPrChecks?: string[];
   checkPollIntervalMs?: number;
@@ -170,7 +165,6 @@ const skills = {
   work: 'worker',
   recovery: 'dispatcher recovery',
   qa: 'qa-sdet',
-  staff: 'staff-reviewer',
 } as const;
 
 export function readState(file = stateFile): State {
@@ -517,11 +511,26 @@ function isStaleWorker(s: State, cfg: Config, d: Deps): boolean {
   return Boolean(lastHeartbeat && d.now() - lastHeartbeat > (cfg.workerLeaseMs ?? 900000));
 }
 
+function recoveryEligibilityError(state: State, issue: number): Error {
+  const context = [
+    `status=${state.status ?? 'unknown'}`,
+    `pr=${state.pr ?? 'none'}`,
+    `branch=${state.branch ?? 'none'}`,
+    `reviewRound=${state.reviewRound ?? 'unknown'}`,
+  ].join(', ');
+  return new Error(
+    `Issue #${issue} cannot be recovered because it was not returned by the eligible-issues query. ` +
+      `Sloop requires the issue to be open and labeled "Automation Ready". ` +
+      `Persisted recovery context: ${context}. ` +
+      `Verify with "gh issue view ${issue} --json state,labels"; add the label if needed, ` +
+      `then run "sloop --prepare-recovery ${issue}${state.pr ? ` --pr ${state.pr}` : ''}" and retry "sloop".`,
+  );
+}
+
 function skillFor(status: Status | undefined): string {
   if (status === 'worker_running' || status === 'in_progress') return skills.work;
   if (status === 'worker_recovery_pending') return skills.recovery;
   if (status?.startsWith('qa_')) return skills.qa;
-  if (status?.startsWith('staff_')) return skills.staff;
   return skills.claim;
 }
 
@@ -529,15 +538,15 @@ function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}
   const current = d.load();
   const diagnostic =
     extra.lastError ??
-    (['ci_failed', 'qa_changes_requested', 'staff_changes_requested'].includes(next)
-      ? (extra.lastCiFeedback ?? extra.lastQaFeedback ?? extra.lastStaffFeedback)
+    (['ci_failed', 'qa_changes_requested'].includes(next)
+      ? (extra.lastCiFeedback ?? extra.lastQaFeedback)
       : undefined);
   const errors = diagnostic === undefined ? {} : normalizedError(next, diagnostic, current);
   d.save({ ...current, issue, status: next, updatedAt: d.now(), ...extra, ...errors });
   console.error(`[sloop] issue #${issue}: ${next}`);
   d.comment(
     issue,
-    `Sloop engineering v2: estado ${next}. Skill activa: ${skillFor(next)}. QA precede a Staff; no se hace merge automático.`,
+    `Sloop engineering v2: estado ${next}. Skill activa: ${skillFor(next)}. QA precede la decisión humana; no se hace merge automático.`,
   );
 }
 
@@ -597,13 +606,13 @@ function claimNewIssue(d: Deps, issue: number): void {
   console.error(`[sloop] issue #${issue}: claimed`);
   d.comment(
     issue,
-    `Sloop engineering v2: estado claimed. Skill activa: ${skillFor('claimed')}. QA precede a Staff; no se hace merge automÃ¡tico.`,
+    `Sloop engineering v2: estado claimed. Skill activa: ${skillFor('claimed')}. QA precede la decisión humana; no se hace merge automático.`,
   );
 }
 
 function rolePrompt(
   issue: Issue,
-  role: 'worker' | 'qa' | 'staff',
+  role: 'worker' | 'qa',
   pr: number | undefined,
   round: number,
   context: string,
@@ -614,7 +623,7 @@ function rolePrompt(
 ): string {
   const issueContext = issue.body?.trim() || '(issue body unavailable; inspect it with gh)';
   if (role === 'worker')
-    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. The claimed issue number is ${issue.number} (also in SLOOP_ISSUE_NUMBER). The dispatcher has generated the initial PR body in SLOOP_PR_BODY: ${JSON.stringify(initialPrBody ?? '')}. If creating a PR, pass that exact value to gh pr create using --body-file (or an equivalent file-based body argument); do not construct the closing reference yourself. When updating the PR, preserve every state-authorized closing reference supplied in the recovery context exactly once; do not add or remove other issue links without dispatcher instruction. Use gh pr create/edit (or equivalent) to persist that body. Inspect the issue, current PR diff, CI checks, mergeability, and all [QA/SDET Review] and [Staff Review] feedback. If the PR is CONFLICTING or DIRTY against main, update the branch from main, resolve every conflict, run the required checks, and do not report ready_for_review until the PR is clean and mergeable. Resolve every actionable finding and publish one PR conversation comment beginning with [Worker], including round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. In that evidence include a [Human Verification] JSON code block with non-empty summary, steps, expected, isolation, limitations, and checklist fields. Make the steps concrete, safe, and isolated; state diagnostics for failures; do not claim automated checks that were not run. The dispatcher will validate and publish the guide only after CI, QA, and Staff pass. Never delete or modify .sloop/state.json or dispatcher runtime state. Exit 0 only after the work, conflict resolution, and comment are complete; do not return JSON. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve:\n${feedback}\n` : ''}At the end, print a plain-text line exactly like WORKER_RESULT pr=<number> base=main. All command success/failure is communicated by the process exit code.`;
+    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. The dispatcher will validate the guide only after CI and QA pass. Never modify dispatcher runtime state. Exit 0 only after the work and comment are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve:\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
     return `Use the qa-sdet skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish directly to the PR exactly one review beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
@@ -770,7 +779,7 @@ function publishHumanReviewGuide(d: Deps, pr: PullRequest, round: number): void 
 
 function latestReview(
   pr: PullRequest,
-  marker: '[QA/SDET Review]' | '[Staff Review]',
+  marker: '[QA/SDET Review]',
   round: number,
   headSha?: string,
 ): Review | undefined {
@@ -875,11 +884,7 @@ async function waitForCi(
   }
 }
 
-function reviewFeedback(
-  pr: PullRequest,
-  marker: '[QA/SDET Review]' | '[Staff Review]',
-  round: number,
-): string {
+function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: number): string {
   return (pr.reviews ?? [])
     .filter(
       (review) => review.body?.trim().startsWith(marker) && roundFromBody(review.body) === round,
@@ -1018,17 +1023,15 @@ async function runReview(
   cfg: Config,
   d: Deps,
   issue: Issue,
-  role: 'qa' | 'staff',
+  role: 'qa',
   prNumber: number,
   round: number,
   evidence: PullRequest,
 ): Promise<{ verdict?: string; body?: string; evidence: PullRequest }> {
-  const marker = role === 'qa' ? '[QA/SDET Review]' : '[Staff Review]';
-  const pending: Status = role === 'qa' ? 'qa_review_pending' : 'staff_review_pending';
-  if (role === 'qa')
-    status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
-  else status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
-  const configured = role === 'qa' ? cfg.qaCommand : cfg.staffReviewCommand;
+  const marker = '[QA/SDET Review]';
+  const pending: Status = 'qa_review_pending';
+  status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
+  const configured = cfg.qaCommand;
   if (!configured) throw new Error(`${role} command is required`);
   const spec = roleCommand(configured, issue.number, cfg);
   if (!spec) throw new Error(`${role} command is required`);
@@ -1040,7 +1043,7 @@ async function runReview(
       prNumber,
       round,
       d.load().taskContext ?? '',
-      role === 'qa' ? (d.load().lastQaFeedback ?? '') : (d.load().lastStaffFeedback ?? ''),
+      d.load().lastQaFeedback ?? '',
       evidence.headRefOid,
       d.load().workerRunId ?? 'dispatcher-run',
     ),
@@ -1058,6 +1061,22 @@ function effectiveMaxRounds(cfg: Config, state: State): number {
   return (cfg.maxReviewRounds ?? 10) + (state.reviewCap?.additionalRounds ?? 0);
 }
 
+export function maxRoundsForUserBudget(
+  baseMaxRounds: number,
+  currentRound: number,
+  requestedAdditionalRounds: number,
+): number {
+  if (!Number.isSafeInteger(baseMaxRounds) || baseMaxRounds < 0)
+    throw new Error('base review-round limit must be a non-negative integer');
+  if (!Number.isSafeInteger(currentRound) || currentRound < 1)
+    throw new Error('current review round must be a positive integer');
+  if (!Number.isSafeInteger(requestedAdditionalRounds) || requestedAdditionalRounds < 0)
+    throw new Error('additional review rounds must be a non-negative integer');
+  return requestedAdditionalRounds === 0
+    ? baseMaxRounds
+    : Math.max(baseMaxRounds, currentRound + requestedAdditionalRounds - 1);
+}
+
 function findingIds(feedback: string): string[] {
   return [
     ...new Set(
@@ -1072,7 +1091,7 @@ function findingIds(feedback: string): string[] {
 
 async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: number): Promise<void> {
   const current = d.load();
-  const feedback = [current.lastQaFeedback, current.lastStaffFeedback].filter(Boolean).join('\n');
+  const feedback = [current.lastQaFeedback].filter(Boolean).join('\n');
   const cap = {
     capRound: cfg.maxReviewRounds ?? 10,
     decisionSha: current.headSha,
@@ -1091,9 +1110,7 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
   let current = d.load();
   let round = current.reviewRound ?? 1;
   let pr = current.pr;
-  let feedback = [current.lastCiFeedback, current.lastQaFeedback, current.lastStaffFeedback]
-    .filter(Boolean)
-    .join('\n\n');
+  let feedback = [current.lastCiFeedback, current.lastQaFeedback].filter(Boolean).join('\n\n');
   if (current.reviewCap?.steer)
     feedback = `${feedback}${feedback ? '\n\n' : ''}HITL steer (binding): ${current.reviewCap.steer}. Waived findings at ${current.reviewCap.decisionSha ?? 'the decision SHA'}: ${(current.reviewCap.waivedFindingIds ?? []).join(', ') || 'none'}.`;
   if (round > effectiveMaxRounds(cfg, current)) {
@@ -1106,15 +1123,8 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
     'ci_failed',
     'qa_review_pending',
     'qa_approved',
-    'staff_review_pending',
-    'staff_approved',
   ].includes(current.status ?? 'queued');
-  if (
-    needsWorker ||
-    current.status === 'ci_failed' ||
-    current.status === 'qa_changes_requested' ||
-    current.status === 'staff_changes_requested'
-  ) {
+  if (needsWorker || current.status === 'ci_failed' || current.status === 'qa_changes_requested') {
     pr = await runWorker(cfg, d, issue, round, pr, current.taskContext ?? '', feedback);
     current = d.load();
   }
@@ -1126,8 +1136,6 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
       await pauseForReviewCap(cfg, d, issue, round);
       return;
     }
-    const resumeAtStaff = ['qa_approved', 'staff_review_pending'].includes(current.status ?? '');
-    const shouldRunQa = !resumeAtStaff;
     const ci =
       current.status === 'ci_pending' || current.status === 'ci_failed'
         ? await waitForCi(d, cfg, issue.number, pr)
@@ -1145,7 +1153,7 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
     }
 
     let evidence = ci.evidence;
-    if (shouldRunQa) {
+    {
       const qa = await runReview(cfg, d, issue, 'qa', pr, round, evidence);
       evidence = qa.evidence;
       const qaPassed = qa.verdict === 'passed' || qa.verdict === 'approved';
@@ -1168,25 +1176,6 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
       });
     }
 
-    const staff = await runReview(cfg, d, issue, 'staff', pr, round, evidence);
-    evidence = staff.evidence;
-    if (staff.verdict !== 'approved') {
-      const staffFeedback = staff.body ?? 'Staff requested changes.';
-      d.save({ ...d.load(), lastStaffFeedback: staffFeedback, headSha: evidence.headRefOid });
-      status(d, issue.number, 'staff_changes_requested', { lastStaffFeedback: staffFeedback });
-      feedback = staffFeedback;
-      round += 1;
-      if (round > effectiveMaxRounds(cfg, d.load())) {
-        await pauseForReviewCap(cfg, d, issue, round);
-        return;
-      }
-      pr = await runWorker(cfg, d, issue, round, pr, d.load().taskContext ?? '', feedback);
-      continue;
-    }
-    status(d, issue.number, 'staff_approved', {
-      headSha: evidence.headRefOid,
-      lastStaffFeedback: staff.body,
-    });
     publishHumanReviewGuide(d, evidence, round);
     status(d, issue.number, 'ready_for_human_merge', { pr, headSha: evidence.headRefOid });
     d.save({
@@ -1388,9 +1377,15 @@ export function resolveReviewCap(
     throw new Error(
       `waivers must name outstanding findings: ${[...outstanding].join(', ') || 'none'}`,
     );
+  const baseMaxRounds = cfg.maxReviewRounds ?? 10;
+  const requestedMaxRounds = maxRoundsForUserBudget(
+    baseMaxRounds,
+    current.reviewRound ?? 1,
+    additionalRounds,
+  );
   const cap = {
     ...current.reviewCap!,
-    additionalRounds: (current.reviewCap?.additionalRounds ?? 0) + additionalRounds,
+    additionalRounds: Math.max(0, requestedMaxRounds - baseMaxRounds),
     waivedFindingIds: [
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...normalizedWaivers]),
     ],
@@ -1504,11 +1499,10 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
     throw new CliFailure(3, `active run exists for issue #${initial.issue}`);
   const lockToken = acquire(d, cfg.lockTtlMs ?? 900000);
   try {
-    if (!cfg.workerCommand || !cfg.staffReviewCommand || !cfg.qaCommand)
-      throw new Error('workerCommand, staffReviewCommand and qaCommand are required');
+    if (!cfg.workerCommand || !cfg.qaCommand)
+      throw new Error('workerCommand and qaCommand are required');
     roleCommand(cfg.workerCommand, 0, cfg);
     roleCommand(cfg.qaCommand, 0, cfg);
-    roleCommand(cfg.staffReviewCommand, 0, cfg);
     const processed = new Set<number>(d.load().completedIssues ?? []);
     const existingIssue = recovery || isActiveStatus(d.load().status) ? d.load().issue : undefined;
     d.save({ ...d.load(), drainStatus: 'running' });
@@ -1517,7 +1511,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         ? d.eligible().find((candidate) => candidate.number === existingIssue)
         : d.eligible().find((candidate) => !processed.has(candidate.number));
       if (!issue) {
-        if (existingIssue) throw new Error(`issue #${existingIssue} is not eligible for recovery`);
+        if (existingIssue) throw recoveryEligibilityError(d.load(), existingIssue);
         d.save({
           completedIssues: d.load().completedIssues ?? [],
           mainGreen: d.load().mainGreen,
