@@ -24,6 +24,7 @@ import {
   runDispatcherCli,
   maxRoundsForUserBudget,
 } from '../dist/dispatcher.js';
+import { parseDispatcherCommand } from '../dist/runtime.js';
 
 test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);
@@ -382,16 +383,25 @@ test('public CLI commands invoke only the injected control seams', async () => {
   const originalLog = console.log;
   console.log = () => {};
   try {
-    await runDispatcherCli(['--status', '--verbose'], h.deps);
-    await runDispatcherCli(['--list'], h.deps);
-    await runDispatcherCli(['--recover-lock'], h.deps);
-    await runDispatcherCli(['--reset'], h.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), h.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--list']), h.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--recover-lock']), h.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--reset']), h.deps);
     await runDispatcherCli(
-      ['--resolve-review-cap', '--steer', 'continue', '--additional-rounds', '1'],
+      parseDispatcherCommand([
+        '--resolve-review-cap',
+        '--steer',
+        'continue',
+        '--additional-rounds',
+        '1',
+      ]),
       h.deps,
     );
-    await runDispatcherCli(['--link-issue', '29'], h.deps);
-    await runDispatcherCli(['--prepare-recovery', '28', '--pr', '49'], h.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--link-issue', '29']), h.deps);
+    await runDispatcherCli(
+      parseDispatcherCommand(['--prepare-recovery', '28', '--pr', '49']),
+      h.deps,
+    );
   } finally {
     console.log = originalLog;
   }
@@ -399,15 +409,11 @@ test('public CLI commands invoke only the injected control seams', async () => {
     calls.map(([name]) => name),
     [
       'status',
-      'loadConfig',
       'list',
-      'loadConfig',
       'recoverLock',
-      'loadConfig',
       'reset',
       'loadConfig',
       'resolveReviewCap',
-      'loadConfig',
       'linkIssue',
       'loadConfig',
       'prepareRecovery',
@@ -1178,8 +1184,8 @@ test('status remains concise by default and returns exact verbose diagnostics on
   const originalLog = console.log;
   console.log = (value) => output.push(value);
   try {
-    await runDispatcherCli(['--status'], injected.deps);
-    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
   } finally {
     console.log = originalLog;
   }
@@ -1220,7 +1226,7 @@ test('--list prints only issue number and title while eligible issues retain bod
   const originalLog = console.log;
   console.log = (value) => (output = value);
   try {
-    await runDispatcherCli(['--list'], injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--list']), injected.deps);
   } finally {
     console.log = originalLog;
   }
@@ -1310,8 +1316,8 @@ test('legacy lastError-only state remains readable in both status modes', async 
   const originalLog = console.log;
   console.log = (value) => output.push(value);
   try {
-    await runDispatcherCli(['--status'], injected.deps);
-    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
   } finally {
     console.log = originalLog;
   }
@@ -1329,8 +1335,8 @@ test('successful state without errors remains unchanged in both status modes', a
   const originalLog = console.log;
   console.log = (value) => output.push(value);
   try {
-    await runDispatcherCli(['--status'], injected.deps);
-    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
   } finally {
     console.log = originalLog;
   }
@@ -1351,7 +1357,7 @@ test('verbose status preserves quotes and shell-like diagnostic text exactly', a
   const originalLog = console.log;
   console.log = (value) => (output = value);
   try {
-    await runDispatcherCli(['--status', '--verbose'], injected.deps);
+    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
   } finally {
     console.log = originalLog;
   }

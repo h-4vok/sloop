@@ -2,6 +2,7 @@ import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadConfigText, type SloopConfig } from './config.js';
+import type { ReviewCapOptions } from './core/boundaries.js';
 import { resolveExecutable, runSyncCommand } from './process.js';
 
 export const EXIT = Object.freeze({ ok: 0, preflight: 2, busy: 3, blocked: 4, external: 5 });
@@ -404,29 +405,10 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
 }
 
 export function runDispatcherPreflight(
-  args: readonly string[],
+  command: DispatcherCommand,
   providedIo?: RuntimeIo,
 ): Readonly<{ code: ExitCode; root?: string; config?: SloopConfig; repository?: string }> {
   const io = providedIo ?? productionIo();
-  let command: DispatcherCommand;
-  try {
-    command = parseDispatcherCommand(args);
-  } catch (error) {
-    return {
-      code: emit(
-        envelope(commandName(args), 'failed', 'preflight', 'Command usage is invalid.', null, [
-          diagnostic(
-            'usage',
-            error instanceof Error ? error.message : String(error),
-            'Run `sloop --help` and use a documented command form.',
-          ),
-        ]),
-        false,
-        EXIT.preflight,
-        io,
-      ),
-    };
-  }
   let root: string;
   let config: SloopConfig;
   try {
@@ -436,9 +418,14 @@ export function runDispatcherPreflight(
     const item = error as Diagnostic;
     return {
       code: emit(
-        envelope(commandName(args), 'failed', 'discovery', 'Repository startup failed.', null, [
-          item,
-        ]),
+        envelope(
+          commandNameForDispatcher(command),
+          'failed',
+          'discovery',
+          'Repository startup failed.',
+          null,
+          [item],
+        ),
         false,
         EXIT.preflight,
         io,
@@ -460,7 +447,7 @@ export function runDispatcherPreflight(
     return {
       code: emit(
         envelope(
-          commandName(args),
+          commandNameForDispatcher(command),
           'failed',
           'preflight',
           'Preflight validation failed.',
@@ -483,13 +470,20 @@ export function runDispatcherPreflight(
   } catch {
     return {
       code: emit(
-        envelope(commandName(args), 'failed', 'preflight', 'Preflight validation failed.', null, [
-          diagnostic(
-            'repository-identity',
-            'The configured remote is not a GitHub repository URL.',
-            'Set the configured remote to the target GitHub repository URL.',
-          ),
-        ]),
+        envelope(
+          commandNameForDispatcher(command),
+          'failed',
+          'preflight',
+          'Preflight validation failed.',
+          null,
+          [
+            diagnostic(
+              'repository-identity',
+              'The configured remote is not a GitHub repository URL.',
+              'Set the configured remote to the target GitHub repository URL.',
+            ),
+          ],
+        ),
         false,
         EXIT.preflight,
         io,
@@ -498,17 +492,48 @@ export function runDispatcherPreflight(
   }
 }
 
-type DispatcherCommand = Readonly<{
-  kind:
-    | 'workflow'
-    | 'status'
-    | 'list'
-    | 'recover-lock'
-    | 'reset'
-    | 'prepare-recovery'
-    | 'resolve-review-cap'
-    | 'link-issue';
+export type DispatcherCommand =
+  | Readonly<{ kind: 'workflow' }>
+  | Readonly<{ kind: 'status'; verbose: boolean }>
+  | Readonly<{ kind: 'list' }>
+  | Readonly<{ kind: 'recover-lock' }>
+  | Readonly<{ kind: 'reset' }>
+  | Readonly<{ kind: 'prepare-recovery'; issue: number; pr?: number }>
+  | Readonly<{ kind: 'resolve-review-cap'; options: ReviewCapOptions }>
+  | Readonly<{ kind: 'link-issue'; issue: number }>;
+
+export type ReadOnlyCommand = Readonly<{
+  command: 'status' | 'issues list' | 'doctor';
+  json: boolean;
+  verbose: boolean;
 }>;
+
+export type CliCommand =
+  | Readonly<{ kind: 'help'; target: string }>
+  | Readonly<{ kind: 'version' }>
+  | Readonly<{ kind: 'read-only'; command: ReadOnlyCommand }>
+  | Readonly<{ kind: 'dispatcher'; command: DispatcherCommand }>;
+
+function commandNameForDispatcher(command: DispatcherCommand): string {
+  switch (command.kind) {
+    case 'workflow':
+      return 'sloop';
+    case 'list':
+      return '--list';
+    case 'recover-lock':
+      return '--recover-lock';
+    case 'reset':
+      return '--reset';
+    case 'prepare-recovery':
+      return '--prepare-recovery';
+    case 'resolve-review-cap':
+      return '--resolve-review-cap';
+    case 'link-issue':
+      return '--link-issue';
+    case 'status':
+      return '--status';
+  }
+}
 
 export function parseDispatcherCommand(args: readonly string[]): DispatcherCommand {
   if (args.length === 0) return { kind: 'workflow' };
@@ -517,18 +542,22 @@ export function parseDispatcherCommand(args: readonly string[]): DispatcherComma
     args[0] === '--status' &&
     (args.length === 1 || (args.length === 2 && args[1] === '--verbose'))
   )
-    return { kind: 'status' };
+    return { kind: 'status', verbose: args.includes('--verbose') };
   if (args.length === 1 && args[0] === '--list') return { kind: 'list' };
   if (args.length === 1 && args[0] === '--recover-lock') return { kind: 'recover-lock' };
   if (args.length === 1 && args[0] === '--reset') return { kind: 'reset' };
   if (args[0] === '--link-issue' && args.length === 2 && positive(args[1]))
-    return { kind: 'link-issue' };
+    return { kind: 'link-issue', issue: Number(args[1]) };
   if (
     args[0] === '--prepare-recovery' &&
     positive(args[1]) &&
     (args.length === 2 || (args.length === 4 && args[2] === '--pr' && positive(args[3])))
   )
-    return { kind: 'prepare-recovery' };
+    return {
+      kind: 'prepare-recovery',
+      issue: Number(args[1]),
+      pr: args[3] ? Number(args[3]) : undefined,
+    };
   if (args[0] === '--resolve-review-cap' && args.length > 1) {
     const counts = new Map<string, number>();
     const values = new Map<string, string[]>();
@@ -554,13 +583,31 @@ export function parseDispatcherCommand(args: readonly string[]): DispatcherComma
       throw new Error('--additional-rounds must be a non-negative integer');
     if ((values.get('--waive') ?? []).some((value) => !/^[QS]\d+(?:,[QS]\d+)*$/.test(value)))
       throw new Error('--waive requires comma-separated Q<n> or S<n> finding IDs');
-    return { kind: 'resolve-review-cap' };
+    const steer = values.get('--steer')![0].trim();
+    if (!steer) throw new Error('--resolve-review-cap requires non-empty --steer <text>');
+    const additionalRounds = rounds === undefined ? 0 : Number(rounds);
+    const waivers = values.get('--waive') ?? [];
+    const waiveAll = (counts.get('--waive-all-outstanding') ?? 0) === 1;
+    const abandon = (counts.get('--abandon') ?? 0) === 1;
+    if (abandon && (waiveAll || waivers.length || additionalRounds))
+      throw new Error('--abandon cannot be combined with waivers or additional rounds');
+    if (!abandon && !waiveAll && !waivers.length && additionalRounds === 0)
+      throw new Error('choose --additional-rounds, --waive, --waive-all-outstanding, or --abandon');
+    return {
+      kind: 'resolve-review-cap',
+      options: {
+        steer,
+        additionalRounds,
+        waivedFindingIds: waivers.flatMap((value) => value.split(',')),
+        waiveAllOutstanding: waiveAll,
+        abandon,
+      },
+    };
   }
   throw new Error('mixed, duplicate, unknown, or unsupported command arguments');
 }
 
-type Parsed = { command: 'status' | 'issues list' | 'doctor'; json: boolean; verbose: boolean };
-export function parseReadOnlyCommand(args: readonly string[]): Parsed | undefined {
+export function parseReadOnlyCommand(args: readonly string[]): ReadOnlyCommand | undefined {
   const json = args.includes('--json');
   const stripped = args.filter((arg) => arg !== '--json');
   if (stripped[0] === 'status') {
@@ -580,6 +627,33 @@ export function parseReadOnlyCommand(args: readonly string[]): Parsed | undefine
   return undefined;
 }
 
+const helpTargets = new Map<string, readonly string[]>([
+  ['sloop', ['--help']],
+  ['status', ['status', '--help']],
+  ['issues list', ['issues', 'list', '--help']],
+  ['doctor', ['doctor', '--help']],
+  ['--status', ['--status', '--help']],
+  ['--list', ['--list', '--help']],
+  ['--recover-lock', ['--recover-lock', '--help']],
+  ['--reset', ['--reset', '--help']],
+  ['--prepare-recovery', ['--prepare-recovery', '--help']],
+  ['--resolve-review-cap', ['--resolve-review-cap', '--help']],
+  ['--link-issue', ['--link-issue', '--help']],
+]);
+
+export function parseCliCommand(args: readonly string[]): CliCommand {
+  if (args.length === 1 && args[0] === '--version') return { kind: 'version' };
+  if (args.includes('--help')) {
+    for (const [target, form] of helpTargets)
+      if (args.length === form.length && args.every((arg, index) => arg === form[index]))
+        return { kind: 'help', target };
+    throw new Error('--help must be the only option for the requested command');
+  }
+  const readOnly = parseReadOnlyCommand(args);
+  if (readOnly) return { kind: 'read-only', command: readOnly };
+  return { kind: 'dispatcher', command: parseDispatcherCommand(args) };
+}
+
 export function emitUsageFailure(args: readonly string[], message: string): ExitCode {
   const io = productionIo();
   return emit(
@@ -592,7 +666,7 @@ export function emitUsageFailure(args: readonly string[], message: string): Exit
   );
 }
 
-export function runReadOnlyCommand(parsed: Parsed, providedIo?: RuntimeIo): ExitCode {
+export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: RuntimeIo): ExitCode {
   const io = providedIo ?? productionIo();
   let root: string;
   let config: SloopConfig;

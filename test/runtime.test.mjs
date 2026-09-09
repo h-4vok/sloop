@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import {
   discoverRepository,
   EXIT,
+  parseCliCommand,
   parseReadOnlyCommand,
   parseDispatcherCommand,
   runDispatcherPreflight,
@@ -92,10 +93,31 @@ test('command parser accepts only documented read-only forms', () => {
   assert.throws(() => parseReadOnlyCommand(['doctor', '--json']), /usage:/);
 });
 
+test('top-level parser rejects unknown argv before a dispatcher command can exist', () => {
+  assert.deepEqual(parseCliCommand([]), { kind: 'dispatcher', command: { kind: 'workflow' } });
+  assert.deepEqual(parseCliCommand(['status', '--help']), { kind: 'help', target: 'status' });
+  assert.deepEqual(parseCliCommand(['--prepare-recovery', '--help']), {
+    kind: 'help',
+    target: '--prepare-recovery',
+  });
+  for (const args of [
+    ['--tuvieja'],
+    ['status', '--tuvieja'],
+    ['issues', 'list', 'extra'],
+    ['--link-issue'],
+    ['--help', '--tuvieja'],
+    ['status', '--verbose', '--help'],
+    ['--version', '--list'],
+  ])
+    assert.throws(() => parseCliCommand(args), /unsupported|requires|must be|usage|mixed|accepts/);
+});
+
 test('dispatcher parser accepts one complete command and rejects ambiguous or unsupported forms', () => {
   assert.deepEqual(parseDispatcherCommand([]), { kind: 'workflow' });
   assert.deepEqual(parseDispatcherCommand(['--prepare-recovery', '31', '--pr', '54']), {
     kind: 'prepare-recovery',
+    issue: 31,
+    pr: 54,
   });
   assert.throws(
     () => parseDispatcherCommand(['--prepare-recovery', '31', '--link-issue', '32']),
@@ -113,7 +135,16 @@ test('dispatcher parser accepts one complete command and rejects ambiguous or un
       '--waive',
       'S1,Q2',
     ]),
-    { kind: 'resolve-review-cap' },
+    {
+      kind: 'resolve-review-cap',
+      options: {
+        steer: 'continue',
+        additionalRounds: 1,
+        waivedFindingIds: ['S1', 'Q2'],
+        waiveAllOutstanding: false,
+        abandon: false,
+      },
+    },
   );
   for (const tail of [
     ['--help'],
@@ -122,6 +153,8 @@ test('dispatcher parser accepts one complete command and rejects ambiguous or un
     ['--unknown'],
     ['--steer', 'again'],
     ['--additional-rounds', '1', '--additional-rounds', '2'],
+    ['--abandon', '--waive', 'Q1'],
+    [],
   ])
     assert.throws(() =>
       parseDispatcherCommand(['--resolve-review-cap', '--steer', 'continue', ...tail]),
@@ -262,7 +295,7 @@ test('public status result boundary emits blocked JSON and exit 4 for unreadable
 
 test('dispatcher commands cross discovery and base-config preflight before operations', () => {
   const h = harness();
-  const result = runDispatcherPreflight(['--status'], h.io);
+  const result = runDispatcherPreflight(parseDispatcherCommand(['--status']), h.io);
   assert.equal(result.code, EXIT.ok);
   assert.equal(result.root, resolve('/repo'));
   assert.equal(result.repository, 'o/r');
@@ -288,7 +321,10 @@ test('local recovery commands do not require GitHub, Codex, labels, or a clean t
     'gh --version': { stdout: '', stderr: 'missing', status: 1 },
     'codex --version': { stdout: '', stderr: 'missing', status: 1 },
   });
-  const result = runDispatcherPreflight(['--prepare-recovery', '31', '--pr', '54'], h.io);
+  const result = runDispatcherPreflight(
+    parseDispatcherCommand(['--prepare-recovery', '31', '--pr', '54']),
+    h.io,
+  );
   assert.equal(result.code, EXIT.ok);
   assert.ok(!h.calls.some(({ file }) => file === 'gh' || file === 'codex'));
   assert.ok(!h.calls.some(({ args }) => args[0] === 'status' || args[0] === 'symbolic-ref'));
@@ -296,10 +332,8 @@ test('local recovery commands do not require GitHub, Codex, labels, or a clean t
 
 test('ambiguous dispatcher command fails before discovery or mutation prerequisites', () => {
   const h = harness();
-  const result = runDispatcherPreflight(['--prepare-recovery', '31', '--link-issue', '32'], h.io);
-  assert.equal(result.code, EXIT.preflight);
+  assert.throws(() => parseDispatcherCommand(['--prepare-recovery', '31', '--link-issue', '32']));
   assert.equal(h.calls.length, 0);
-  assert.match(h.stderr[0], /usage/);
 });
 
 test('missing configured remote is collected as a preflight diagnostic', () => {

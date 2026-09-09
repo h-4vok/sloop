@@ -132,7 +132,7 @@ const shellExecutable = (argument: string): boolean => {
 };
 const allowedExecutables = new Set(['codex', 'env', 'gh', 'git', 'npm']);
 const executableIndirectionOptions: Readonly<Record<string, readonly RegExp[]>> = Object.freeze({
-  codex: [/^(?:-c|--config)(?:=|$)/i],
+  codex: [],
   env: [],
   gh: [/^(?:alias|extension)$/i],
   git: [/^(?:alias|difftool|filter-branch|mergetool|shell)$/i, /^--exec(?:=|$)/i],
