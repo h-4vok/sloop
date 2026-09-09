@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test \"test/*.test.mjs\"",
+    "check": "npm test",
     "test:integration": "npm run build && node --test \"integration/*.test.mjs\"",
     "loop": "node dist/cli.js",
     "sloop": "node dist/cli.js",

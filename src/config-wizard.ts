@@ -333,6 +333,18 @@ async function wizard(
       for (const kind of kinds) if (kind && kind !== 'none') await reconciler(root, kind);
       console.log('Synchronization completed after atomic configuration write.');
     }
+    if (init && sync !== '--sync' && io.input === input) {
+      const answer = (await rl.question('Synchronize GitHub labels and Sloop skills now? [Y/n] '))
+        .trim()
+        .toLowerCase();
+      if (answer !== 'n') {
+        await reconciler(root, 'github');
+        await reconciler(root, 'skills');
+      } else
+        console.log(
+          'Prerequisites were not synchronized; run `sloop sync` to prepare them manually.',
+        );
+    }
     console.log('Configuration written atomically.');
     return 0;
   } catch (e) {
