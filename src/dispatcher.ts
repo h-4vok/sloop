@@ -1,8 +1,10 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { extname, isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
+export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
   AgentRunner,
   CliControl,
@@ -217,85 +219,6 @@ export function recoverStaleLock(
     throw new CliFailure(3, `dispatcher owner PID ${pid} is still running; lock was not changed`);
   rmSync(lock, { recursive: true, force: true });
   return `Recovered stale dispatcher lock owned by PID ${pid}.`;
-}
-
-function resolveExecutable(commandName: string): string {
-  if (process.platform !== 'win32' || isAbsolute(commandName) || extname(commandName))
-    return commandName;
-  try {
-    const paths = execFileSync('where.exe', [commandName], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .trim()
-      .split(/\r?\n/)
-      .filter(Boolean);
-    return (
-      paths.find((p) => /\.cmd$/i.test(p)) ??
-      paths.find((p) => /\.exe$/i.test(p)) ??
-      paths[0] ??
-      commandName
-    );
-  } catch {
-    return commandName;
-  }
-}
-
-export function childProcessInvocation(
-  executable: string,
-  args: string[],
-  platform = process.platform,
-  commandProcessor = process.env.ComSpec,
-): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
-  if (platform === 'win32' && /\.(cmd|bat)$/i.test(executable)) {
-    // cmd.exe must parse batch files, so never pass arbitrary argv entries to
-    // its command parser. The dispatcher only needs fixed CLI flags for batch
-    // shims; reject syntax that could change the command before spawning it.
-    const unsafe = /["%&|<>()^!\r\n]/;
-    if (unsafe.test(executable) || args.some((arg) => unsafe.test(arg)))
-      throw new Error('Windows batch command contains unsafe cmd.exe syntax');
-    return {
-      command: commandProcessor || 'cmd.exe',
-      args: [
-        '/d',
-        '/s',
-        '/v:off',
-        '/c',
-        `""${executable}" ${args.map((arg) => `"${arg}"`).join(' ')}"`,
-      ],
-      windowsVerbatimArguments: true,
-    };
-  }
-  return { command: executable, args };
-}
-
-type SyncCommandExecutor = (
-  command: string,
-  args: string[],
-  options: {
-    cwd: string;
-    encoding: 'utf8';
-    stdio: ['ignore', 'pipe', 'pipe'];
-    windowsVerbatimArguments?: boolean;
-  },
-) => string;
-
-export function runSyncCommand(
-  executable: string,
-  args: string[],
-  execute: SyncCommandExecutor = (command, commandArgs, options) =>
-    execFileSync(command, commandArgs, options) as string,
-  platform = process.platform,
-  commandProcessor = process.env.ComSpec,
-  cwd = defaultRoot,
-): string {
-  const launch = childProcessInvocation(executable, args, platform, commandProcessor);
-  return execute(launch.command, launch.args, {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsVerbatimArguments: launch.windowsVerbatimArguments,
-  }).trim();
 }
 
 function gh(args: string[], cwd = defaultRoot, repository?: string): string {
@@ -1247,6 +1170,7 @@ export function prepareRecovery(
     ...state,
     issue,
     pr,
+    branch: workerBranchName(issue),
     status: 'worker_running',
     workerRunId: randomUUID(),
     workerPid: -1,
@@ -1275,7 +1199,11 @@ export function prepareWorkerBranch(
 ): { branch: string; mainBaseSha: string } {
   const branch = workerBranchName(issue);
   const baseRef = `${remote}/${baseBranch}`;
-  execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
+  try {
+    execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
+  } catch (error) {
+    throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+  }
   const mainBaseSha = execFileSync('git', ['rev-parse', baseRef], {
     cwd,
     encoding: 'utf8',
@@ -1599,6 +1527,10 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         // dispatcher transition logic is being hardened.
         return 0;
       } catch (e) {
+        // Adapter boundaries classify busy and external dependency failures for
+        // automation. Do not convert those operational results into a workflow
+        // block merely because they happen after dispatch has started.
+        if (e instanceof CliFailure) throw e;
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[sloop] issue #${issue.number} bloqueada: ${message}`);
         const current = d.load();
