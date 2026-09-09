@@ -121,6 +121,9 @@ export async function runCli(
             status: result.status ?? 1,
           };
         },
+        readFile(file) {
+          return readFileSync(file, 'utf8');
+        },
         stdout: console.log,
         stderr: console.error,
       });
