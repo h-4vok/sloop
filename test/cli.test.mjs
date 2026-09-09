@@ -14,6 +14,12 @@ test('help documents the linked CLI contract', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^Sloop 0\.1\.0/m);
   assert.match(result.stdout, /Usage: sloop <command> \[option\]/);
+  assert.match(result.stdout, /--prepare-recovery N \[--pr PR\]/);
+  assert.match(result.stdout, /--resolve-review-cap --steer TEXT/);
+  assert.match(result.stdout, /--additional-rounds N/);
+  assert.match(result.stdout, /--waive Q1,Q2/);
+  assert.match(result.stdout, /--waive-all-outstanding/);
+  assert.match(result.stdout, /--abandon/);
   assert.equal(result.stdout.trim(), HELP);
 });
 

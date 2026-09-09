@@ -37,7 +37,6 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     baseBranch: config.repository.baseBranch,
     workerCommand: runner(config.agents.worker),
     qaCommand: runner(config.agents.qa),
-    staffReviewCommand: runner(config.agents.staff),
     requiredPrChecks: [...config.workflow.requiredChecks],
     workerLeaseMs: config.agents.worker.timeout,
     maxReviewRounds: config.arbiter.reviewRounds,

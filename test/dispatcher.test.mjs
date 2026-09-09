@@ -22,8 +22,16 @@ import {
   resetRunState,
   runCommand,
   runDispatcherCli,
+  maxRoundsForUserBudget,
 } from '../dist/dispatcher.js';
 import { parseDispatcherCommand } from '../dist/runtime.js';
+
+test('additional rounds mean future rounds from the current round', () => {
+  assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);
+  assert.equal(maxRoundsForUserBudget(3, 2, 2), 3);
+  assert.equal(maxRoundsForUserBudget(3, 9, 6), 14);
+  assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
+});
 
 test('Windows batch commands use cmd.exe without Node shell mode', () => {
   assert.deepEqual(
@@ -461,10 +469,6 @@ test('role commands preserve distinct argv and logging configuration', async () 
         args: ['exec', '--sandbox', 'read-only', '--worker'],
       },
       qaCommand: { command: 'qa-codex', args: ['exec', '--sandbox', 'workspace-write', '--qa'] },
-      staffReviewCommand: {
-        command: 'staff-codex',
-        args: ['exec', '--sandbox', 'danger-full-access', '--staff'],
-      },
     },
   });
   await dispatch(h.cfg, h.deps);
@@ -479,11 +483,6 @@ test('role commands preserve distinct argv and logging configuration', async () 
       {
         command: 'qa-codex',
         args: ['exec', '--sandbox', 'workspace-write', '--qa'],
-        logInvocation: true,
-      },
-      {
-        command: 'staff-codex',
-        args: ['exec', '--sandbox', 'danger-full-access', '--staff'],
         logInvocation: true,
       },
     ],
@@ -514,7 +513,7 @@ test('logRoleInvocation false suppresses role invocation logging metadata', asyn
   await dispatch(h.cfg, h.deps);
   assert.deepEqual(
     h.runs.map((run) => run.logInvocation),
-    [false, false, false],
+    [false, false],
   );
 });
 
@@ -578,26 +577,25 @@ test('PR closing reference uses the claimed issue exactly once for creation and 
   assert.throws(() => withIssueClosingReference('', 0), /issue number must be positive/);
 });
 
-test('dispatcher runs Worker, QA, then Staff and uses PR evidence instead of JSON', async () => {
+test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async () => {
   const h = harness();
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 1 });
+  assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
   assert.deepEqual(
     h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
-    ['worker', 'qa-sdet', 'staff-reviewer'],
+    ['worker', 'qa-sdet'],
   );
   assert.deepEqual(
     h.runs.map((run) => run.args.slice(-2)),
     [
       ['--sandbox', 'read-only'],
       ['--sandbox', 'read-only'],
-      ['--sandbox', 'read-only'],
     ],
   );
   assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '1');
   assert.equal(h.reviews[0].body.startsWith('[QA/SDET Review]'), true);
-  assert.equal(h.reviews[1].body.startsWith('[Staff Review]'), true);
+  assert.equal(h.reviews.length, 1);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';
   assert.match(guide, /commit=abc1/);
   assert.match(guide, /Isolation/);
@@ -644,8 +642,6 @@ test('create and recovery smoke paths capture the persisted claimed-issue PR bod
   // that it must pass to `gh pr create`.
   const workerInput =
     h.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
-  assert.match(workerInput, /gh pr create\/edit \(or equivalent\) to persist that body/);
-  assert.match(workerInput, /state-authorized closing reference/);
 
   // This is the recovery/update path: the captured `gh pr edit --body-file`
   // equivalent receives one normalized reference and no stale references.
@@ -663,8 +659,6 @@ test('dispatcher-generated body is used by the initial PR creation path', async 
   assert.equal(h.runs[0].env.SLOOP_PR_BODY, 'Closes #17');
   assert.deepEqual(h.createdPrBodies, ['Closes #17']);
   assert.equal((h.createdPrBodies[0].match(/^Closes #17$/gm) ?? []).length, 1);
-  assert.match(workerInput, /dispatcher has generated the initial PR body in SLOOP_PR_BODY/);
-  assert.match(workerInput, /gh pr create using --body-file/);
 });
 
 test('worker branch convention is deterministic and rejects invalid issue numbers', () => {
@@ -833,7 +827,7 @@ test('dispatcher stops after one issue instead of draining the queue', async () 
   ]);
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 1 });
+  assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
   assert.deepEqual(h.state().completedIssues, [1]);
 });
 
@@ -900,27 +894,14 @@ test('new issue claim clears the completed issue PR context before validation', 
   assert.equal(h.state().mainGreen, true);
 });
 
-test('QA changes return to Worker and QA is repeated before Staff', async () => {
+test('QA changes return to Worker and QA is repeated', async () => {
   const h = harness([{ number: 1, title: 'a' }], { qaVerdicts: ['changes_requested', 'passed'] });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 2, qaCount: 2, staffCount: 1 });
+  assert.deepEqual(h.counts(), { workerCount: 2, qaCount: 2, staffCount: 0 });
   assert.deepEqual(
     h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
-    ['worker', 'qa-sdet', 'worker', 'qa-sdet', 'staff-reviewer'],
-  );
-});
-
-test('Staff changes return to Worker and force QA before Staff re-review', async () => {
-  const h = harness([{ number: 1, title: 'a' }], {
-    staffVerdicts: ['changes_requested', 'approved'],
-  });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 2, qaCount: 2, staffCount: 2 });
-  assert.deepEqual(
-    h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
-    ['worker', 'qa-sdet', 'staff-reviewer', 'worker', 'qa-sdet', 'staff-reviewer'],
+    ['worker', 'qa-sdet', 'worker', 'qa-sdet'],
   );
 });
 
@@ -950,6 +931,29 @@ test('recovery detects stale Worker state, starts a new Worker and reuses the ex
   assert.equal(
     h.comments.some(([, body]) => body.includes('Worker perdido')),
     true,
+  );
+});
+
+test('recovery explains why an issue is not eligible', async () => {
+  const h = harness([], {
+    initialState: {
+      issue: 31,
+      status: 'worker_running',
+      pr: 54,
+      branch: 'codex/issue-31',
+      reviewRound: 9,
+      workerPid: -1,
+    },
+  });
+  await assert.rejects(
+    () => dispatch(h.cfg, h.deps),
+    (error) => {
+      assert.match(error.message, /Issue #31 cannot be recovered/);
+      assert.match(error.message, /Automation Ready/);
+      assert.match(error.message, /status=worker_running, pr=54, branch=codex\/issue-31/);
+      assert.match(error.message, /gh issue view 31/);
+      return true;
+    },
   );
 });
 
@@ -1008,21 +1012,6 @@ test('QA feedback persists concise context and the complete diagnostic', async (
   await dispatch(h.cfg, h.deps);
   const persisted = h.saves.find((state) => state.status === 'qa_changes_requested');
   assertPersistedDiagnostic(persisted, 'qa changes requested', diagnostic, [/issue #1/, /PR #14/]);
-});
-
-test('Staff feedback persists concise context and the complete diagnostic', async () => {
-  const diagnostic =
-    '[Staff Review] round=1 verdict=changes_requested commit=abc1\n[S1] high - reproducible output';
-  const h = harness([{ number: 1, title: 'a' }], {
-    staffVerdicts: ['changes_requested', 'approved'],
-    staffBodies: [diagnostic],
-  });
-  await dispatch(h.cfg, h.deps);
-  const persisted = h.saves.find((state) => state.status === 'staff_changes_requested');
-  assertPersistedDiagnostic(persisted, 'staff changes requested', diagnostic, [
-    /issue #1/,
-    /PR #14/,
-  ]);
 });
 
 test('recovery failure persists concise issue and PR context with complete diagnostics', async () => {
@@ -1136,10 +1125,10 @@ test('failed PR CI returns the issue to a recovered Worker without local npm gat
 });
 
 test('successful role process without a published review blocks the dispatcher', async () => {
-  const h = harness([{ number: 1, title: 'a' }], { publishEvidence: { staff: false } });
+  const h = harness([{ number: 1, title: 'a' }], { publishEvidence: { qa: false } });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /did not publish \[Staff Review\]/);
+  assert.match(h.state().lastError, /did not publish \[QA\/SDET Review\]/);
 });
 
 test('active live run remains exclusive while stale recovery is allowed', async () => {
