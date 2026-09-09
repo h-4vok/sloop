@@ -63,12 +63,13 @@ export async function runConfigCommand(
   const file = join(root, 'sloop.config.yaml');
   const init = args.includes('--init');
   const syncCommand = args.includes('--sync-command');
-  const forceSync = args.includes('--force-sync');
+  const installCommand = args.includes('--install') || syncCommand;
+  const forceSync = args.includes('--force') || args.includes('--force-sync');
   const wizardMode = args.includes('--wizard');
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
   const sync = flags[0];
   const positional = args.filter((a) => !a.startsWith('--'));
-  if (syncCommand) {
+  if (installCommand) {
     if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
     try {
       syncPrerequisites(root, loadConfigText(readFileSync(file, 'utf8')));

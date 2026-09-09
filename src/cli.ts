@@ -13,9 +13,10 @@ export const HELP = `Sloop ${packageJson.version}
 Usage: sloop <command> [option]
 
 Configuration:
-  init                   Create sloop.config.yaml with defaults and offer prerequisite sync
-  init --wizard          Configure sloop.config.yaml interactively, then offer prerequisite sync
-  sync [--force-sync]    Synchronize configured GitHub labels and Sloop skills
+  config init            Create sloop.config.yaml with defaults
+  config init --wizard   Configure sloop.config.yaml interactively
+  config install [--force]
+                         Install configured GitHub labels and Sloop skills
 
 Read-only commands:
   status [--verbose] [--json]  Validate and show repository context

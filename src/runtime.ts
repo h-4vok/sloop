@@ -653,9 +653,9 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
   const readOnly = parseReadOnlyCommand(args);
   if (readOnly) return { kind: 'read-only', command: readOnly };
   if (args[0] === 'sync') {
-    if (args.slice(1).some((arg) => arg !== '--force-sync'))
+    if (args.slice(1).some((arg) => !['--force-sync'].includes(arg)))
       throw new Error('usage: sloop sync [--force-sync]');
-    return { kind: 'config', args: ['--sync-command', ...args.slice(1)] };
+    return { kind: 'config', args: ['--install', ...args.slice(1)] };
   }
   if (args[0] === 'init' || args[0] === 'config') {
     if (args[0] === 'init') {
@@ -664,6 +664,16 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
       if (args.includes('--wizard') && args.includes('--force-sync'))
         throw new Error('--force-sync is not valid with --wizard');
       return { kind: 'config', args: ['--init', ...args.slice(1)] };
+    }
+    if (args[1] === 'init') {
+      if (args.slice(2).some((arg) => !['--wizard'].includes(arg)))
+        throw new Error('usage: sloop config init [--wizard]');
+      return { kind: 'config', args: ['--init', ...args.slice(2)] };
+    }
+    if (args[1] === 'install') {
+      if (args.slice(2).some((arg) => !['--force'].includes(arg)))
+        throw new Error('usage: sloop config install [--force]');
+      return { kind: 'config', args: ['--install', ...args.slice(2)] };
     }
     return { kind: 'config', args: args.slice(1) };
   }
