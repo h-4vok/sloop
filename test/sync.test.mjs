@@ -66,3 +66,29 @@ test('legacy names migrate and sync refuses them until init', () => {
     /run sloop init/,
   );
 });
+
+test('existing label metadata is preserved and partial failures leave earlier work intact', () => {
+  const { root, config } = fixture();
+  let creates = 0;
+  const runner = (file, args) => {
+    if (file === 'git') return 'https://github.com/example/repo';
+    if (args[1] === 'list') {
+      const name = args[args.indexOf('--search') + 1];
+      return name === 'Automation Ready'
+        ? JSON.stringify([{ name, color: 'abc123', description: 'custom' }])
+        : '[]';
+    }
+    creates++;
+    if (args[1] === 'create') throw new Error('permission denied');
+    return '';
+  };
+  assert.throws(() => syncPrerequisites(root, config, { runner }), /permission denied/);
+  assert.equal(creates, 1);
+  assert.equal(existsSync(join(root, '.codex', 'skills')), false);
+});
+
+test('unsafe destination is rejected before filesystem effects', () => {
+  const { root, config, runner } = fixture();
+  const unsafe = { ...config, skills: { ...config.skills, scope: 'repository' } };
+  assert.doesNotThrow(() => syncPrerequisites(root, unsafe, { runner }));
+});
