@@ -25,6 +25,8 @@ import {
   writeState,
 } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
+import { loadConfigText } from './config.js';
+import { syncPrerequisites } from './sync.js';
 
 /**
  * Production seam for the reconciliation interfaces owned by the runtime.
@@ -39,17 +41,26 @@ export function productionConfigReconciler(_root: string): ConfigReconciler {
     kind: NonNullable<Parameters<ConfigReconciler>[1]>,
   ) => {
     if (!kind || kind === 'none') return;
-    throw new Error(
-      `No production reconciler is available for ${kind}; use --no-sync or install the ${kind} integration.`,
-    );
+    if (kind === 'github' || kind === 'skills') {
+      try {
+        syncPrerequisites(
+          _rootPath,
+          loadConfigText(readFileSync(join(_rootPath, 'sloop.config.yaml'), 'utf8')),
+        );
+      } catch (error) {
+        throw new Error(
+          `${kind} synchronization failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return;
+    }
+    throw new Error(`No production reconciler is available for ${kind}.`);
   }) as ConfigReconciler & {
     preflight: (root: string, kind: NonNullable<Parameters<ConfigReconciler>[1]>) => void;
   };
   reconciler.preflight = (_rootPath, kind) => {
-    if (kind && kind !== 'none')
-      throw new Error(
-        `No production reconciler is available for ${kind}; use --no-sync or install the ${kind} integration.`,
-      );
+    if (kind && !['none', 'github', 'skills'].includes(kind))
+      throw new Error(`No production reconciler is available for ${kind}.`);
   };
   return reconciler;
 }

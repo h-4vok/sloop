@@ -652,10 +652,17 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
   }
   const readOnly = parseReadOnlyCommand(args);
   if (readOnly) return { kind: 'read-only', command: readOnly };
+  if (args[0] === 'sync') {
+    if (args.slice(1).some((arg) => arg !== '--force-sync'))
+      throw new Error('usage: sloop sync [--force-sync]');
+    return { kind: 'config', args: ['--sync-command', ...args.slice(1)] };
+  }
   if (args[0] === 'init' || args[0] === 'config') {
     if (args[0] === 'init') {
-      if (args.slice(1).some((arg) => arg !== '--wizard'))
-        throw new Error('usage: sloop init [--wizard]');
+      if (args.slice(1).some((arg) => !['--wizard', '--force-sync'].includes(arg)))
+        throw new Error('usage: sloop init [--wizard] [--force-sync]');
+      if (args.includes('--wizard') && args.includes('--force-sync'))
+        throw new Error('--force-sync is not valid with --wizard');
       return { kind: 'config', args: ['--init', ...args.slice(1)] };
     }
     return { kind: 'config', args: args.slice(1) };

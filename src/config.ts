@@ -423,7 +423,7 @@ export const configRegistry = deepFreeze([
     'skills.required',
     'list',
     listParser,
-    ['dispatcher', 'worker', 'qa-sdet'],
+    ['sloop-dispatcher', 'sloop-worker', 'sloop-qa'],
     'Required Sloop skill names.',
     { requiredReconciler: 'skills' },
   ),

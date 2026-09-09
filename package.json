@@ -6,6 +6,10 @@
   "bin": {
     "sloop": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "assets"
+  ],
   "engines": {
     "node": ">=22"
   },

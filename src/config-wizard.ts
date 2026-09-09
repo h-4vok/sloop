@@ -15,6 +15,7 @@ import {
   updateConfigText,
   type FieldMetadata,
 } from './config.js';
+import { syncPrerequisites, migrateSkillNames } from './sync.js';
 const CANONICAL = new Set([
   'github.labels.eligible',
   'github.labels.claimed',
@@ -61,10 +62,21 @@ export async function runConfigCommand(
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
   const init = args.includes('--init');
+  const syncCommand = args.includes('--sync-command');
+  const forceSync = args.includes('--force-sync');
   const wizardMode = args.includes('--wizard');
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
   const sync = flags[0];
   const positional = args.filter((a) => !a.startsWith('--'));
+  if (syncCommand) {
+    if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+    try {
+      syncPrerequisites(root, loadConfigText(readFileSync(file, 'utf8')));
+      return 0;
+    } catch (e) {
+      return fail(`Synchronization failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
   if (wizardMode && !init) return fail('--wizard is only valid with sloop init');
   if (positional[0] === 'show') return show(file, positional[1]);
@@ -74,7 +86,7 @@ export async function runConfigCommand(
     configPaths(positional[0]!).length === 0
   )
     return fail(`unknown path ${positional[0]}; valid paths: ${configPaths().join(', ')}`);
-  if (init && !wizardMode) return directInit(file);
+  if (init && !wizardMode) return directInit(root, file, forceSync, reconciler, io);
   if (!init && positional.length >= 2)
     return setter(root, file, positional[0]!, positional.slice(1).join(' '), sync, reconciler);
   if (!io.input.isTTY || !io.output.isTTY)
@@ -85,14 +97,52 @@ export async function runConfigCommand(
     );
   return wizard(root, file, positional[0], init, sync, reconciler, io);
 }
-function directInit(file: string): number {
+async function directInit(
+  root: string,
+  file: string,
+  forceSync: boolean,
+  reconciler: ConfigReconcilerWithPreflight,
+  io: WizardIO,
+): Promise<number> {
   if (existsSync(file)) {
-    console.log(`${file} already exists; leaving it unchanged.`);
+    const source = readFileSync(file, 'utf8');
+    const migrated = migrateSkillNames(source);
+    if (migrated !== source) {
+      try {
+        loadConfigText(migrated);
+        atomicWrite(file, migrated);
+        console.log(`Migrated legacy skill names in ${file}.`);
+      } catch (e) {
+        return fail(String(e instanceof Error ? e.message : e));
+      }
+    } else console.log(`${file} already exists; leaving it unchanged.`);
     return 0;
   }
   try {
     atomicWrite(file, canonicalConfigYaml());
     console.log(`Created ${file} with default configuration.`);
+    if (
+      forceSync ||
+      (io.input.isTTY &&
+        io.output.isTTY &&
+        (
+          await createInterface({ input: io.input, output: io.output }).question(
+            'Synchronize GitHub labels and Sloop skills now? [Y/n] ',
+          )
+        )
+          .trim()
+          .toLowerCase() !== 'n')
+    ) {
+      try {
+        await reconciler(root, 'github');
+        await reconciler(root, 'skills');
+      } catch (e) {
+        return fail(`Synchronization failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else
+      console.log(
+        'Prerequisites were not synchronized; run `sloop sync` to prepare them manually.',
+      );
     return 0;
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
@@ -174,8 +224,9 @@ async function wizard(
   if (init && existsSync(legacy))
     console.log(`Legacy JSON detected at ${legacy}; it will remain untouched and inert.`);
   const source = existsSync(file) ? readFileSync(file, 'utf8') : canonicalConfigYaml();
-  let current = loadConfigText(source);
-  let next = source;
+  const initialSource = init ? migrateSkillNames(source) : source;
+  let current = loadConfigText(initialSource);
+  let next = initialSource;
   const changed: string[] = [];
   const asked = new Set<string>();
   const useColor = io.output === output && !process.env.NO_COLOR;

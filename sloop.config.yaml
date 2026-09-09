@@ -105,9 +105,9 @@ skills:
     repository
   required:
     # Required Sloop skill names.
-    - dispatcher
-    - worker
-    - qa-sdet
+    - sloop-dispatcher
+    - sloop-worker
+    - sloop-qa
 health:
   enabled:
     # Whether base health gates new work.
