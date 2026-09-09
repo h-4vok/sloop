@@ -15,7 +15,7 @@ import {
   updateConfigText,
   type FieldMetadata,
 } from './config.js';
-import { syncPrerequisites, migrateSkillNames } from './sync.js';
+import { migrateSkillNames } from './sync.js';
 const CANONICAL = new Set([
   'github.labels.eligible',
   'github.labels.claimed',
@@ -70,8 +70,26 @@ export async function runConfigCommand(
   const positional = args.filter((a) => !a.startsWith('--'));
   if (installCommand) {
     if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
+    if (!forceSync) {
+      if (!io.input.isTTY || !io.output.isTTY)
+        return fail(
+          'sloop config install requires a TTY; use --force for non-interactive installation',
+        );
+      const rl = createInterface({ input: io.input, output: io.output });
+      try {
+        const answer = await rl.question(
+          'Install configured GitHub labels and Sloop skills now? [Y/n] ',
+        );
+        if (answer.trim().toLowerCase() === 'n') {
+          console.log('Installation skipped.');
+          return 0;
+        }
+      } finally {
+        rl.close();
+      }
+    }
     try {
-      syncPrerequisites(root, loadConfigText(readFileSync(file, 'utf8')));
+      await reconciler(root, 'github');
       return 0;
     } catch (e) {
       return fail(`Synchronization failed: ${e instanceof Error ? e.message : String(e)}`);

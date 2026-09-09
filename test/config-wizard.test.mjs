@@ -241,6 +241,21 @@ test('production sync never reports success when no reconciler is installed', as
   assert.equal(readFileSync(file, 'utf8'), before);
 });
 
+test('config install asks for confirmation unless forced', async () => {
+  const { root } = fixture();
+  const skipped = scriptedIO(['n']);
+  let calls = 0;
+  const reconciler = async () => {
+    calls++;
+  };
+  assert.equal(await runConfigCommand(root, ['--install'], reconciler, skipped), 0);
+  assert.equal(calls, 0);
+  assert.match(skipped.text(), /Install configured GitHub labels and Sloop skills now/);
+  const forced = await runConfigCommand(root, ['--install', '--force'], reconciler);
+  assert.equal(forced, 0);
+  assert.equal(calls, 1);
+});
+
 test('complex setters fail without changing the document', async () => {
   const { root, file } = fixture();
   const before = readFileSync(file);
