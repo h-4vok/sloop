@@ -64,6 +64,28 @@ test('worktree preparation persists facts, supports recovery, listing, and clean
   assert.equal(listWorkspaces(root).length, 0);
 });
 
+test('recovery and cleanup use the persisted base when the remote advances', async () => {
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
+    await workspace();
+  const root = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  git(remote, 'init', '--bare');
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '-u', 'origin', 'main');
+  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(opts);
+
+  git(root, 'checkout', 'main');
+  writeFileSync(join(root, 'advanced.txt'), 'advanced\n');
+  git(root, 'add', 'advanced.txt');
+  git(root, 'commit', '-m', 'advance remote base');
+  git(root, 'push', 'origin', 'main');
+
+  assert.equal(recoverWorkspace(opts).baseSha, facts.baseSha);
+  cleanupWorkspace(facts, root);
+  assert.equal(listWorkspaces(root).length, 0);
+});
+
 test('branch collisions regenerate a unique name and clear removes only owned worktrees', async () => {
   const { prepareWorktreeWorkspace, clearWorkspaces, listWorkspaces } = await workspace();
   const root = repo();

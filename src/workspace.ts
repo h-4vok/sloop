@@ -145,7 +145,6 @@ export function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefine
       x.ownership.runId === o.runId &&
       x.ownership.issue === o.issue &&
       x.ownership.protocol === 'sloop-workspace-v1' &&
-      x.baseSha === git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root) &&
       (o.worktreeRoot === undefined || inside(parent, x.executionRoot)) &&
       (o.worktreeRoot === undefined || (existsSync(x.executionRoot) && exactWorkspace(root, x))),
   );
