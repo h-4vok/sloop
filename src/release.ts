@@ -2,6 +2,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 export type ReleaseKind = 'patch' | 'minor' | 'major' | 'none';
 
+export type ReleaseState = {
+  tagName: string;
+  tagTarget: string;
+  releaseTagName: string;
+  releaseTarget: string;
+};
+
 export function parseReleaseKind(title: string): ReleaseKind {
   const match = title.match(/^\[([^\]]+)\](?:\s|$)/);
   const hasSecondPrefix = /^\[[^\]]+\]/.test(title.slice(match?.[0].length ?? 0).trimStart());
@@ -21,6 +28,24 @@ export function nextVersion(current: string, kind: ReleaseKind): string {
   if (kind === 'major') return major === 0 ? '1.0.0' : `${major + 1}.0.0`;
   if (kind === 'minor') return `${major}.${minor + 1}.0`;
   return `${major}.${minor}.${patch + 1}`;
+}
+
+export function verifyReleaseState(
+  state: ReleaseState,
+  expectedTag: string,
+  expectedTarget: string,
+): void {
+  if (state.tagName !== expectedTag || state.tagTarget !== expectedTarget) {
+    throw new Error(`Existing ${expectedTag} tag does not point at ${expectedTarget}.`);
+  }
+  if (
+    state.releaseTagName !== expectedTag ||
+    ![expectedTarget, 'main'].includes(state.releaseTarget)
+  ) {
+    throw new Error(
+      `Existing release for ${expectedTag} does not match tag target ${expectedTarget}.`,
+    );
+  }
 }
 
 export function updateMetadata(

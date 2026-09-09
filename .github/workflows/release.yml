@@ -53,4 +53,9 @@ jobs:
             git tag "v$VERSION"
           fi
           git push origin main "v$VERSION"
-          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          export HEAD_SHA=$(git rev-parse HEAD)
+          if gh release view "v$VERSION" --json tagName,targetCommitish > release.json 2>/dev/null; then
+            node --input-type=module -e "import {verifyReleaseState} from './dist/release.js'; import {readFileSync} from 'node:fs'; const release=JSON.parse(readFileSync('release.json')); verifyReleaseState({tagName:'v'+process.env.VERSION, tagTarget:process.env.HEAD_SHA, releaseTagName:release.tagName, releaseTarget:release.targetCommitish}, 'v'+process.env.VERSION, process.env.HEAD_SHA)" 
+          else
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          fi
