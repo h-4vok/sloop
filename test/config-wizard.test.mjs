@@ -153,6 +153,14 @@ test('wizard retries invalid enum values without restarting init', async () => {
   assert.match(io.text(), /Leave empty to use "checkout" as default/);
 });
 
+test('workspace worktree root explains its mode dependency', async () => {
+  const { root } = fixture();
+  const io = scriptedIO(['worktree', '.sloop/worktrees', 'n']);
+  assert.equal(await runConfigCommand(root, ['workspace.worktreeRoot'], undefined, io), 0);
+  assert.match(io.text(), /workspace\.mode \(required by workspace\.worktreeRoot\)/);
+  assert.match(io.text(), /workspace\.worktreeRoot\n/);
+});
+
 test('typed registry exposes full, section, and leaf wizard scopes', () => {
   const all = configPaths();
   const workspace = configPaths('workspace');

@@ -181,7 +181,7 @@ async function wizard(
             const dependencyField = getConfigField(dependencyPath!);
             if (!dependencyField)
               throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
-            let answer = await askField(rl, dependencyField, current);
+            let answer = await askField(rl, dependencyField, current, `required by ${path}`);
             let value: unknown;
             while (true) {
               try {
@@ -191,7 +191,7 @@ async function wizard(
                 break;
               } catch (error) {
                 console.error(String(error instanceof Error ? error.message : error));
-                answer = await askField(rl, dependencyField, current);
+                answer = await askField(rl, dependencyField, current, `required by ${path}`);
               }
             }
             const old = configValue(current, dependencyPath!);
@@ -270,9 +270,10 @@ async function askField(
   rl: ReturnType<typeof createInterface>,
   field: FieldMetadata,
   cfg: unknown,
+  context?: string,
 ): Promise<string> {
   return rl.question(
-    `${field.path}\n  ${field.explanation}\n  options: ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  recommendation: ${field.recommendation}\n  value [${display(configValue(cfg as never, field.path))}]: `,
+    `${field.path}${context ? ` (${context})` : ''}\n  ${field.explanation}\n  options: ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  recommendation: ${field.recommendation}\n  value [${display(configValue(cfg as never, field.path))}]: `,
   );
 }
 function parseWizardValue(field: FieldMetadata, raw: string): unknown {
