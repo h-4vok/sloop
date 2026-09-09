@@ -21,6 +21,7 @@ import {
   withIssueClosingReference,
   resetRunState,
   runCommand,
+  hasCommit,
   runDispatcherCli,
   maxRoundsForUserBudget,
 } from '../dist/dispatcher.js';
@@ -577,6 +578,11 @@ test('PR closing reference uses the claimed issue exactly once for creation and 
   assert.throws(() => withIssueClosingReference('', 0), /issue number must be positive/);
 });
 
+test('Worker commit evidence accepts escaped newline delimiters from Windows comments', () => {
+  assert.equal(hasCommit('[Worker] round=2 commit=abc123\\n\\nVerification', 'abc123456789'), true);
+  assert.equal(hasCommit('[Worker] round=2 commit=abc123', 'def456789'), false);
+});
+
 test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async () => {
   const h = harness();
   await dispatch(h.cfg, h.deps);
@@ -594,6 +600,8 @@ test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async
     ],
   );
   assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '1');
+  assert.match(h.runs[0].input, /exactly one \[Worker\] evidence comment/);
+  assert.match(h.runs[0].input, /complete \[Human Verification\] JSON guide/);
   assert.equal(h.reviews[0].body.startsWith('[QA/SDET Review]'), true);
   assert.equal(h.reviews.length, 1);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';

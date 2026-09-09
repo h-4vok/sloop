@@ -12,6 +12,7 @@ import type {
   GitProvider,
   HealthGate,
   LockStore,
+  WorkspaceAdapter,
   RunEventSink,
   Scheduler,
   Workspace,
@@ -135,7 +136,11 @@ export type Deps = Workspace<State> &
   Scheduler &
   RunEventSink &
   LockStore &
-  GitProvider;
+  GitProvider & {
+    workspaceAdapter?: WorkspaceAdapter;
+    listAllWorktrees?: () => unknown;
+    clearAllWorktrees?: () => void;
+  };
 export type Spec = {
   command: string;
   args: string[];
@@ -623,7 +628,7 @@ function rolePrompt(
 ): string {
   const issueContext = issue.body?.trim() || '(issue body unavailable; inspect it with gh)';
   if (role === 'worker')
-    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. The dispatcher will validate the guide only after CI and QA pass. Never modify dispatcher runtime state. Exit 0 only after the work and comment are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve:\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
+    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. That same evidence comment must include a complete [Human Verification] JSON guide in a fenced block with non-empty summary, steps, expected, isolation, limitations, and checklist fields; make the steps reproducible for a human and keep the guide specific to the implemented change. The dispatcher will validate this guide only after CI and QA pass. Never modify dispatcher runtime state. Exit 0 only after the work and comment are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve:\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
     return `Use the qa-sdet skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish directly to the PR exactly one review beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
@@ -666,9 +671,12 @@ function roundFromBody(body: string | undefined): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-function hasCommit(body: string | undefined, headSha: string | undefined): boolean {
+export function hasCommit(body: string | undefined, headSha: string | undefined): boolean {
   if (!headSha) return true;
-  const match = body?.match(/\bcommit=([^\s]+)/i)?.[1];
+  // Some Windows callers pass escaped newlines (`\\n`) in comment bodies.
+  // Do not let the delimiter become part of the commit token, or valid
+  // Worker evidence will be rejected after the role has already exited.
+  const match = body?.match(/\bcommit=([^\s\\]+)/i)?.[1];
   return Boolean(match && headSha.startsWith(match));
 }
 
@@ -991,7 +999,7 @@ async function runWorker(
     );
   if (evidence.baseRefName !== (cfg.baseBranch ?? 'main'))
     throw new Error(`PR #${metadata.pr} must target ${cfg.baseBranch ?? 'main'}`);
-  const expectedWorkerBranch = workerBranchName(issue.number);
+  const expectedWorkerBranch = d.load().branch ?? workerBranchName(issue.number);
   if (evidence.headRefName !== expectedWorkerBranch)
     throw new Error(
       `PR #${metadata.pr} must use worker branch ${expectedWorkerBranch}; found ${evidence.headRefName}`,
@@ -1230,28 +1238,52 @@ export function prepareWorkerBranch(
   cwd = defaultRoot,
   remote = 'origin',
   baseBranch = 'main',
+  branchPrefix?: string,
 ): { branch: string; mainBaseSha: string } {
-  const branch = workerBranchName(issue);
+  const dirty = execFileSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8' }).trim();
+  if (dirty)
+    throw new CliFailure(5, `working tree is dirty; refusing workspace preparation:\n${dirty}`);
   const baseRef = `${remote}/${baseBranch}`;
   try {
+    execFileSync('git', ['checkout', baseBranch], { cwd, stdio: 'inherit' });
+    execFileSync('git', ['pull', '--ff-only', remote, baseBranch], { cwd, stdio: 'inherit' });
     execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
   } catch (error) {
     throw new CliFailure(5, error instanceof Error ? error.message : String(error));
   }
-  const mainBaseSha = execFileSync('git', ['rev-parse', baseRef], {
+  const mainBaseSha = execFileSync('git', ['rev-parse', `${baseRef}^{commit}`], {
     cwd,
     encoding: 'utf8',
   }).trim();
-  try {
-    execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
-      cwd,
-      stdio: 'ignore',
-    });
-    throw new Error(`worker branch ${branch} already exists; refusing to overwrite it`);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('already exists')) throw error;
+  let branch =
+    branchPrefix === undefined
+      ? workerBranchName(issue)
+      : `${branchPrefix}${issue}-${randomUUID().slice(0, 4)}`;
+  if (branchPrefix === undefined) {
+    let exists = false;
+    try {
+      execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd,
+        stdio: 'ignore',
+      });
+      exists = true;
+    } catch {
+      /* available */
+    }
+    if (exists) throw new Error(`worker branch ${branch} already exists; refusing to overwrite it`);
   }
-  execFileSync('git', ['checkout', '-B', branch, baseRef], { cwd, stdio: 'inherit' });
+  while (true) {
+    try {
+      execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd,
+        stdio: 'ignore',
+      });
+    } catch {
+      break;
+    }
+    branch = `${branchPrefix ?? 'codex/issue-'}${issue}-${randomUUID().slice(0, 4)}`;
+  }
+  execFileSync('git', ['checkout', '-b', branch, mainBaseSha], { cwd, stdio: 'inherit' });
   return { branch, mainBaseSha };
 }
 
@@ -1525,12 +1557,20 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
       try {
         if (recovery) {
           const persisted = d.load().branch;
-          const expected = workerBranchName(issue.number);
-          if (persisted !== expected)
-            throw new Error(
-              `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
-            );
-          d.checkoutWorkerBranch(persisted);
+          const recovered = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
+          if (recovered) {
+            if (recovered.branch !== persisted)
+              throw new Error(
+                `recovery workspace branch does not match persisted branch ${persisted ?? 'none'}; found ${recovered.branch}`,
+              );
+          } else {
+            const expected = workerBranchName(issue.number);
+            if (persisted !== expected)
+              throw new Error(
+                `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
+              );
+            d.checkoutWorkerBranch(persisted);
+          }
           status(d, issue.number, 'worker_recovery_pending', {
             pr: d.load().pr,
             workerRecoveryCount: d.load().workerRecoveryCount ?? 0,
@@ -1542,14 +1582,24 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         } else {
           claimNewIssue(d, issue.number);
           d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          const prepared = d.prepareWorkerBranch(issue.number);
+          d.save({ ...d.load(), workerRunId: randomUUID() });
+          const prepared = d.workspaceAdapter
+            ? d.workspaceAdapter.prepare(issue.number)
+            : d.prepareWorkerBranch(issue.number);
           d.save({
             ...d.load(),
             branch: prepared.branch,
-            mainBaseSha: prepared.mainBaseSha,
+            mainBaseSha: 'baseSha' in prepared ? prepared.baseSha : prepared.mainBaseSha,
+            ...('headSha' in prepared ? { headSha: prepared.headSha } : {}),
+            ...('ownership' in prepared ? { workerRunId: prepared.ownership.runId } : {}),
           });
         }
-        await processIssue(cfg, d, issue);
+        try {
+          await processIssue(cfg, d, issue);
+        } finally {
+          const facts = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
+          if (facts) d.workspaceAdapter?.cleanup(facts);
+        }
         // Temporarily process exactly one issue per invocation. This prevents
         // state from one completed issue leaking into the next issue while the
         // dispatcher transition logic is being hardened.
@@ -1633,6 +1683,13 @@ export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Pro
     case 'link-issue':
       d.linkIssue(command.issue);
       console.log(`Issue #${command.issue} vinculada al PR activo.`);
+      return 0;
+    case 'list-all-worktrees':
+      console.log(JSON.stringify(d.listAllWorktrees?.() ?? [], null, 2));
+      return 0;
+    case 'clear-all-worktrees':
+      d.clearAllWorktrees?.();
+      console.log('Sloop worktrees cleared.');
       return 0;
     case 'prepare-recovery': {
       const cfg = d.loadConfig();

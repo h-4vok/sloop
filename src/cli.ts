@@ -35,7 +35,9 @@ Options:
   --resolve-review-cap --steer TEXT [--additional-rounds N]
                          Record a human review-cap decision
                          [--waive Q1,Q2] [--waive-all-outstanding] [--abandon]
-  --link-issue N         Link issue N to the active run`;
+  --link-issue N         Link issue N to the active run
+  --list-all-worktrees   List registered Sloop worktrees for this repository
+  --clear-all-worktrees  Remove validated registered Sloop worktrees`;
 
 export function requireSupportedNode(version: string): void {
   const major = Number(version.replace(/^v/, '').split('.')[0]);

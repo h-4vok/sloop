@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LockOwner } from './core/boundaries.js';
+import type { LockOwner, WorkspaceAdapter } from './core/boundaries.js';
 import type { Deps } from './dispatcher.js';
 import type { SloopConfig } from './config.js';
 import { CliFailure } from './dispatcher.js';
@@ -25,6 +25,14 @@ import {
   writeState,
 } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
+import {
+  clearWorkspaces,
+  cleanupWorkspace,
+  listWorkspaces,
+  prepareCheckoutWorkspace,
+  prepareWorktreeWorkspace,
+  recoverWorkspace,
+} from './workspace.js';
 import { loadConfigText } from './config.js';
 import { syncPrerequisites } from './sync.js';
 
@@ -91,6 +99,48 @@ export function productionDependencies(
   repository: string,
 ): Deps {
   const state = join(root, '.sloop', 'state.json');
+  let executionRoot = root;
+  const workspaceAdapter: WorkspaceAdapter = {
+    mode: validatedConfig.workspace.mode,
+    prepare: (issue) => {
+      const options = {
+        repositoryRoot: root,
+        remote: validatedConfig.repository.remote,
+        baseBranch: validatedConfig.repository.baseBranch,
+        branchPrefix: validatedConfig.repository.branchPrefix ?? 'codex/issue-',
+        issue,
+        runId: readState(state).workerRunId ?? 'dispatcher',
+        worktreeRoot: validatedConfig.workspace.worktreeRoot,
+        mode: validatedConfig.workspace.mode,
+        stateFile: state,
+      };
+      const facts =
+        validatedConfig.workspace.mode === 'worktree'
+          ? prepareWorktreeWorkspace(options)
+          : prepareCheckoutWorkspace(options);
+      executionRoot = facts.executionRoot;
+      return facts;
+    },
+    recover: (issue, runId) => {
+      const facts = recoverWorkspace({
+        repositoryRoot: root,
+        remote: validatedConfig.repository.remote,
+        baseBranch: validatedConfig.repository.baseBranch,
+        branchPrefix: validatedConfig.repository.branchPrefix ?? 'codex/issue-',
+        issue,
+        runId,
+        worktreeRoot: validatedConfig.workspace.worktreeRoot,
+        mode: validatedConfig.workspace.mode,
+        stateFile: state,
+      });
+      executionRoot = facts?.executionRoot ?? root;
+      return facts;
+    },
+    cleanup: (facts) => {
+      if (validatedConfig.workspace.mode === 'worktree') cleanupWorkspace(facts, root, state);
+      executionRoot = root;
+    },
+  };
   const lock = dispatcherLockPath(root);
   const ownerFile = join(lock, 'owner.json');
   const reclaim = join(lock, 'reclaiming');
@@ -163,15 +213,19 @@ export function productionDependencies(
     updatePullRequestBody: (pr, body) => updatePullRequestBody(pr, body, root, repository),
     pullRequestBody: (pr) => pullRequestBody(pr, root, repository),
     prComment: (pr, body) => commentPullRequest(pr, body, root, repository),
-    run: (spec) => runCommand(spec, root),
+    workspaceAdapter,
+    run: (spec) => runCommand(spec, executionRoot),
     prepareWorkerBranch: (issue) =>
       prepareWorkerBranch(
         issue,
         root,
         validatedConfig.repository.remote,
         validatedConfig.repository.baseBranch,
+        validatedConfig.repository.branchPrefix,
       ),
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
+    listAllWorktrees: () => listWorkspaces(root, state),
+    clearAllWorktrees: () => clearWorkspaces(root, state),
     pid: () => process.pid,
     processAlive: defaultProcessAlive,
     now: Date.now,
