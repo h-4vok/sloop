@@ -177,6 +177,17 @@ export function cleanupWorkspace(
   git(['worktree', 'remove', '--force', entry.executionRoot], root);
   write(
     file,
-    read(file).filter((x) => x !== entry),
+    read(file).filter(
+      (x) =>
+        !(
+          x.repositoryRoot === entry.repositoryRoot &&
+          x.executionRoot === entry.executionRoot &&
+          x.branch === entry.branch &&
+          x.baseSha === entry.baseSha &&
+          x.ownership.runId === entry.ownership.runId &&
+          x.ownership.issue === entry.ownership.issue &&
+          x.ownership.protocol === entry.ownership.protocol
+        ),
+    ),
   );
 }
