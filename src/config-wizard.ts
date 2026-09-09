@@ -181,7 +181,8 @@ async function wizard(
             const dependencyField = getConfigField(dependencyPath!);
             if (!dependencyField)
               throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
-            let answer = await askField(rl, dependencyField, current, `required by ${path}`);
+            const dependencyContext = `required by ${path}; enter ${expected}`;
+            let answer = await askField(rl, dependencyField, current, dependencyContext);
             let value: unknown;
             while (true) {
               try {
@@ -191,7 +192,7 @@ async function wizard(
                 break;
               } catch (error) {
                 console.error(String(error instanceof Error ? error.message : error));
-                answer = await askField(rl, dependencyField, current, `required by ${path}`);
+                answer = await askField(rl, dependencyField, current, dependencyContext);
               }
             }
             const old = configValue(current, dependencyPath!);

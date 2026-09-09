@@ -157,7 +157,10 @@ test('workspace worktree root explains its mode dependency', async () => {
   const { root } = fixture();
   const io = scriptedIO(['worktree', '.sloop/worktrees', 'n']);
   assert.equal(await runConfigCommand(root, ['workspace.worktreeRoot'], undefined, io), 0);
-  assert.match(io.text(), /workspace\.mode \(required by workspace\.worktreeRoot\)/);
+  assert.match(
+    io.text(),
+    /workspace\.mode \(required by workspace\.worktreeRoot; enter worktree\)/,
+  );
   assert.match(io.text(), /workspace\.worktreeRoot\n/);
 });
 
