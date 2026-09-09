@@ -1557,12 +1557,20 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
       try {
         if (recovery) {
           const persisted = d.load().branch;
-          const expected = workerBranchName(issue.number);
-          if (persisted !== expected)
-            throw new Error(
-              `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
-            );
-          d.checkoutWorkerBranch(persisted);
+          const recovered = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
+          if (recovered) {
+            if (recovered.branch !== persisted)
+              throw new Error(
+                `recovery workspace branch does not match persisted branch ${persisted ?? 'none'}; found ${recovered.branch}`,
+              );
+          } else {
+            const expected = workerBranchName(issue.number);
+            if (persisted !== expected)
+              throw new Error(
+                `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
+              );
+            d.checkoutWorkerBranch(persisted);
+          }
           status(d, issue.number, 'worker_recovery_pending', {
             pr: d.load().pr,
             workerRecoveryCount: d.load().workerRecoveryCount ?? 0,

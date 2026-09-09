@@ -110,8 +110,8 @@ export function productionDependencies(
       executionRoot = facts.executionRoot;
       return facts;
     },
-    recover: (issue, runId) =>
-      recoverWorkspace({
+    recover: (issue, runId) => {
+      const facts = recoverWorkspace({
         repositoryRoot: root,
         remote: validatedConfig.repository.remote,
         baseBranch: validatedConfig.repository.baseBranch,
@@ -121,7 +121,10 @@ export function productionDependencies(
         worktreeRoot: validatedConfig.workspace.worktreeRoot,
         mode: validatedConfig.workspace.mode,
         stateFile: state,
-      }),
+      });
+      executionRoot = facts?.executionRoot ?? root;
+      return facts;
+    },
     cleanup: (facts) => {
       if (validatedConfig.workspace.mode === 'worktree') cleanupWorkspace(facts, root, state);
       executionRoot = root;
