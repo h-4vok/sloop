@@ -12,6 +12,10 @@ export const HELP = `Sloop ${packageJson.version}
 
 Usage: sloop <command> [option]
 
+Configuration:
+  init                   Create sloop.config.yaml with defaults
+  init --wizard          Configure sloop.config.yaml interactively
+
 Read-only commands:
   status [--verbose] [--json]  Validate and show repository context
   issues list [--json]         List eligible issues

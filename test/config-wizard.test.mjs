@@ -145,7 +145,10 @@ test('wizard retries invalid enum values without restarting init', async () => {
   const error = console.error;
   console.error = (...args) => errors.push(args.join(' '));
   try {
-    assert.equal(await runConfigCommand(root, ['--init', 'workspace.mode'], undefined, io), 0);
+    assert.equal(
+      await runConfigCommand(root, ['--init', '--wizard', 'workspace.mode'], undefined, io),
+      0,
+    );
   } finally {
     console.error = error;
   }
@@ -185,11 +188,26 @@ test('complex and canonical setters fail before changing bytes', async () => {
 
 test('init and config retain distinct command identity', () => {
   assert.deepEqual(parseCliCommand(['init']), { kind: 'config', args: ['--init'] });
+  assert.deepEqual(parseCliCommand(['init', '--wizard']), {
+    kind: 'config',
+    args: ['--init', '--wizard'],
+  });
+  assert.throws(() => parseCliCommand(['init', '--nope']), /usage: sloop init \[--wizard\]/);
   assert.deepEqual(parseCliCommand(['config']), { kind: 'config', args: [] });
   assert.deepEqual(parseCliCommand(['config', 'workspace']), {
     kind: 'config',
     args: ['workspace'],
   });
+});
+
+test('plain init creates canonical defaults without a TTY and never overwrites', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-direct-init-'));
+  const file = join(root, 'sloop.config.yaml');
+  assert.equal(await runConfigCommand(root, ['--init']), 0);
+  assert.equal(readFileSync(file, 'utf8'), canonicalConfigYaml());
+  const before = readFileSync(file, 'utf8');
+  assert.equal(await runConfigCommand(root, ['--init']), 0);
+  assert.equal(readFileSync(file, 'utf8'), before);
 });
 
 test('config show and scalar setters remain non-interactive while config wizard requires a TTY', async () => {
@@ -236,7 +254,7 @@ test('real readline wizard covers init, section, and leaf scopes with confirmati
   const initRoot = mkdtempSync(join(tmpdir(), 'sloop-init-'));
   const initIO = scriptedIO(['subdir', 'y', 'n']);
   assert.equal(
-    await runConfigCommand(initRoot, ['--init', 'workspace.path'], undefined, initIO),
+    await runConfigCommand(initRoot, ['--init', '--wizard', 'workspace.path'], undefined, initIO),
     0,
     initIO.text(),
   );
@@ -268,7 +286,7 @@ test('init creates canonical YAML when a scoped prompt accepts its default', asy
   const root = mkdtempSync(join(tmpdir(), 'sloop-bare-init-'));
   const io = scriptedIO(['', 'y', 'n']);
   assert.equal(
-    await runConfigCommand(root, ['--init', 'workspace.path'], undefined, io),
+    await runConfigCommand(root, ['--init', '--wizard', 'workspace.path'], undefined, io),
     0,
     io.text(),
   );
@@ -281,7 +299,7 @@ test('init cancellation does not create YAML', async () => {
   const root = mkdtempSync(join(tmpdir(), 'sloop-bare-init-cancel-'));
   const io = scriptedIO(['', 'n']);
   assert.equal(
-    await runConfigCommand(root, ['--init', 'workspace.path'], undefined, io),
+    await runConfigCommand(root, ['--init', '--wizard', 'workspace.path'], undefined, io),
     0,
     io.text(),
   );

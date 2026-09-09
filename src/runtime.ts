@@ -652,8 +652,14 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
   }
   const readOnly = parseReadOnlyCommand(args);
   if (readOnly) return { kind: 'read-only', command: readOnly };
-  if (args[0] === 'init' || args[0] === 'config')
-    return { kind: 'config', args: args[0] === 'init' ? ['--init'] : args.slice(1) };
+  if (args[0] === 'init' || args[0] === 'config') {
+    if (args[0] === 'init') {
+      if (args.slice(1).some((arg) => arg !== '--wizard'))
+        throw new Error('usage: sloop init [--wizard]');
+      return { kind: 'config', args: ['--init', ...args.slice(1)] };
+    }
+    return { kind: 'config', args: args.slice(1) };
+  }
   return { kind: 'dispatcher', command: parseDispatcherCommand(args) };
 }
 

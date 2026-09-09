@@ -61,10 +61,12 @@ export async function runConfigCommand(
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
   const init = args.includes('--init');
+  const wizardMode = args.includes('--wizard');
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
   const sync = flags[0];
   const positional = args.filter((a) => !a.startsWith('--'));
   if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
+  if (wizardMode && !init) return fail('--wizard is only valid with sloop init');
   if (positional[0] === 'show') return show(file, positional[1]);
   if (
     positional.length === 1 &&
@@ -72,6 +74,7 @@ export async function runConfigCommand(
     configPaths(positional[0]!).length === 0
   )
     return fail(`unknown path ${positional[0]}; valid paths: ${configPaths().join(', ')}`);
+  if (init && !wizardMode) return directInit(file);
   if (!init && positional.length >= 2)
     return setter(root, file, positional[0]!, positional.slice(1).join(' '), sync, reconciler);
   if (!io.input.isTTY || !io.output.isTTY)
@@ -81,6 +84,19 @@ export async function runConfigCommand(
         : 'sloop config wizard requires a TTY; scalar setters and config show do not',
     );
   return wizard(root, file, positional[0], init, sync, reconciler, io);
+}
+function directInit(file: string): number {
+  if (existsSync(file)) {
+    console.log(`${file} already exists; leaving it unchanged.`);
+    return 0;
+  }
+  try {
+    atomicWrite(file, canonicalConfigYaml());
+    console.log(`Created ${file} with default configuration.`);
+    return 0;
+  } catch (e) {
+    return fail(String(e instanceof Error ? e.message : e));
+  }
 }
 function fail(message: string): number {
   console.error(message);
