@@ -1230,28 +1230,52 @@ export function prepareWorkerBranch(
   cwd = defaultRoot,
   remote = 'origin',
   baseBranch = 'main',
+  branchPrefix?: string,
 ): { branch: string; mainBaseSha: string } {
-  const branch = workerBranchName(issue);
+  const dirty = execFileSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8' }).trim();
+  if (dirty)
+    throw new CliFailure(5, `working tree is dirty; refusing workspace preparation:\n${dirty}`);
   const baseRef = `${remote}/${baseBranch}`;
   try {
+    execFileSync('git', ['checkout', baseBranch], { cwd, stdio: 'inherit' });
+    execFileSync('git', ['pull', '--ff-only', remote, baseBranch], { cwd, stdio: 'inherit' });
     execFileSync('git', ['fetch', remote, baseBranch], { cwd, stdio: 'inherit' });
   } catch (error) {
     throw new CliFailure(5, error instanceof Error ? error.message : String(error));
   }
-  const mainBaseSha = execFileSync('git', ['rev-parse', baseRef], {
+  const mainBaseSha = execFileSync('git', ['rev-parse', `${baseRef}^{commit}`], {
     cwd,
     encoding: 'utf8',
   }).trim();
-  try {
-    execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
-      cwd,
-      stdio: 'ignore',
-    });
-    throw new Error(`worker branch ${branch} already exists; refusing to overwrite it`);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('already exists')) throw error;
+  let branch =
+    branchPrefix === undefined
+      ? workerBranchName(issue)
+      : `${branchPrefix}${issue}-${randomUUID().slice(0, 4)}`;
+  if (branchPrefix === undefined) {
+    let exists = false;
+    try {
+      execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd,
+        stdio: 'ignore',
+      });
+      exists = true;
+    } catch {
+      /* available */
+    }
+    if (exists) throw new Error(`worker branch ${branch} already exists; refusing to overwrite it`);
   }
-  execFileSync('git', ['checkout', '-B', branch, baseRef], { cwd, stdio: 'inherit' });
+  while (true) {
+    try {
+      execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd,
+        stdio: 'ignore',
+      });
+    } catch {
+      break;
+    }
+    branch = `${branchPrefix ?? 'codex/issue-'}${issue}-${randomUUID().slice(0, 4)}`;
+  }
+  execFileSync('git', ['checkout', '-b', branch, mainBaseSha], { cwd, stdio: 'inherit' });
   return { branch, mainBaseSha };
 }
 

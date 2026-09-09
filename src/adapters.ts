@@ -159,6 +159,7 @@ export function productionDependencies(
         root,
         validatedConfig.repository.remote,
         validatedConfig.repository.baseBranch,
+        validatedConfig.repository.branchPrefix,
       ),
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
     pid: () => process.pid,

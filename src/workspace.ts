@@ -1,0 +1,132 @@
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+
+export type WorkspaceFacts = Readonly<{
+  workspaceRoot: string;
+  executionRoot: string;
+  branch: string;
+  baseSha: string;
+  ownership: Readonly<{ runId: string; issue: number; protocol: string }>;
+}>;
+export type WorkspaceOptions = Readonly<{
+  repositoryRoot: string;
+  remote: string;
+  baseBranch: string;
+  branchPrefix: string;
+  issue: number;
+  runId: string;
+  worktreeRoot?: string;
+  stateFile?: string;
+}>;
+type Registered = WorkspaceFacts & { repositoryRoot: string; pr?: number; orphaned?: boolean };
+const git = (args: string[], cwd: string) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+const inside = (root: string, target: string) => {
+  const r = relative(resolve(root), resolve(target));
+  return r !== '' && r !== '..' && !r.startsWith(`..${requireSep()}`) && !isAbsolute(r);
+};
+const requireSep = () => (process.platform === 'win32' ? '\\' : '/');
+const read = (file: string): Registered[] => {
+  try {
+    const value = JSON.parse(readFileSync(file, 'utf8')) as { workspaces?: Registered[] };
+    return value.workspaces ?? [];
+  } catch {
+    return [];
+  }
+};
+const write = (file: string, entries: Registered[]) => {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ workspaces: entries }, null, 2) + '\n');
+  renameSync(tmp, file);
+};
+const branch = (prefix: string, issue: number, root: string) => {
+  for (;;) {
+    const name = `${prefix}${issue}-${randomUUID().slice(0, 4)}`;
+    try {
+      git(['show-ref', '--verify', '--quiet', `refs/heads/${name}`], root);
+    } catch {
+      return name;
+    }
+  }
+};
+export function prepareCheckoutWorkspace(o: WorkspaceOptions): WorkspaceFacts {
+  const root = resolve(o.repositoryRoot);
+  if (git(['status', '--porcelain'], root))
+    throw new Error('working tree is dirty; refusing workspace preparation');
+  git(['checkout', o.baseBranch], root);
+  git(['pull', '--ff-only', o.remote, o.baseBranch], root);
+  git(['fetch', o.remote, o.baseBranch], root);
+  const baseSha = git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root);
+  const name = branch(o.branchPrefix, o.issue, root);
+  git(['checkout', '-b', name, baseSha], root);
+  return {
+    workspaceRoot: root,
+    executionRoot: root,
+    branch: name,
+    baseSha,
+    ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
+  };
+}
+export function prepareWorktreeWorkspace(o: WorkspaceOptions): WorkspaceFacts {
+  const root = resolve(o.repositoryRoot),
+    parent = resolve(root, o.worktreeRoot ?? '.sloop/worktrees');
+  git(['fetch', o.remote, o.baseBranch], root);
+  const baseSha = git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root);
+  const name = branch(o.branchPrefix, o.issue, root),
+    executionRoot = resolve(parent, `${o.issue}-${o.runId.slice(0, 8)}`);
+  if (!inside(parent, executionRoot)) throw new Error('unsafe worktree target');
+  mkdirSync(parent, { recursive: true });
+  git(['worktree', 'add', '-b', name, executionRoot, baseSha], root);
+  const facts = {
+    workspaceRoot: root,
+    executionRoot,
+    branch: name,
+    baseSha,
+    ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
+  };
+  const file = o.stateFile ?? resolve(root, '.sloop/state.json');
+  write(file, [...read(file), { ...facts, repositoryRoot: root }]);
+  return facts;
+}
+export function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefined {
+  const file = o.stateFile ?? resolve(o.repositoryRoot, '.sloop/state.json');
+  return read(file).find(
+    (x) =>
+      x.repositoryRoot === resolve(o.repositoryRoot) &&
+      x.ownership.runId === o.runId &&
+      x.ownership.issue === o.issue &&
+      x.ownership.protocol === 'sloop-workspace-v1',
+  );
+}
+export function listWorkspaces(
+  repositoryRoot: string,
+  stateFile = resolve(repositoryRoot, '.sloop/state.json'),
+) {
+  return read(stateFile)
+    .filter((x) => x.repositoryRoot === resolve(repositoryRoot))
+    .map((x) => ({
+      path: x.executionRoot,
+      branch: x.branch,
+      issue: x.ownership.issue,
+      pr: x.pr ?? '—',
+    }));
+}
+export function clearWorkspaces(
+  repositoryRoot: string,
+  stateFile = resolve(repositoryRoot, '.sloop/state.json'),
+) {
+  const root = resolve(repositoryRoot),
+    entries = read(stateFile),
+    keep: Registered[] = [];
+  for (const x of entries) {
+    if (x.repositoryRoot !== root || !inside(resolve(root, '.sloop/worktrees'), x.executionRoot)) {
+      keep.push(x);
+      continue;
+    }
+    git(['worktree', 'remove', '--force', x.executionRoot], root);
+  }
+  write(stateFile, keep);
+}
