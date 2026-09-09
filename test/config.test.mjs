@@ -76,7 +76,7 @@ test('defaults and every registered parser round trip through canonical YAML', (
   const config = loadConfigText(canonical);
   for (const entry of configRegistry)
     assert.notEqual(entry.parser(entry.default, `$.${entry.path}`), undefined);
-  assert.deepEqual(config.workflow.reviewOrder, ['qa', 'staff']);
+  assert.deepEqual(config.workflow.reviewOrder, ['qa']);
   assert.equal(config.workflow.humanMergeWait, true);
   assert.equal(config.arbiter.reviewRounds, 3);
   assert.equal(config.arbiter.stagnatingAppearances, 2);
@@ -94,12 +94,8 @@ test('invalid documents provide exact YAML paths', () => {
     ],
     [`${canonical}\nunknown: true\n`, '$.unknown: unknown configuration key'],
     [
-      canonical.replace('- staff\n  verification:', '- qa\n  verification:'),
-      '$.workflow.reviewOrder: must contain qa and staff exactly once',
-    ],
-    [
-      canonical.replace("'[Staff Review]'", "'[QA/SDET Review]'"),
-      '$.github.roleMarkers: role markers must be unique',
+      canonical.replace('- qa\n  verification:', '- worker\n  verification:'),
+      '$.workflow.reviewOrder: must contain qa exactly once',
     ],
     [
       canonical.replace('    - - npm\n      - test', '    - - npm\n      - "test && rm"'),

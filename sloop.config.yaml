@@ -44,9 +44,6 @@ github:
     qa:
       # Leading marker for QA review evidence.
       '[QA/SDET Review]'
-    staff:
-      # Leading marker for Staff review evidence.
-      '[Staff Review]'
 workflow:
   humanMergeWait:
     # Wait for a human to merge an approved PR.
@@ -54,7 +51,6 @@ workflow:
   reviewOrder:
     # Review roles in execution order.
     - qa
-    - staff
   verification:
     # Safe verification commands as argv arrays.
     - - npm
@@ -95,19 +91,6 @@ agents:
     retries:
       # qa runner retry count.
       0
-  staff:
-    argv:
-      # staff runner argv; never evaluated by a shell.
-      - codex
-      - exec
-      - --sandbox
-      - danger-full-access
-    timeout:
-      # staff runner timeout in milliseconds.
-      10m
-    retries:
-      # staff runner retry count.
-      0
 skills:
   scope:
     # Installation scope for required skills.
@@ -117,7 +100,6 @@ skills:
     - dispatcher
     - worker
     - qa-sdet
-    - staff-reviewer
 health:
   enabled:
     # Whether base health gates new work.
