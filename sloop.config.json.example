@@ -5,11 +5,6 @@
     "args": ["exec", "--sandbox", "danger-full-access"],
     "timeoutMs": 600000
   },
-  "staffReviewCommand": {
-    "command": "codex",
-    "args": ["exec", "--sandbox", "danger-full-access"],
-    "timeoutMs": 600000
-  },
   "qaCommand": {
     "command": "codex",
     "args": ["exec", "--sandbox", "danger-full-access"],

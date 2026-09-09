@@ -21,8 +21,6 @@ function harness(overrides = {}) {
   const stderr = [];
   const responses = {
     'git rev-parse --show-toplevel': { stdout: '/repo\n', stderr: '', status: 0 },
-    'git show HEAD:sloop.config.yaml': { stdout: config, stderr: '', status: 0 },
-    'git show origin/main:sloop.config.yaml': { stdout: config, stderr: '', status: 0 },
     'git --version': { stdout: 'git version 2.50', stderr: '', status: 0 },
     'git remote get-url origin': { stdout: 'https://github.com/o/r.git', stderr: '', status: 0 },
     'git rev-parse --verify origin/main^{commit}': { stdout: 'abc', stderr: '', status: 0 },
@@ -68,6 +66,7 @@ function harness(overrides = {}) {
         responses[`${file} ${args.join(' ')}`] ?? { stdout: '', stderr: 'unexpected', status: 1 }
       );
     },
+    readFile: () => overrides.localConfig ?? config,
     stdout: (value) => stdout.push(value),
     stderr: (value) => stderr.push(value),
   };
@@ -189,9 +188,7 @@ test('outside a repository is a preflight failure on stderr without later calls'
 });
 
 test('JSON failure is one envelope on stdout with no stderr noise', () => {
-  const h = harness({
-    'git show origin/main:sloop.config.yaml': { stdout: '', stderr: 'missing', status: 128 },
-  });
+  const h = harness({ localConfig: 'schemaVersion: [' });
   assert.equal(
     runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io),
     EXIT.preflight,
@@ -208,16 +205,16 @@ test('JSON failure is one envelope on stdout with no stderr noise', () => {
     'diagnostics',
     'references',
   ]);
-  assert.equal(result.diagnostics[0].check, 'base-configuration');
+  assert.equal(result.diagnostics[0].check, 'configuration');
 });
 
-test('status is read-only, loads configuration from the configured base, and skips GitHub', () => {
+test('status is read-only, loads local configuration, and skips GitHub', () => {
   const h = harness();
   assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io), EXIT.ok);
   const result = JSON.parse(h.stdout[0]);
   assert.equal(result.status, 'idle');
   assert.equal(result.result.repository, resolve('/repo'));
-  assert.equal(result.result.configRef, 'origin/main');
+  assert.equal(result.result.configRef, 'working-tree');
   assert.ok(!h.calls.some(({ file }) => file === 'gh'));
   assert.ok(!h.calls.some(({ args }) => ['fetch', 'checkout', 'reset', 'clean'].includes(args[0])));
 });
@@ -305,21 +302,15 @@ test('dispatcher commands cross discovery and base-config preflight before opera
   assert.equal(result.config.repository.baseBranch, 'main');
   assert.deepEqual(
     h.calls.slice(0, 3).map(({ file, args }) => `${file} ${args.join(' ')}`),
-    [
-      'git rev-parse --show-toplevel',
-      'git show HEAD:sloop.config.yaml',
-      'git show origin/main:sloop.config.yaml',
-    ],
+    ['git rev-parse --show-toplevel', 'git --version', 'git remote get-url origin'],
   );
 });
 
 test('dispatcher preflight failure stops before any mutation-capable dependency', () => {
-  const h = harness({
-    'git show origin/main:sloop.config.yaml': { stdout: '', stderr: 'missing', status: 128 },
-  });
-  const result = runDispatcherPreflight(parseDispatcherCommand([]), h.io);
+  const h = harness({ localConfig: 'schemaVersion: [' });
+  const result = runDispatcherPreflight([], h.io);
   assert.deepEqual(result, { code: EXIT.preflight });
-  assert.match(h.stderr[0], /base-configuration/);
+  assert.match(h.stderr[0], /configuration/);
   assert.ok(!h.calls.some(({ file }) => file === 'gh'));
   assert.ok(!h.calls.some(({ args }) => ['status', 'checkout', 'reset'].includes(args[0])));
 });
@@ -357,17 +348,15 @@ test('missing configured remote is collected as a preflight diagnostic', () => {
   assert.ok(checks.includes('remote'));
 });
 
-test('base configuration cannot redirect the immutable bootstrap selector', () => {
+test('local configuration controls the base branch selector', () => {
   const redirected = canonicalConfigYaml().replace(
     '    # Pull-request target and healthy base branch.\n    main',
     '    # Pull-request target and healthy base branch.\n    trunk',
   );
   const h = harness({
-    'git show origin/main:sloop.config.yaml': { stdout: redirected, stderr: '', status: 0 },
+    localConfig: redirected,
+    'git rev-parse --verify origin/trunk^{commit}': { stdout: 'abc', stderr: '', status: 0 },
   });
-  assert.equal(
-    runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io),
-    EXIT.preflight,
-  );
-  assert.match(JSON.parse(h.stdout[0]).diagnostics[0].message, /base selector changed/);
+  assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io), EXIT.ok);
+  assert.equal(JSON.parse(h.stdout[0]).result.configRef, 'working-tree');
 });

@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const packageJson = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
@@ -10,6 +11,10 @@ const packageJson = JSON.parse(
 export const HELP = `Sloop ${packageJson.version}
 
 Usage: sloop <command> [option]
+
+Configuration:
+  init                   Create sloop.config.yaml with defaults
+  init --wizard          Configure sloop.config.yaml interactively
 
 Read-only commands:
   status [--verbose] [--json]  Validate and show repository context
@@ -23,8 +28,11 @@ Options:
   --status [--verbose]   Show local run state
   --recover-lock         Recover a stale dispatcher lock
   --reset                Reset completed local run state
-  --prepare-recovery N   Prepare issue N for worker recovery
-  --resolve-review-cap   Record a human review-cap decision
+  --prepare-recovery N [--pr PR]
+                         Prepare issue N for worker recovery; use PR or existing state.pr
+  --resolve-review-cap --steer TEXT [--additional-rounds N]
+                         Record a human review-cap decision
+                         [--waive Q1,Q2] [--waive-all-outstanding] [--abandon]
   --link-issue N         Link issue N to the active run`;
 
 export function requireSupportedNode(version: string): void {
@@ -52,6 +60,7 @@ export interface RunCliModules {
     | 'parseCliCommand'
     | 'runDispatcherPreflight'
     | 'runReadOnlyCommand'
+    | 'discoverRepository'
   >;
   dispatcher: Pick<DispatcherModule, 'runDispatcherCli'>;
   adapters: Pick<AdaptersModule, 'productionDependencies'>;
@@ -97,6 +106,40 @@ export async function runCli(
     }
     if (command.kind === 'read-only') {
       process.exitCode = runReadOnlyCommand(command.command);
+      return;
+    }
+    if (command.kind === 'config') {
+      const { discoverRepository } = runtime;
+      const root = discoverRepository({
+        cwd: process.cwd(),
+        platform: process.platform,
+        nodeVersion: process.version,
+        run(file, args, cwd) {
+          const result = spawnSync(file, [...args], {
+            cwd: cwd ?? process.cwd(),
+            encoding: 'utf8',
+          });
+          return {
+            stdout: result.stdout ?? '',
+            stderr: result.stderr ?? '',
+            status: result.status ?? 1,
+          };
+        },
+        readFile(file) {
+          return readFileSync(file, 'utf8');
+        },
+        stdout: console.log,
+        stderr: console.error,
+      });
+      const [{ runConfigCommand }, { productionConfigReconciler }] = await Promise.all([
+        import('./config-wizard.js'),
+        import('./adapters.js'),
+      ]);
+      process.exitCode = await runConfigCommand(
+        root,
+        command.args,
+        productionConfigReconciler(root),
+      );
       return;
     }
     const [{ runDispatcherCli }, { productionDependencies }] = modules

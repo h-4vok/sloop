@@ -1,6 +1,6 @@
 # QA / SDET
 
-Runs after PR CI is green and before Staff. Validates acceptance criteria, regression coverage, and smoke evidence. Publishes one PR review per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`, with IDs (`Q1`, `Q2`, ...), exact evidence, `file:line` for defects, and the current commit. A non-passed verdict returns the work to Worker.
+Runs after PR CI is green. Validates acceptance criteria, regression coverage, and smoke evidence. Publishes one PR review per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`, with IDs (`Q1`, `Q2`, ...), exact evidence, `file:line` for defects, and the current commit. A non-passed verdict returns the work to Worker.
 
 Passed checks stay concise. Every failed or product-blocked check explains the problem in plain language and provides exact minimal reproduction steps or a failing code path, reviewed SHA, expected behavior, actual output/state, and the smallest requested outcome; a test name or `file:line` without a failing invocation is not sufficient defect evidence.
 

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { Document, isAlias, parseDocument, visit, type Node } from 'yaml';
 
@@ -41,15 +41,15 @@ export type SloopConfig = Readonly<{
       blocked: string;
       priority: readonly string[];
     }>;
-    roleMarkers: Readonly<{ worker: string; qa: string; staff: string }>;
+    roleMarkers: Readonly<{ worker: string; qa: string }>;
   }>;
   workflow: Readonly<{
     humanMergeWait: boolean;
-    reviewOrder: readonly ('qa' | 'staff')[];
+    reviewOrder: readonly ['qa'];
     verification: readonly (readonly string[])[];
     requiredChecks: readonly string[];
   }>;
-  agents: Readonly<{ worker: RunnerConfig; qa: RunnerConfig; staff: RunnerConfig }>;
+  agents: Readonly<{ worker: RunnerConfig; qa: RunnerConfig }>;
   skills: Readonly<{ scope: 'repository' | 'user'; required: readonly string[] }>;
   health: Readonly<{ enabled: boolean; command: readonly string[]; timeout: number }>;
   loop: Readonly<{ interval: number; taskName: string }>;
@@ -258,7 +258,7 @@ const f = <T>(
     parser,
     default: defaultValue,
     explanation,
-    recommendation: `Use ${JSON.stringify(defaultValue)} unless repository policy requires otherwise.`,
+    recommendation: `Leave empty to use ${JSON.stringify(defaultValue)} as default. Change unless repository policy requires otherwise.`,
     ...extra,
   });
 
@@ -362,27 +362,15 @@ export const configRegistry = deepFreeze([
     'Leading marker for QA review evidence.',
   ),
   f(
-    'github.roleMarkers.staff',
-    'string',
-    stringParser,
-    '[Staff Review]',
-    'Leading marker for Staff review evidence.',
-  ),
-  f(
     'workflow.humanMergeWait',
     'boolean',
     booleanParser,
     true,
     'Wait for a human to merge an approved PR.',
   ),
-  f(
-    'workflow.reviewOrder',
-    'list',
-    listParser,
-    ['qa', 'staff'],
-    'Review roles in execution order.',
-    { choices: ['qa', 'staff'] },
-  ),
+  f('workflow.reviewOrder', 'list', listParser, ['qa'], 'Review roles in execution order.', {
+    choices: ['qa'],
+  }),
   f(
     'workflow.verification',
     'argv',
@@ -397,7 +385,7 @@ export const configRegistry = deepFreeze([
   f('workflow.requiredChecks', 'list', listParser, ['pr-checks'], 'Required GitHub check names.', {
     requiredReconciler: 'github',
   }),
-  ...(['worker', 'qa', 'staff'] as const).flatMap((role) => [
+  ...(['worker', 'qa'] as const).flatMap((role) => [
     f(
       `agents.${role}.argv`,
       'argv',
@@ -435,7 +423,7 @@ export const configRegistry = deepFreeze([
     'skills.required',
     'list',
     listParser,
-    ['dispatcher', 'worker', 'qa-sdet', 'staff-reviewer'],
+    ['dispatcher', 'worker', 'qa-sdet'],
     'Required Sloop skill names.',
     { requiredReconciler: 'skills' },
   ),
@@ -674,20 +662,12 @@ export function parseConfig(value: unknown): SloopConfig {
       message: 'unsupported schema version; expected 1',
     });
   const order = getPath(output, 'workflow.reviewOrder');
-  if (
-    Array.isArray(order) &&
-    (order.length !== 2 ||
-      new Set(order).size !== 2 ||
-      !order.includes('qa') ||
-      !order.includes('staff'))
-  )
+  if (Array.isArray(order) && (order.length !== 1 || order[0] !== 'qa'))
     diagnostics.push({
       path: '$.workflow.reviewOrder',
-      message: 'must contain qa and staff exactly once',
+      message: 'must contain qa exactly once',
     });
-  const markers = ['worker', 'qa', 'staff'].map((role) =>
-    getPath(output, `github.roleMarkers.${role}`),
-  );
+  const markers = ['worker', 'qa'].map((role) => getPath(output, `github.roleMarkers.${role}`));
   if (new Set(markers).size !== markers.length)
     diagnostics.push({ path: '$.github.roleMarkers', message: 'role markers must be unique' });
   const priorities = getPath(output, 'github.labels.priority');
@@ -786,6 +766,34 @@ export function updateConfigFile(file: string, path: string, value: unknown): vo
   } finally {
     rmSync(temporary, { force: true });
   }
+}
+
+export function configValue(config: SloopConfig, path: string): unknown {
+  return getPath(config as unknown as Record<string, unknown>, path);
+}
+
+export function configPaths(prefix = ''): readonly string[] {
+  return configRegistry
+    .filter((field) => !prefix || field.path === prefix || field.path.startsWith(`${prefix}.`))
+    .map((field) => field.path);
+}
+
+export function parseConfigValue(field: FieldMetadata, value: string): unknown {
+  if (field.type === 'list' || field.type === 'argv')
+    throw new ConfigValidationError([
+      { path: `$.${field.path}`, message: 'complex values require the interactive wizard' },
+    ]);
+  if (field.type === 'boolean')
+    return field.parser(
+      value === 'true' ? true : value === 'false' ? false : value,
+      `$.${field.path}`,
+    );
+  if (field.type === 'integer') return field.parser(Number(value), `$.${field.path}`);
+  return field.parser(value, `$.${field.path}`);
+}
+
+export function configFileExists(file: string): boolean {
+  return existsSync(file);
 }
 
 export function canonicalConfigYaml(): string {
