@@ -1059,6 +1059,22 @@ function effectiveMaxRounds(cfg: Config, state: State): number {
   return (cfg.maxReviewRounds ?? 10) + (state.reviewCap?.additionalRounds ?? 0);
 }
 
+export function maxRoundsForUserBudget(
+  baseMaxRounds: number,
+  currentRound: number,
+  requestedAdditionalRounds: number,
+): number {
+  if (!Number.isSafeInteger(baseMaxRounds) || baseMaxRounds < 0)
+    throw new Error('base review-round limit must be a non-negative integer');
+  if (!Number.isSafeInteger(currentRound) || currentRound < 1)
+    throw new Error('current review round must be a positive integer');
+  if (!Number.isSafeInteger(requestedAdditionalRounds) || requestedAdditionalRounds < 0)
+    throw new Error('additional review rounds must be a non-negative integer');
+  return requestedAdditionalRounds === 0
+    ? baseMaxRounds
+    : Math.max(baseMaxRounds, currentRound + requestedAdditionalRounds - 1);
+}
+
 function findingIds(feedback: string): string[] {
   return [
     ...new Set(
@@ -1371,9 +1387,15 @@ export function resolveReviewCap(
     throw new Error(
       `waivers must name outstanding findings: ${[...outstanding].join(', ') || 'none'}`,
     );
+  const baseMaxRounds = cfg.maxReviewRounds ?? 10;
+  const requestedMaxRounds = maxRoundsForUserBudget(
+    baseMaxRounds,
+    current.reviewRound ?? 1,
+    additionalRounds,
+  );
   const cap = {
     ...current.reviewCap!,
-    additionalRounds: (current.reviewCap?.additionalRounds ?? 0) + additionalRounds,
+    additionalRounds: Math.max(0, requestedMaxRounds - baseMaxRounds),
     waivedFindingIds: [
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...normalizedWaivers]),
     ],

@@ -22,7 +22,15 @@ import {
   resetRunState,
   runCommand,
   runDispatcherCli,
+  maxRoundsForUserBudget,
 } from '../dist/dispatcher.js';
+
+test('additional rounds mean future rounds from the current round', () => {
+  assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);
+  assert.equal(maxRoundsForUserBudget(3, 2, 2), 3);
+  assert.equal(maxRoundsForUserBudget(3, 9, 6), 14);
+  assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
+});
 
 test('Windows batch commands use cmd.exe without Node shell mode', () => {
   assert.deepEqual(

@@ -21,6 +21,8 @@ A Worker run persists its `runId`, PID, lease, heartbeat, PR, branch, head SHA, 
 
 The dispatcher never starts a Worker beyond `maxReviewRounds`. It records `review_cap_pending` with the current SHA and outstanding QA IDs, and posts the decision context to both the issue and PR. A human may grant a local `--additional-rounds N` budget, waive exact `Q<n>` findings (or all current findings), and provide a mandatory `--steer` that is included in resumed Worker and QA prompts. A no-round waiver is only ready for human merge when all current findings are waived and CI/mergeability are healthy. Abandonment is explicit, closes the PR and issue with `wontfix`, and never merges.
 
+`--additional-rounds N` always means N future review rounds starting at the current `reviewRound`. For example, requesting 2 rounds at round 9 permits rounds 9 and 10; the user does not calculate or provide the absolute cap. Repeating the command recalculates the budget from the current round and never blindly adds to stale historical budget.
+
 ## Multi-issue batches
 
 For a batch, create `integration/<identifier>` from `main`, associate each issue in comments, and open one PR to `main`. The sequence and single-active-task rule remain in force; branches are not mixed and merges are never automatic.
