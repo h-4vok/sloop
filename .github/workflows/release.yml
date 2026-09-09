@@ -42,20 +42,28 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          tag="v$VERSION"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tag_target=$(git rev-list -n1 "$tag")
+            if gh release view "$tag" --json tagName,targetCommitish > release.json 2>/dev/null; then
+              export HEAD_SHA="$tag_target"
+              export TAG="$tag"
+              node --input-type=module -e "import {verifyReleaseState} from './dist/release.js'; import {readFileSync} from 'node:fs'; const release=JSON.parse(readFileSync('release.json')); verifyReleaseState({tagName:process.env.TAG, tagTarget:process.env.HEAD_SHA, releaseTagName:release.tagName, releaseTarget:release.targetCommitish}, process.env.TAG, process.env.HEAD_SHA)"
+              echo "$tag and its GitHub Release already match; reusing existing release without metadata mutation."
+              exit 0
+            fi
+            gh release create "$tag" --title "$tag" --generate-notes
+            echo "$tag existed without a GitHub Release; created the missing release without metadata mutation."
+            exit 0
+          fi
           node --input-type=module -e "import {updateRepositoryMetadata} from './dist/release.js'; updateRepositoryMetadata(process.env.VERSION, new Date().toISOString().slice(0,10), Number(process.env.PR_NUMBER))"
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add package.json CHANGELOG.md
           git diff --cached --quiet || git commit -m "chore(release): v$VERSION"
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            test "$(git rev-list -n1 "v$VERSION")" = "$(git rev-parse HEAD)" || { echo "v$VERSION already points at different content" >&2; exit 1; }
-          else
+          if ! git rev-parse "$tag" >/dev/null 2>&1; then
             git tag "v$VERSION"
           fi
           git push origin main "v$VERSION"
           export HEAD_SHA=$(git rev-parse HEAD)
-          if gh release view "v$VERSION" --json tagName,targetCommitish > release.json 2>/dev/null; then
-            node --input-type=module -e "import {verifyReleaseState} from './dist/release.js'; import {readFileSync} from 'node:fs'; const release=JSON.parse(readFileSync('release.json')); verifyReleaseState({tagName:'v'+process.env.VERSION, tagTarget:process.env.HEAD_SHA, releaseTagName:release.tagName, releaseTarget:release.targetCommitish}, 'v'+process.env.VERSION, process.env.HEAD_SHA)" 
-          else
-            gh release create "v$VERSION" --title "v$VERSION" --generate-notes
-          fi
+          gh release create "$tag" --title "$tag" --generate-notes

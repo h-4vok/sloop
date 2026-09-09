@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseReleaseKind,
   nextVersion,
@@ -49,4 +50,11 @@ test('verifies an existing tag and release are idempotently consistent', () => {
     { ...state, releaseTarget: 'different' },
   ])
     assert.throws(() => verifyReleaseState(changed, 'v0.1.2', 'abc123'));
+});
+
+test('workflow verifies completed release state before changing metadata', () => {
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const publish = workflow.slice(workflow.indexOf('name: Publish release metadata'));
+  assert.ok(publish.indexOf('gh release view') < publish.indexOf('updateRepositoryMetadata'));
+  assert.match(publish, /without metadata mutation/);
 });
