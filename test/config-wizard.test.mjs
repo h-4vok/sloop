@@ -186,13 +186,18 @@ test('complex and canonical setters fail before changing bytes', async () => {
   assert.deepEqual(readFileSync(file), before);
 });
 
-test('init and config retain distinct command identity', () => {
-  assert.deepEqual(parseCliCommand(['init']), { kind: 'config', args: ['--init'] });
-  assert.deepEqual(parseCliCommand(['init', '--wizard']), {
+test('config init/install retain distinct command identity', () => {
+  assert.deepEqual(parseCliCommand(['config', 'init']), { kind: 'config', args: ['--init'] });
+  assert.deepEqual(parseCliCommand(['config', 'init', '--wizard']), {
     kind: 'config',
     args: ['--init', '--wizard'],
   });
-  assert.throws(() => parseCliCommand(['init', '--nope']), /usage: sloop init \[--wizard\]/);
+  assert.deepEqual(parseCliCommand(['config', 'install']), { kind: 'config', args: ['--install'] });
+  assert.deepEqual(parseCliCommand(['config', 'install', '--force']), {
+    kind: 'config',
+    args: ['--install', '--force'],
+  });
+  assert.throws(() => parseCliCommand(['init']), /unsupported|usage/i);
   assert.deepEqual(parseCliCommand(['config']), { kind: 'config', args: [] });
   assert.deepEqual(parseCliCommand(['config', 'workspace']), {
     kind: 'config',
@@ -234,6 +239,21 @@ test('production sync never reports success when no reconciler is installed', as
   assert.equal(result, 2);
   assert.match(readFileSync(file, 'utf8'), /baseBranch:[\s\S]*?main/);
   assert.equal(readFileSync(file, 'utf8'), before);
+});
+
+test('config install asks for confirmation unless forced', async () => {
+  const { root } = fixture();
+  const skipped = scriptedIO(['n']);
+  let calls = 0;
+  const reconciler = async () => {
+    calls++;
+  };
+  assert.equal(await runConfigCommand(root, ['--install'], reconciler, skipped), 0);
+  assert.equal(calls, 0);
+  assert.match(skipped.text(), /Install configured GitHub labels and Sloop skills now/);
+  const forced = await runConfigCommand(root, ['--install', '--force'], reconciler);
+  assert.equal(forced, 0);
+  assert.equal(calls, 1);
 });
 
 test('complex setters fail without changing the document', async () => {

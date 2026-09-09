@@ -432,7 +432,7 @@ test('JSON input is rejected with init guidance', () => {
     writeFileSync(file, '{}');
     assert.throws(
       () => loadConfigFile(file),
-      /pre-alpha JSON configuration is unsupported; run `sloop init`/,
+      /pre-alpha JSON configuration is unsupported; run `sloop config init/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

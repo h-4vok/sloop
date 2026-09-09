@@ -1,11 +1,15 @@
 {
   "name": "sloop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "bin": {
     "sloop": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "assets"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -15,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test \"test/*.test.mjs\"",
+    "check": "npm test",
     "test:integration": "npm run build && node --test \"integration/*.test.mjs\"",
     "loop": "node dist/cli.js",
     "sloop": "node dist/cli.js",

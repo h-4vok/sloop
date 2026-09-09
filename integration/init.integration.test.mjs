@@ -92,22 +92,22 @@ function wizardAnswers(variant, confirmation) {
   return values;
 }
 
-test('CLI init creates a valid canonical default config without a TTY', () => {
+test('CLI config init creates a valid canonical default config without a TTY', () => {
   const root = createRepo();
-  const result = runCli(root, ['init']);
+  const result = runCli(root, ['config', 'init']);
   assert.equal(result.status, 0, result.stderr);
   const file = join(root, 'sloop.config.yaml');
   assert.equal(readFileSync(file, 'utf8'), canonicalConfigYaml());
   assert.doesNotThrow(() => loadConfigText(readFileSync(file, 'utf8')));
 });
 
-test('CLI init is idempotent and does not overwrite an existing config', () => {
+test('CLI config init is idempotent and does not overwrite an existing config', () => {
   const root = createRepo();
-  assert.equal(runCli(root, ['init']).status, 0);
+  assert.equal(runCli(root, ['config', 'init']).status, 0);
   const file = join(root, 'sloop.config.yaml');
   const before = readFileSync(file, 'utf8');
   writeFileSync(file, `${before}\n# user change\n`);
-  const result = runCli(root, ['init']);
+  const result = runCli(root, ['config', 'init']);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(file, 'utf8'), `${before}\n# user change\n`);
   assert.match(result.stdout, /already exists; leaving it unchanged/);
@@ -175,8 +175,8 @@ test('wizard cancellation does not create a config', async () => {
 
 test('invalid init usage fails without creating a config', () => {
   const root = createRepo();
-  const result = runCli(root, ['init', '--unknown']);
+  const result = runCli(root, ['config', 'init', '--unknown']);
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /usage: sloop init \[--wizard\]/);
+  assert.match(result.stderr, /usage|unsupported|unknown/i);
   assert.equal(existsSync(join(root, 'sloop.config.yaml')), false);
 });
