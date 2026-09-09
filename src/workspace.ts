@@ -30,6 +30,39 @@ type Registered = WorkspaceFacts & {
 };
 const git = (args: string[], cwd: string) =>
   execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+type GitWorktree = { path: string; head: string; branch?: string };
+const worktrees = (root: string): GitWorktree[] => {
+  const output = git(['worktree', 'list', '--porcelain'], root);
+  const result: GitWorktree[] = [];
+  let current: Partial<GitWorktree> = {};
+  for (const line of output.split(/\r?\n/)) {
+    if (!line) {
+      if (current.path && current.head) result.push(current as GitWorktree);
+      current = {};
+    } else if (line.startsWith('worktree ')) current.path = resolve(line.slice(9));
+    else if (line.startsWith('HEAD ')) current.head = line.slice(5);
+    else if (line.startsWith('branch '))
+      current.branch = line.slice(7).replace(/^refs\/heads\//, '');
+  }
+  if (current.path && current.head) result.push(current as GitWorktree);
+  return result;
+};
+const registeredWorktree = (root: string, entry: Registered): GitWorktree | undefined =>
+  worktrees(root).find((x) => resolve(x.path) === resolve(entry.executionRoot));
+const exactWorkspace = (root: string, entry: Registered): boolean => {
+  const live = registeredWorktree(root, entry);
+  if (!live || live.branch !== entry.branch || live.head !== entry.headSha) return false;
+  try {
+    return (
+      git(['rev-parse', `${entry.branch}^{commit}`], root) === entry.headSha &&
+      git(['merge-base', '--is-ancestor', entry.baseSha, entry.headSha], root) === ''
+    );
+  } catch {
+    return false;
+  }
+};
+const cleanWorktree = (entry: Registered) =>
+  git(['status', '--porcelain=v1'], entry.executionRoot) === '';
 const inside = (root: string, target: string) => {
   const r = relative(resolve(root), resolve(target));
   return r !== '' && r !== '..' && !r.startsWith(`..${requireSep()}`) && !isAbsolute(r);
@@ -114,7 +147,7 @@ export function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefine
       x.ownership.protocol === 'sloop-workspace-v1' &&
       x.baseSha === git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root) &&
       (o.worktreeRoot === undefined || inside(parent, x.executionRoot)) &&
-      (o.worktreeRoot === undefined || existsSync(x.executionRoot)),
+      (o.worktreeRoot === undefined || (existsSync(x.executionRoot) && exactWorkspace(root, x))),
   );
   return found && found.headSha ? found : undefined;
 }
@@ -143,12 +176,14 @@ export function clearWorkspaces(
       x.repositoryRoot !== root ||
       x.ownership.protocol !== 'sloop-workspace-v1' ||
       !inside(resolve(x.worktreeRoot ?? resolve(root, '.sloop/worktrees')), x.executionRoot) ||
-      !existsSync(x.executionRoot)
+      !existsSync(x.executionRoot) ||
+      !exactWorkspace(root, x) ||
+      !cleanWorktree(x)
     ) {
       keep.push(x);
       continue;
     }
-    git(['worktree', 'remove', '--force', x.executionRoot], root);
+    git(['worktree', 'remove', x.executionRoot], root);
   }
   write(stateFile, keep);
 }
@@ -174,7 +209,10 @@ export function cleanupWorkspace(
   if (!entry) throw new Error('workspace ownership could not be verified');
   const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
   if (!inside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
-  git(['worktree', 'remove', '--force', entry.executionRoot], root);
+  if (!exactWorkspace(root, entry))
+    throw new Error('workspace registration or facts could not be verified');
+  if (!cleanWorktree(entry)) throw new Error('workspace is dirty; refusing cleanup');
+  git(['worktree', 'remove', entry.executionRoot], root);
   write(
     file,
     read(file).filter(

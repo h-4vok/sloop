@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -77,4 +77,27 @@ test('branch collisions regenerate a unique name and clear removes only owned wo
   assert.equal(listWorkspaces(root).length, 2);
   clearWorkspaces(root);
   assert.equal(listWorkspaces(root).length, 0);
+});
+
+test('recovery and cleanup fail closed for fake or dirty registered targets', async () => {
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
+    await workspace();
+  const root = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  git(remote, 'init', '--bare');
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '-u', 'origin', 'main');
+  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(opts);
+  const stateFile = join(root, '.sloop', 'state.json');
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  state.workspaces[0].executionRoot = join(root, 'isolated', 'fake');
+  mkdirSync(state.workspaces[0].executionRoot, { recursive: true });
+  writeFileSync(stateFile, JSON.stringify(state));
+  assert.equal(recoverWorkspace(opts), undefined);
+  state.workspaces[0].executionRoot = facts.executionRoot;
+  writeFileSync(stateFile, JSON.stringify(state));
+  writeFileSync(join(facts.executionRoot, 'user.txt'), 'keep');
+  assert.throws(() => cleanupWorkspace(facts, root), /dirty/);
+  assert.equal(listWorkspaces(root).length, 1);
 });
