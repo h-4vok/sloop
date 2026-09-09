@@ -275,7 +275,7 @@ test('dispatcher commands cross discovery and base-config preflight before opera
 
 test('dispatcher preflight failure stops before any mutation-capable dependency', () => {
   const h = harness({ localConfig: 'schemaVersion: [' });
-  const result = runDispatcherPreflight(parseDispatcherCommand([]), h.io);
+  const result = runDispatcherPreflight([], h.io);
   assert.deepEqual(result, { code: EXIT.preflight });
   assert.match(h.stderr[0], /configuration/);
   assert.ok(!h.calls.some(({ file }) => file === 'gh'));
