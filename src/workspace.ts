@@ -78,6 +78,8 @@ export function prepareWorktreeWorkspace(o: WorkspaceOptions): WorkspaceFacts {
   const name = branch(o.branchPrefix, o.issue, root),
     executionRoot = resolve(parent, `${o.issue}-${o.runId.slice(0, 8)}`);
   if (!inside(parent, executionRoot)) throw new Error('unsafe worktree target');
+  if (existsSync(executionRoot))
+    throw new Error(`worktree target already exists: ${executionRoot}`);
   mkdirSync(parent, { recursive: true });
   git(['worktree', 'add', '-b', name, executionRoot, baseSha], root);
   const facts = {
@@ -122,11 +124,44 @@ export function clearWorkspaces(
     entries = read(stateFile),
     keep: Registered[] = [];
   for (const x of entries) {
-    if (x.repositoryRoot !== root || !inside(resolve(root, '.sloop/worktrees'), x.executionRoot)) {
+    if (
+      x.repositoryRoot !== root ||
+      x.ownership.protocol !== 'sloop-workspace-v1' ||
+      !inside(resolve(root, '.sloop/worktrees'), x.executionRoot) ||
+      !existsSync(x.executionRoot)
+    ) {
       keep.push(x);
       continue;
     }
     git(['worktree', 'remove', '--force', x.executionRoot], root);
   }
   write(stateFile, keep);
+}
+
+/** Remove one workspace only after proving its persisted ownership and target. */
+export function cleanupWorkspace(
+  facts: WorkspaceFacts,
+  repositoryRoot: string,
+  stateFile = resolve(repositoryRoot, '.sloop/state.json'),
+): void {
+  const root = resolve(repositoryRoot);
+  const file = resolve(stateFile);
+  const entry = read(file).find(
+    (x) =>
+      x.repositoryRoot === root &&
+      x.executionRoot === facts.executionRoot &&
+      x.branch === facts.branch &&
+      x.baseSha === facts.baseSha &&
+      x.ownership.runId === facts.ownership.runId &&
+      x.ownership.issue === facts.ownership.issue &&
+      x.ownership.protocol === facts.ownership.protocol,
+  );
+  if (!entry) throw new Error('workspace ownership could not be verified');
+  const parent = resolve(root, '.sloop/worktrees');
+  if (!inside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
+  git(['worktree', 'remove', '--force', entry.executionRoot], root);
+  write(
+    file,
+    read(file).filter((x) => x !== entry),
+  );
 }

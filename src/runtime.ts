@@ -500,7 +500,9 @@ export type DispatcherCommand =
   | Readonly<{ kind: 'reset' }>
   | Readonly<{ kind: 'prepare-recovery'; issue: number; pr?: number }>
   | Readonly<{ kind: 'resolve-review-cap'; options: ReviewCapOptions }>
-  | Readonly<{ kind: 'link-issue'; issue: number }>;
+  | Readonly<{ kind: 'link-issue'; issue: number }>
+  | Readonly<{ kind: 'list-all-worktrees' }>
+  | Readonly<{ kind: 'clear-all-worktrees' }>;
 
 export type ReadOnlyCommand = Readonly<{
   command: 'status' | 'issues list' | 'doctor';
@@ -531,6 +533,10 @@ function commandNameForDispatcher(command: DispatcherCommand): string {
       return '--resolve-review-cap';
     case 'link-issue':
       return '--link-issue';
+    case 'list-all-worktrees':
+      return '--list-all-worktrees';
+    case 'clear-all-worktrees':
+      return '--clear-all-worktrees';
     case 'status':
       return '--status';
   }
@@ -547,6 +553,10 @@ export function parseDispatcherCommand(args: readonly string[]): DispatcherComma
   if (args.length === 1 && args[0] === '--list') return { kind: 'list' };
   if (args.length === 1 && args[0] === '--recover-lock') return { kind: 'recover-lock' };
   if (args.length === 1 && args[0] === '--reset') return { kind: 'reset' };
+  if (args.length === 1 && args[0] === '--list-all-worktrees')
+    return { kind: 'list-all-worktrees' };
+  if (args.length === 1 && args[0] === '--clear-all-worktrees')
+    return { kind: 'clear-all-worktrees' };
   if (args[0] === '--link-issue' && args.length === 2 && positive(args[1]))
     return { kind: 'link-issue', issue: Number(args[1]) };
   if (

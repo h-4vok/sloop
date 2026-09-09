@@ -25,6 +25,7 @@ import {
   writeState,
 } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
+import { clearWorkspaces, listWorkspaces } from './workspace.js';
 
 /**
  * Production seam for the reconciliation interfaces owned by the runtime.
@@ -162,6 +163,8 @@ export function productionDependencies(
         validatedConfig.repository.branchPrefix,
       ),
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
+    listAllWorktrees: () => listWorkspaces(root, state),
+    clearAllWorktrees: () => clearWorkspaces(root, state),
     pid: () => process.pid,
     processAlive: defaultProcessAlive,
     now: Date.now,

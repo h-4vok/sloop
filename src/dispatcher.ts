@@ -135,7 +135,10 @@ export type Deps = Workspace<State> &
   Scheduler &
   RunEventSink &
   LockStore &
-  GitProvider;
+  GitProvider & {
+    listAllWorktrees?: () => unknown;
+    clearAllWorktrees?: () => void;
+  };
 export type Spec = {
   command: string;
   args: string[];
@@ -1657,6 +1660,13 @@ export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Pro
     case 'link-issue':
       d.linkIssue(command.issue);
       console.log(`Issue #${command.issue} vinculada al PR activo.`);
+      return 0;
+    case 'list-all-worktrees':
+      console.log(JSON.stringify(d.listAllWorktrees?.() ?? [], null, 2));
+      return 0;
+    case 'clear-all-worktrees':
+      d.clearAllWorktrees?.();
+      console.log('Sloop worktrees cleared.');
       return 0;
     case 'prepare-recovery': {
       const cfg = d.loadConfig();

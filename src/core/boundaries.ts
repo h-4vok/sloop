@@ -44,6 +44,20 @@ export interface GitProvider {
   checkoutWorkerBranch(branch: string): void;
 }
 
+export type WorkspaceFacts = Readonly<{
+  workspaceRoot: string;
+  executionRoot: string;
+  branch: string;
+  baseSha: string;
+  ownership: Readonly<{ runId: string; issue: number; protocol: string }>;
+}>;
+
+export interface WorkspaceAdapter {
+  prepare(issue: number): WorkspaceFacts;
+  recover(issue: number, runId: string): WorkspaceFacts | undefined;
+  cleanup(facts: WorkspaceFacts): void;
+}
+
 export interface GitHubProvider<Issue, PullRequest> {
   eligible(): Issue[];
   comment(issue: number, body: string): void;
