@@ -161,6 +161,8 @@ async function wizard(
   let current = loadConfigText(source);
   let next = source;
   const changed: string[] = [];
+  const asked = new Set<string>();
+  const useColor = io.output === output && !process.env.NO_COLOR;
   // A first-time init must still create the canonical document when every
   // prompt accepts its default. Keep this as a pending mutation so creation
   // follows the same preview/confirmation/atomic-write transaction.
@@ -175,6 +177,15 @@ async function wizard(
         continue;
       }
       if (field.dependencies.length && !dependenciesSatisfied(current, field)) {
+        const previouslyAskedDependency = field.dependencies.some((dependency) =>
+          asked.has(dependency.split('=', 1)[0]),
+        );
+        if (previouslyAskedDependency) {
+          console.log(
+            `\n${paint(path, 'yellow', useColor)} is inactive because ${field.dependencies.join(' and ')} is not satisfied. Skipping it.`,
+          );
+          continue;
+        }
         for (const dependency of field.dependencies) {
           const [dependencyPath, expected] = dependency.split('=');
           if (String(configValue(current as never, dependencyPath!)) !== expected) {
@@ -182,7 +193,7 @@ async function wizard(
             if (!dependencyField)
               throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
             const dependencyContext = `required by ${path}; enter ${expected}`;
-            let answer = await askField(rl, dependencyField, current, dependencyContext);
+            let answer = await askField(rl, dependencyField, current, dependencyContext, useColor);
             let value: unknown;
             while (true) {
               try {
@@ -192,20 +203,22 @@ async function wizard(
                 break;
               } catch (error) {
                 console.error(String(error instanceof Error ? error.message : error));
-                answer = await askField(rl, dependencyField, current, dependencyContext);
+                answer = await askField(rl, dependencyField, current, dependencyContext, useColor);
               }
             }
             const old = configValue(current, dependencyPath!);
             next = updateConfigText(next, dependencyPath!, value);
             current = loadConfigText(next);
             changed.push(`${dependencyPath}: ${display(old)} -> ${display(value)}`);
+            asked.add(dependencyPath!);
           }
         }
         if (!dependenciesSatisfied(current, field))
           throw new Error(`${path} requires companion path ${field.dependencies.join(', ')}`);
       }
       const old = configValue(current, path);
-      let answer = await askField(rl, field, current);
+      let answer = await askField(rl, field, current, undefined, useColor);
+      asked.add(path);
       if (!answer.trim()) continue;
       let value: unknown;
       while (true) {
@@ -214,7 +227,7 @@ async function wizard(
           break;
         } catch (error) {
           console.error(String(error instanceof Error ? error.message : error));
-          answer = await askField(rl, field, current);
+          answer = await askField(rl, field, current, undefined, useColor);
         }
       }
       next = updateConfigText(next, path, value);
@@ -272,10 +285,20 @@ async function askField(
   field: FieldMetadata,
   cfg: unknown,
   context?: string,
+  colors = false,
 ): Promise<string> {
   return rl.question(
-    `${field.path}${context ? ` (${context})` : ''}\n  ${field.explanation}\n  options: ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  recommendation: ${field.recommendation}\n  value [${display(configValue(cfg as never, field.path))}]: `,
+    `\n${paint(`${field.path}${context ? ` (${context})` : ''}`, 'cyan', colors)}\n  ${field.explanation}\n  ${paint('options:', 'dim', colors)} ${field.choices.length ? field.choices.join(', ') : 'free value'}\n  ${paint('recommendation:', 'dim', colors)} ${field.recommendation}\n  ${paint(`current value [${display(configValue(cfg as never, field.path))}]:`, 'yellow', colors)} `,
   );
+}
+function paint(
+  text: string,
+  color: 'cyan' | 'yellow' | 'green' | 'red' | 'dim',
+  enabled: boolean,
+): string {
+  if (!enabled) return text;
+  const codes = { cyan: 36, yellow: 33, green: 32, red: 31, dim: 2 } as const;
+  return `\u001b[${codes[color]}m${text}\u001b[0m`;
 }
 function parseWizardValue(field: FieldMetadata, raw: string): unknown {
   if (field.type === 'list')
