@@ -186,13 +186,18 @@ test('complex and canonical setters fail before changing bytes', async () => {
   assert.deepEqual(readFileSync(file), before);
 });
 
-test('init and config retain distinct command identity', () => {
-  assert.deepEqual(parseCliCommand(['init']), { kind: 'config', args: ['--init'] });
-  assert.deepEqual(parseCliCommand(['init', '--wizard']), {
+test('config init/install retain distinct command identity', () => {
+  assert.deepEqual(parseCliCommand(['config', 'init']), { kind: 'config', args: ['--init'] });
+  assert.deepEqual(parseCliCommand(['config', 'init', '--wizard']), {
     kind: 'config',
     args: ['--init', '--wizard'],
   });
-  assert.throws(() => parseCliCommand(['init', '--nope']), /usage: sloop init \[--wizard\]/);
+  assert.deepEqual(parseCliCommand(['config', 'install']), { kind: 'config', args: ['--install'] });
+  assert.deepEqual(parseCliCommand(['config', 'install', '--force']), {
+    kind: 'config',
+    args: ['--install', '--force'],
+  });
+  assert.throws(() => parseCliCommand(['init']), /unsupported|usage/i);
   assert.deepEqual(parseCliCommand(['config']), { kind: 'config', args: [] });
   assert.deepEqual(parseCliCommand(['config', 'workspace']), {
     kind: 'config',

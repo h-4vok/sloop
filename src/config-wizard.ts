@@ -62,15 +62,14 @@ export async function runConfigCommand(
 ): Promise<number> {
   const file = join(root, 'sloop.config.yaml');
   const init = args.includes('--init');
-  const syncCommand = args.includes('--sync-command');
-  const installCommand = args.includes('--install') || syncCommand;
+  const installCommand = args.includes('--install');
   const forceSync = args.includes('--force') || args.includes('--force-sync');
   const wizardMode = args.includes('--wizard');
   const flags = args.filter((a) => a === '--sync' || a === '--no-sync');
   const sync = flags[0];
   const positional = args.filter((a) => !a.startsWith('--'));
   if (installCommand) {
-    if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+    if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
     try {
       syncPrerequisites(root, loadConfigText(readFileSync(file, 'utf8')));
       return 0;
@@ -79,7 +78,7 @@ export async function runConfigCommand(
     }
   }
   if (flags.length > 1) return fail('choose only one of --sync or --no-sync');
-  if (wizardMode && !init) return fail('--wizard is only valid with sloop init');
+  if (wizardMode && !init) return fail('--wizard is only valid with sloop config init');
   if (positional[0] === 'show') return show(file, positional[1]);
   if (
     positional.length === 1 &&
@@ -93,7 +92,7 @@ export async function runConfigCommand(
   if (!io.input.isTTY || !io.output.isTTY)
     return fail(
       init
-        ? 'sloop init requires a TTY'
+        ? 'sloop config init requires a TTY'
         : 'sloop config wizard requires a TTY; scalar setters and config show do not',
     );
   return wizard(root, file, positional[0], init, sync, reconciler, io);
@@ -138,7 +137,7 @@ async function directInit(
       }
     } else
       console.log(
-        'Prerequisites were not synchronized; run `sloop sync` to prepare them manually.',
+        'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
       );
     return 0;
   } catch (e) {
@@ -152,7 +151,7 @@ function fail(message: string): number {
   return 2;
 }
 function show(file: string, path?: string): number {
-  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
   try {
     const cfg = loadConfigText(readFileSync(file, 'utf8'));
     if (!path) console.log(readFileSync(file, 'utf8'));
@@ -178,7 +177,7 @@ async function setter(
   const field = getConfigField(path);
   if (!field) return fail(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
   if (CANONICAL.has(path)) return fail(`${path} is canonical and read-only in v1; see #55`);
-  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop init');
+  if (!existsSync(file)) return fail('No valid sloop.config.yaml; run sloop config init');
   if (field.type === 'list' || field.type === 'argv')
     return fail(`${path}: complex values require the interactive wizard`);
   if (field.requiredReconciler !== 'none' && sync === undefined)
@@ -341,7 +340,7 @@ async function wizard(
         await reconciler(root, 'skills');
       } else
         console.log(
-          'Prerequisites were not synchronized; run `sloop sync` to prepare them manually.',
+          'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
         );
     }
     console.log('Configuration written atomically.');

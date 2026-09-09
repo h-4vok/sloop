@@ -63,7 +63,7 @@ test('legacy names migrate and sync refuses them until init', () => {
   assert.throws(
     () =>
       syncPrerequisites(mkdtempSync(join(tmpdir(), 'sloop-sync-')), config, { runner: () => '' }),
-    /run sloop init/,
+    /run sloop config init/,
   );
 });
 

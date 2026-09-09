@@ -60,7 +60,7 @@ export function syncPrerequisites(
   );
   if (legacy.length)
     throw new Error(
-      `Legacy skill names detected (${legacy.join(', ')}); run sloop init before synchronizing.`,
+      `Legacy skill names detected (${legacy.join(', ')}); run sloop config init before installing.`,
     );
   const runner = options.runner ?? defaultRunner;
   const out = options.output ?? console.log;

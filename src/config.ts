@@ -720,7 +720,10 @@ export function loadConfigText(source: string): SloopConfig {
 export function loadConfigFile(file: string): SloopConfig {
   if (extname(file).toLowerCase() === '.json')
     throw new ConfigValidationError([
-      { path: '$', message: 'pre-alpha JSON configuration is unsupported; run `sloop init`' },
+      {
+        path: '$',
+        message: 'pre-alpha JSON configuration is unsupported; run `sloop config init`',
+      },
     ]);
   return loadConfigText(readFileSync(file, 'utf8'));
 }
