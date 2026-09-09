@@ -23,8 +23,11 @@ Options:
   --status [--verbose]   Show local run state
   --recover-lock         Recover a stale dispatcher lock
   --reset                Reset completed local run state
-  --prepare-recovery N   Prepare issue N for worker recovery
-  --resolve-review-cap   Record a human review-cap decision
+  --prepare-recovery N [--pr PR]
+                         Prepare issue N for worker recovery; use PR or existing state.pr
+  --resolve-review-cap --steer TEXT [--additional-rounds N]
+                         Record a human review-cap decision
+                         [--waive Q1,Q2] [--waive-all-outstanding] [--abandon]
   --link-issue N         Link issue N to the active run`;
 
 export function requireSupportedNode(version: string): void {
