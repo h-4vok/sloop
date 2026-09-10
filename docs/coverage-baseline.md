@@ -3,17 +3,19 @@
 Coverage is collected with `c8` on the compiled production modules in `dist/`.
 Tests import compiled modules, and TypeScript currently does not emit source
 maps, so collecting against `src/` would incorrectly report zero execution.
-The CLI bootstrap (`dist/cli.js`) is excluded because it is an executable
-entrypoint; its command behavior is exercised through the public CLI tests.
+The CLI bootstrap (`dist/cli.js`) is included. `dist/core/boundaries.js` is
+excluded narrowly because it is the TypeScript-emitted runtime shell for
+interfaces and type aliases only; it contains no executable production logic.
 
-Baseline from Node 22 on 2026-09-10:
+Baseline from Node 22 on 2026-09-10 (the report is intentionally below the
+enforced acceptance gate until the missing production paths are covered):
 
 | Metric     |           Baseline |
 | ---------- | -----------------: |
-| Lines      | 83.21% (3600/4326) |
-| Statements | 83.21% (3600/4326) |
-| Functions  |   77.39% (226/292) |
-| Branches   | 76.96% (1226/1593) |
+| Lines      | 82.78% (3704/4474) |
+| Statements | 82.78% (3704/4474) |
+| Functions  |   77.44% (230/297) |
+| Branches   | 77.28% (1262/1633) |
 
 Run `npm run coverage` to reproduce the report. The command writes an LCOV
 report and CI uploads the complete `coverage/` directory as an artifact.
