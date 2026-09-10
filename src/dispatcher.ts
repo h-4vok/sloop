@@ -7,12 +7,14 @@ import { RunLogger, runDirectory } from './run-log.js';
 import { allowlistedPublication } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import { withEphemeralMutexAsync } from './mutex.js';
+import { artifactKey, projectRemoteState } from './remote-state.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
   AgentRunner,
   CliControl,
   GitHubProvider,
   GitProvider,
+  RemoteAuthority,
   HealthGate,
   LockStore,
   WorkspaceAdapter,
@@ -140,6 +142,7 @@ export type Deps = Workspace<State> &
   RunEventSink &
   LockStore &
   GitProvider & {
+    remote?: RemoteAuthority;
     workspaceAdapter?: WorkspaceAdapter;
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
@@ -1081,10 +1084,16 @@ async function runReview(
 }
 
 async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string> {
-  logger.write('command', { command: spec.command, args: spec.args, cwd: d.root });
+  logger.write('command', {
+    command: spec.command,
+    args: spec.args,
+    cwd: d.root,
+    originalRepository: d.root,
+  });
   try {
     const output = await d.run(spec);
     logger.stream('codex', output);
+    logger.stream('stdout', output);
     logger.write('command-result', { command: spec.command, stdout: output, stderr: '' });
     return output;
   } catch (error) {
@@ -1625,6 +1634,29 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           });
         }
         await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
+          if (d.remote) {
+            const runLogger = new RunLogger(
+              runDirectory(d.root, issue.number, d.load().workerRunId ?? 'dispatcher-run'),
+            );
+            const snapshot = d.remote.snapshot(issue.number);
+            const projection = projectRemoteState(snapshot as never);
+            if (projection.openGates.includes('lease:owned'))
+              throw new Error('remote run has an active lease');
+            const key = artifactKey('run', {
+              issue: issue.number,
+              runId: d.load().workerRunId ?? 'dispatcher-run',
+            });
+            runLogger.write('remote-projection', {
+              projection,
+              snapshot: allowlistedPublication(snapshot),
+            });
+            if (!d.remote.reconcile(issue.number, key))
+              d.remote.claim(
+                issue.number,
+                `${process.pid}:${issue.number}`,
+                new Date(d.now() + (cfg.workerLeaseMs ?? 900000)).toISOString(),
+              );
+          }
           try {
             await processIssue(cfg, d, issue);
           } finally {

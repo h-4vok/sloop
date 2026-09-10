@@ -44,6 +44,13 @@ export interface GitProvider {
   checkoutWorkerBranch(branch: string): void;
 }
 
+export interface RemoteAuthority {
+  snapshot(issue: number): RemoteSnapshot;
+  reconcile(issue: number, key: string): boolean;
+  claim(issue: number, owner: string, expiresAt: string): void;
+}
+export type RemoteSnapshot = Readonly<Record<string, unknown> & { issue: number }>;
+
 export type WorkspaceFacts = Readonly<{
   workspaceRoot: string;
   executionRoot: string;

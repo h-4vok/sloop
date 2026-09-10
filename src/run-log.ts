@@ -48,7 +48,11 @@ export function applyRunRetention(root: string, retentionDays?: number, now = Da
     throw new Error('retentionDays must be non-negative');
   const runs = join(root, '.sloop', 'runs');
   for (const name of readdirSync(runs, { withFileTypes: true })) {
-    if (name.isDirectory() && now - Date.parse(name.name.slice(0, 16)) > retentionDays * 86400000)
+    const stamp = name.name.match(/^(\d{8}T\d{6}Z)/)?.[1];
+    const parsed = stamp
+      ? Date.parse(stamp.replace(/^(\d{4})(\d{2})(\d{2})T/, '$1-$2-$3T').replace(/Z$/, '.000Z'))
+      : NaN;
+    if (name.isDirectory() && Number.isFinite(parsed) && now - parsed > retentionDays * 86400000)
       rmSync(join(runs, name.name), { recursive: true, force: true });
   }
 }
