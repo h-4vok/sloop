@@ -942,6 +942,26 @@ test('recovery detects stale Worker state, starts a new Worker and reuses the ex
   );
 });
 
+test('recovery accepts a collision-suffixed Worker branch', async () => {
+  const now = Date.now();
+  const h = harness([{ number: 1, title: 'a' }], {
+    initialState: prepareRecovery(
+      { completedIssues: [1], branch: 'codex/issue-1-071f' },
+      1,
+      14,
+      now,
+      100,
+    ),
+  });
+  let checkedOut;
+  h.deps.checkoutWorkerBranch = (branch) => {
+    checkedOut = branch;
+  };
+  await dispatch(h.cfg, h.deps);
+  assert.equal(checkedOut, 'codex/issue-1-071f');
+  assert.equal(h.state().status, 'worker_recovery_pending');
+});
+
 test('recovery explains why an issue is not eligible', async () => {
   const h = harness([], {
     initialState: {
@@ -1087,7 +1107,7 @@ test('recovery rejects a non-deterministic persisted branch', async () => {
   });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /recovery requires persisted worker branch codex\/issue-1/);
+  assert.match(h.state().lastError, /recovery requires persisted worker branch for issue #1/);
 });
 
 test('conflicting Worker PR is rejected before reviews', async () => {
@@ -1427,7 +1447,6 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   const state = prepareRecovery(
     {
       pr: 15,
-      branch: 'main',
       headSha: 'head-15',
       mainBaseSha: 'main-10',
       reviewRound: 4,
@@ -1451,6 +1470,17 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   assert.equal(state.lastQaFeedback, 'fix the boundary case');
   assert.equal(state.taskContext, 'recovered task context');
   assert.equal(state.headSha, 'head-15');
+});
+
+test('prepareRecovery preserves an existing collision-suffixed branch', () => {
+  const state = prepareRecovery(
+    { branch: 'codex/issue-1-071f', status: 'blocked' },
+    1,
+    15,
+    1000,
+    100,
+  );
+  assert.equal(state.branch, 'codex/issue-1-071f');
 });
 
 test('prepareRecovery persists the canonical branch from empty state', () => {
