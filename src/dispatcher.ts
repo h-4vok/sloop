@@ -1856,6 +1856,19 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
             recovery = remoteManifest.branch !== 'pending' || Boolean(remoteManifest.pr);
             existingIssue = issue.number;
             hydrateFromRemote(d, remoteManifest);
+            if (remoteManifest.pr) {
+              const evidence = await d.pullRequest(remoteManifest.pr);
+              if (evidence.state?.toUpperCase() !== 'OPEN' || !evidence.headRefName)
+                throw new Error(`PR #${remoteManifest.pr} has no recoverable open head branch`);
+              if (d.load().branch !== evidence.headRefName) {
+                d.save({
+                  ...d.load(),
+                  pr: evidence.number,
+                  branch: evidence.headRefName,
+                  headSha: evidence.headRefOid,
+                });
+              }
+            }
           }
           const runId = d.load().workerRunId ?? randomUUID();
           runLogger = new RunLogger(runDirectory(d.root, issue.number, runId));

@@ -973,7 +973,7 @@ test('recovery detects stale Worker state, starts a new Worker and reuses the ex
   );
 });
 
-test('recovery with a pending remote branch adopts the existing PR branch and reaches QA', async () => {
+test('recovery with a stale remote branch adopts the existing PR branch and reaches QA', async () => {
   const now = Date.now();
   const h = harness([{ number: 1, title: 'a' }], {
     headRefName: 'codex/issue-1-137e',
@@ -997,7 +997,7 @@ test('recovery with a pending remote branch adopts the existing PR branch and re
         runId: 'recovery-run',
         issue: 1,
         pr: 14,
-        branch: 'pending',
+        branch: 'codex/issue-1-stale',
         baseSha: 'abcdef1',
         configFingerprint: 'test-config',
         phase: 'working',
