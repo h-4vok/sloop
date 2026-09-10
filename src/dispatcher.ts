@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { RunLogger, runDirectory } from './run-log.js';
+import { RunLogger, applyRunRetention, runDirectory } from './run-log.js';
 import { allowlistedPublication } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import { withEphemeralMutexAsync } from './mutex.js';
@@ -22,6 +22,8 @@ import type {
   Scheduler,
   Workspace,
   ReviewCapOptions,
+  RunContext,
+  RunEventLogger,
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './runtime.js';
 
@@ -130,6 +132,7 @@ export type Config = {
   workerLeaseMs?: number;
   maxReviewRounds?: number;
   logRoleInvocation?: boolean;
+  loggingRetentionMs?: number;
   lockTtlMs?: number;
 };
 export type Issue = { number: number; title: string; body?: string };
@@ -144,6 +147,9 @@ export type Deps = Workspace<State> &
   GitProvider & {
     remote?: RemoteAuthority;
     workspaceAdapter?: WorkspaceAdapter;
+    runLogger?: RunEventLogger;
+    setRunLogger?: (logger: RunEventLogger | undefined) => void;
+    runContext?: () => RunContext;
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
   };
@@ -157,6 +163,8 @@ export type Spec = {
   logInvocation?: boolean;
   onStart?: (pid: number) => void;
   onHeartbeat?: () => void;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
 };
 
 export class CliFailure extends Error {
@@ -446,18 +454,22 @@ export function runCommand(spec: Spec | undefined, cwd = defaultRoot): Promise<s
       heartbeat();
       if (spec.input) child.stdin.write(spec.input);
       child.stdin.end();
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
       let out = '',
         err = '';
       child.stdout.on('data', (chunk) => {
         heartbeat();
         const s = chunk.toString();
         out += s;
+        spec.onStdout?.(s);
         process.stdout.write(s);
       });
       child.stderr.on('data', (chunk) => {
         heartbeat();
         const s = chunk.toString();
         err += s;
+        spec.onStderr?.(s);
         process.stderr.write(s);
       });
       const timer = setTimeout(() => child.kill(), spec.timeoutMs);
@@ -554,6 +566,7 @@ function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}
       : undefined);
   const errors = diagnostic === undefined ? {} : normalizedError(next, diagnostic, current);
   d.save({ ...current, issue, status: next, updatedAt: d.now(), ...extra, ...errors });
+  d.runLogger?.write('transition', { issue, from: current.status, to: next, state: extra });
   console.error(`[sloop] issue #${issue}: ${next}`);
   d.comment(
     issue,
@@ -614,6 +627,7 @@ function claimNewIssue(d: Deps, issue: number): void {
     drainStatus: 'running',
     updatedAt: d.now(),
   });
+  d.runLogger?.write('transition', { issue, from: current.status, to: 'claimed' });
   console.error(`[sloop] issue #${issue}: claimed`);
   d.comment(
     issue,
@@ -944,6 +958,11 @@ async function runWorker(
   if (!cfg.workerCommand) throw new Error('workerCommand is required');
   const runId = randomUUID();
   const logger = new RunLogger(runDirectory(d.root, issue.number, runId));
+  d.setRunLogger?.(logger);
+  logger.write(
+    'context',
+    d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root },
+  );
   logger.write('transition', { phase: 'worker', round, issue: issue.number, pr });
   status(d, issue.number, 'worker_recovery_pending', {
     workerRunId: runId,
@@ -1055,6 +1074,11 @@ async function runReview(
   const logger = new RunLogger(
     runDirectory(d.root, issue.number, d.load().workerRunId ?? `review-${round}`),
   );
+  d.setRunLogger?.(logger);
+  logger.write(
+    'context',
+    d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root },
+  );
   logger.write('transition', { phase: 'qa', round, pr: prNumber });
   if (!configured) throw new Error(`${role} command is required`);
   const spec = roleCommand(configured, issue.number, cfg);
@@ -1084,22 +1108,58 @@ async function runReview(
 }
 
 async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string> {
+  const context = d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root };
+  let stdout = '',
+    stderr = '',
+    sawOutput = false;
   logger.write('command', {
     command: spec.command,
     args: spec.args,
-    cwd: d.root,
-    originalRepository: d.root,
+    cwd: context.executionRoot,
+    ...context,
   });
   try {
-    const output = await d.run(spec);
-    logger.stream('codex', output);
-    logger.stream('stdout', output);
-    logger.write('command-result', { command: spec.command, stdout: output, stderr: '' });
+    const output = await d.run({
+      ...spec,
+      onStdout: (chunk) => {
+        sawOutput = true;
+        stdout += chunk;
+        logger.stream('stdout', chunk);
+        logger.stream('codex', chunk);
+        spec.onStdout?.(chunk);
+      },
+      onStderr: (chunk) => {
+        sawOutput = true;
+        stderr += chunk;
+        logger.stream('stderr', chunk);
+        spec.onStderr?.(chunk);
+      },
+    });
+    if (!sawOutput && output) {
+      stdout = output;
+      logger.stream('stdout', output);
+      logger.stream('codex', output);
+    }
+    logger.write('command-result', {
+      command: spec.command,
+      args: spec.args,
+      cwd: context.executionRoot,
+      ...context,
+      stdout,
+      stderr,
+    });
     return output;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.stream('stderr', message);
-    logger.write('command-result', { command: spec.command, stdout: '', stderr: message });
+    if (!stderr) logger.stream('stderr', message);
+    logger.write('command-result', {
+      command: spec.command,
+      args: spec.args,
+      cwd: context.executionRoot,
+      ...context,
+      stdout,
+      stderr: stderr || message,
+    });
     throw error;
   }
 }
@@ -1574,6 +1634,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
       throw new Error('workerCommand and qaCommand are required');
     roleCommand(cfg.workerCommand, 0, cfg);
     roleCommand(cfg.qaCommand, 0, cfg);
+    applyRunRetention(d.root, cfg.loggingRetentionMs);
     const processed = new Set<number>(d.load().completedIssues ?? []);
     const existingIssue = recovery || isActiveStatus(d.load().status) ? d.load().issue : undefined;
     d.save({ ...d.load(), drainStatus: 'running' });
@@ -1593,6 +1654,10 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         return 0;
       }
       processed.add(issue.number);
+      const runId = recovery ? (d.load().workerRunId ?? randomUUID()) : randomUUID();
+      const runLogger = new RunLogger(runDirectory(d.root, issue.number, runId));
+      d.setRunLogger?.(runLogger);
+      runLogger.write('transition', { phase: 'dispatch', issue: issue.number, recovery });
       try {
         if (recovery) {
           const persisted = d.load().branch;
@@ -1621,7 +1686,6 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         } else {
           claimNewIssue(d, issue.number);
           d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          const runId = randomUUID();
           if (d.remote) {
             const remoteSnapshot = d.remote.snapshot(issue.number);
             const remoteProjection = projectRemoteState(remoteSnapshot as never);
@@ -1648,10 +1712,11 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           });
         }
         await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
+          runLogger.write(
+            'context',
+            d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root },
+          );
           if (d.remote) {
-            const runLogger = new RunLogger(
-              runDirectory(d.root, issue.number, d.load().workerRunId ?? 'dispatcher-run'),
-            );
             const snapshot = d.remote!.snapshot(issue.number);
             const projection = projectRemoteState(snapshot as never);
             if (projection.openGates.includes('lease:owned'))
@@ -1696,6 +1761,8 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           pr: current.pr,
         });
         return 4;
+      } finally {
+        d.setRunLogger?.(undefined);
       }
     }
   } finally {

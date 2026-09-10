@@ -64,7 +64,18 @@ export interface WorkspaceAdapter {
   prepare(issue: number): WorkspaceFacts;
   recover(issue: number, runId: string): WorkspaceFacts | undefined;
   cleanup(facts: WorkspaceFacts): void;
+  context?(): RunContext;
   readonly mode?: 'checkout' | 'worktree';
+}
+
+export type RunContext = Readonly<{
+  originalRepository: string;
+  executionRoot: string;
+}>;
+
+export interface RunEventLogger {
+  write(type: string, data?: unknown): void;
+  stream(source: 'stdout' | 'stderr' | 'codex', chunk: string): void;
 }
 
 export interface GitHubProvider<Issue, PullRequest> {

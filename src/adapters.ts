@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LockOwner, WorkspaceAdapter } from './core/boundaries.js';
+import type { LockOwner, RunContext, RunEventLogger, WorkspaceAdapter } from './core/boundaries.js';
 import type { Deps } from './dispatcher.js';
 import type { SloopConfig } from './config.js';
 import { CliFailure } from './dispatcher.js';
@@ -90,6 +90,7 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     workerLeaseMs: config.agents.worker.timeout,
     maxReviewRounds: config.arbiter.reviewRounds,
     logRoleInvocation: config.logging.roleInvocation,
+    loggingRetentionMs: config.logging.retention,
     lockTtlMs: config.agents.worker.timeout,
   };
 }
@@ -101,6 +102,10 @@ export function productionDependencies(
 ): Deps {
   const state = join(root, '.sloop', 'state.json');
   let executionRoot = root;
+  let runLogger: RunEventLogger | undefined;
+  const logGithub = (phase: string, operation: string, data: unknown): void => {
+    runLogger?.write(`github-${phase}`, { operation, data });
+  };
   const workspaceAdapter: WorkspaceAdapter = {
     mode: validatedConfig.workspace.mode,
     prepare: (issue) => {
@@ -141,6 +146,7 @@ export function productionDependencies(
       if (validatedConfig.workspace.mode === 'worktree') cleanupWorkspace(facts, root, state);
       executionRoot = root;
     },
+    context: (): RunContext => ({ originalRepository: root, executionRoot }),
   };
   const lock = dispatcherLockPath(root);
   const ownerFile = join(lock, 'owner.json');
@@ -149,6 +155,10 @@ export function productionDependencies(
     writeFileSync(file, JSON.stringify(owner, null, 2) + '\n');
   return {
     root,
+    setRunLogger: (logger) => {
+      runLogger = logger;
+    },
+    runContext: () => ({ originalRepository: root, executionRoot }),
     load: () => readState(state),
     save: (next) => writeState(next, state),
     loadConfig: () => dispatcherConfig(validatedConfig),
@@ -191,13 +201,17 @@ export function productionDependencies(
     },
     eligible: () => {
       try {
-        return eligible(root, repository, validatedConfig.github.labels.eligible);
+        const result = eligible(root, repository, validatedConfig.github.labels.eligible);
+        logGithub('response', 'eligible', result);
+        return result;
       } catch (error) {
+        logGithub('error', 'eligible', error instanceof Error ? error.message : String(error));
         throw new CliFailure(5, error instanceof Error ? error.message : String(error));
       }
     },
     comment: (issue, body) => {
       try {
+        logGithub('request', 'issue.comment', { issue, body });
         execFileSync(
           'gh',
           [
@@ -214,16 +228,74 @@ export function productionDependencies(
             stdio: 'inherit',
           },
         );
+        logGithub('response', 'issue.comment', { issue });
       } catch (error) {
+        logGithub('error', 'issue.comment', error instanceof Error ? error.message : String(error));
         throw new CliFailure(5, error instanceof Error ? error.message : String(error));
       }
     },
-    pullRequest: (pr) => pullRequest(pr, root, repository),
-    updatePullRequestBody: (pr, body) =>
-      updatePullRequestBody(pr, String(allowlistedPublication(body)), root, repository),
-    pullRequestBody: (pr) => pullRequestBody(pr, root, repository),
-    prComment: (pr, body) =>
-      commentPullRequest(pr, String(allowlistedPublication(body)), root, repository),
+    pullRequest: (pr) => {
+      logGithub('request', 'pullRequest', { pr });
+      try {
+        const result = pullRequest(pr, root, repository);
+        logGithub('response', 'pullRequest', result);
+        return result;
+      } catch (error) {
+        logGithub('error', 'pullRequest', error instanceof Error ? error.message : String(error));
+        throw error;
+      }
+    },
+    updatePullRequestBody: (pr, body) => {
+      logGithub('request', 'updatePullRequestBody', { pr, body });
+      try {
+        const result = updatePullRequestBody(
+          pr,
+          String(allowlistedPublication(body)),
+          root,
+          repository,
+        );
+        logGithub('response', 'updatePullRequestBody', { pr });
+        return result;
+      } catch (error) {
+        logGithub(
+          'error',
+          'updatePullRequestBody',
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    },
+    pullRequestBody: (pr) => {
+      logGithub('request', 'pullRequestBody', { pr });
+      try {
+        const result = pullRequestBody(pr, root, repository);
+        logGithub('response', 'pullRequestBody', result);
+        return result;
+      } catch (error) {
+        logGithub(
+          'error',
+          'pullRequestBody',
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    },
+    prComment: (pr, body) => {
+      logGithub('request', 'prComment', { pr, body });
+      try {
+        const result = commentPullRequest(
+          pr,
+          String(allowlistedPublication(body)),
+          root,
+          repository,
+        );
+        logGithub('response', 'prComment', { pr });
+        return result;
+      } catch (error) {
+        logGithub('error', 'prComment', error instanceof Error ? error.message : String(error));
+        throw error;
+      }
+    },
     workspaceAdapter,
     run: (spec) => runCommand(spec, executionRoot),
     prepareWorkerBranch: (issue) =>
@@ -240,6 +312,7 @@ export function productionDependencies(
     remote: {
       snapshot: (issue) => {
         try {
+          logGithub('request', 'remote.snapshot', { issue });
           const raw = execFileSync(
             'gh',
             ['issue', 'view', String(issue), '--repo', repository, '--json', 'labels,comments'],
@@ -253,13 +326,20 @@ export function productionDependencies(
           const markers = comments.flatMap((comment) =>
             [...comment.body.matchAll(/sloop\/v1\/[^\s`]+/g)].map((m) => m[0]),
           );
-          return {
+          const result = {
             issue,
             labels: (value.labels ?? []).map((label) => label.name),
             comments: comments.map((comment) => ({ body: comment.body })),
             markers,
           };
+          logGithub('response', 'remote.snapshot', result);
+          return result;
         } catch (error) {
+          logGithub(
+            'error',
+            'remote.snapshot',
+            error instanceof Error ? error.message : String(error),
+          );
           throw new CliFailure(
             5,
             `GitHub snapshot unavailable: ${error instanceof Error ? error.message : String(error)}`,
@@ -268,17 +348,24 @@ export function productionDependencies(
       },
       reconcile: (issue, key) => {
         try {
+          logGithub('request', 'remote.reconcile', { issue, key });
           const raw = execFileSync(
             'gh',
             ['issue', 'view', String(issue), '--repo', repository, '--json', 'comments'],
             { cwd: root, encoding: 'utf8' },
           );
-          return (
+          const result =
             JSON.parse(raw).comments?.some((comment: { body: string }) =>
               comment.body.includes(key),
-            ) ?? false
-          );
+            ) ?? false;
+          logGithub('response', 'remote.reconcile', { issue, key, found: result });
+          return result;
         } catch (error) {
+          logGithub(
+            'error',
+            'remote.reconcile',
+            error instanceof Error ? error.message : String(error),
+          );
           throw new CliFailure(
             5,
             `GitHub reconciliation unavailable: ${error instanceof Error ? error.message : String(error)}`,
@@ -287,11 +374,22 @@ export function productionDependencies(
       },
       claim: (issue, owner, expiresAt) => {
         const marker = `sloop/v1/lease/${issue}/${owner}/${expiresAt}`;
-        execFileSync(
-          'gh',
-          ['issue', 'comment', String(issue), '--repo', repository, '--body', marker],
-          { cwd: root, stdio: 'inherit' },
-        );
+        try {
+          logGithub('request', 'remote.claim', { issue, owner, expiresAt, marker });
+          execFileSync(
+            'gh',
+            ['issue', 'comment', String(issue), '--repo', repository, '--body', marker],
+            { cwd: root, stdio: 'inherit' },
+          );
+          logGithub('response', 'remote.claim', { issue, marker });
+        } catch (error) {
+          logGithub(
+            'error',
+            'remote.claim',
+            error instanceof Error ? error.message : String(error),
+          );
+          throw error;
+        }
       },
     },
     pid: () => process.pid,
