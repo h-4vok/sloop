@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { RunLogger, runDirectory } from './run-log.js';
 import { allowlistedPublication } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
+import { withEphemeralMutexAsync } from './mutex.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
   AgentRunner,
@@ -956,7 +957,9 @@ async function runWorker(
     d.load().linkedClosingIssues ?? [],
   );
   logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
-  const output = await d.run(
+  const output = await runLogged(
+    d,
+    logger,
     withWorkerLifecycle(
       d,
       {
@@ -1054,7 +1057,7 @@ async function runReview(
   const spec = roleCommand(configured, issue.number, cfg);
   if (!spec) throw new Error(`${role} command is required`);
   logger.write('prompt', { role, round });
-  const output = await d.run({
+  const output = await runLogged(d, logger, {
     ...spec,
     input: rolePrompt(
       issue,
@@ -1075,6 +1078,21 @@ async function runReview(
   if (!review)
     throw new Error(`${role} exited successfully but did not publish ${marker} on PR #${prNumber}`);
   return { verdict: reviewVerdict(review.body), body: review.body, evidence: latest };
+}
+
+async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string> {
+  logger.write('command', { command: spec.command, args: spec.args, cwd: d.root });
+  try {
+    const output = await d.run(spec);
+    logger.stream('codex', output);
+    logger.write('command-result', { command: spec.command, stdout: output, stderr: '' });
+    return output;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.stream('stderr', message);
+    logger.write('command-result', { command: spec.command, stdout: '', stderr: message });
+    throw error;
+  }
 }
 
 function effectiveMaxRounds(cfg: Config, state: State): number {
@@ -1606,12 +1624,14 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
             ...('ownership' in prepared ? { workerRunId: prepared.ownership.runId } : {}),
           });
         }
-        try {
-          await processIssue(cfg, d, issue);
-        } finally {
-          const facts = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
-          if (facts) d.workspaceAdapter?.cleanup(facts);
-        }
+        await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
+          try {
+            await processIssue(cfg, d, issue);
+          } finally {
+            const facts = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
+            if (facts) d.workspaceAdapter?.cleanup(facts);
+          }
+        });
         // Temporarily process exactly one issue per invocation. This prevents
         // state from one completed issue leaking into the next issue while the
         // dispatcher transition logic is being hardened.

@@ -200,7 +200,15 @@ export function productionDependencies(
       try {
         execFileSync(
           'gh',
-          ['issue', 'comment', String(issue), '--repo', repository, '--body', body],
+          [
+            'issue',
+            'comment',
+            String(issue),
+            '--repo',
+            repository,
+            '--body',
+            String(allowlistedPublication(body)),
+          ],
           {
             cwd: root,
             stdio: 'inherit',
