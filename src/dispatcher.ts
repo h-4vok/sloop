@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RunLogger, runDirectory } from './run-log.js';
-import { allowlistedPublication } from './publication.js';
+import { allowlistedPublication, publicationBody } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import { withEphemeralMutexAsync } from './mutex.js';
 import { artifactKey, projectRemoteState } from './remote-state.js';
@@ -333,7 +333,7 @@ export function updatePullRequestBody(
 ): void {
   const temp = join(tmpdir(), `sloop-pr-${process.pid}-${Date.now()}.md`);
   try {
-    writeFileSync(temp, body, 'utf8');
+    writeFileSync(temp, publicationBody(body), 'utf8');
     gh(['pr', 'edit', String(pr), '--body-file', temp], cwd, repository);
   } finally {
     rmSync(temp, { force: true });
@@ -346,7 +346,7 @@ export function commentPullRequest(
   cwd = defaultRoot,
   repository?: string,
 ): void {
-  gh(['pr', 'comment', String(pr), '--body', body], cwd, repository);
+  gh(['pr', 'comment', String(pr), '--body', publicationBody(body)], cwd, repository);
 }
 
 function commentIssueOnce(
@@ -355,13 +355,14 @@ function commentIssueOnce(
   cwd = defaultRoot,
   repository?: string,
 ): void {
+  const safeBody = publicationBody(body);
   const existing = ghJson<{ comments?: Array<{ body?: string }> }>(
     ['issue', 'view', String(issue), '--json', 'comments'],
     cwd,
     repository,
   );
-  if (!existing.comments?.some((comment) => comment.body === body))
-    gh(['issue', 'comment', String(issue), '--body', body], cwd, repository);
+  if (!existing.comments?.some((comment) => comment.body === safeBody))
+    gh(['issue', 'comment', String(issue), '--body', safeBody], cwd, repository);
 }
 
 function commentPullRequestOnce(
