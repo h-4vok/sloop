@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.sloop/logs/
+coverage/
 .DS_Store
 .sloop/
 .sloop/state.json
