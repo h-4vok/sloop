@@ -3,13 +3,18 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { RunLogger, applyRunRetention, runDirectory } from './run-log.js';
+import { allowlistedPublication, publicationBody } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
+import { withEphemeralMutexAsync } from './mutex.js';
+import { artifactKey, projectRemoteState } from './remote-state.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
   AgentRunner,
   CliControl,
   GitHubProvider,
   GitProvider,
+  RemoteAuthority,
   HealthGate,
   LockStore,
   WorkspaceAdapter,
@@ -17,8 +22,11 @@ import type {
   Scheduler,
   Workspace,
   ReviewCapOptions,
+  RunContext,
+  RunEventLogger,
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './runtime.js';
+import type { RunManifest, WorkflowProjection } from './remote-state.js';
 
 export type Status =
   | 'queued'
@@ -125,6 +133,7 @@ export type Config = {
   workerLeaseMs?: number;
   maxReviewRounds?: number;
   logRoleInvocation?: boolean;
+  loggingRetentionMs?: number;
   lockTtlMs?: number;
 };
 export type Issue = { number: number; title: string; body?: string };
@@ -137,7 +146,13 @@ export type Deps = Workspace<State> &
   RunEventSink &
   LockStore &
   GitProvider & {
+    /** Production assembly sets this; unit seams may omit remote authority. */
+    remoteRequired?: boolean;
+    remote?: RemoteAuthority;
     workspaceAdapter?: WorkspaceAdapter;
+    runLogger?: RunEventLogger;
+    setRunLogger?: (logger: RunEventLogger | undefined) => void;
+    runContext?: () => RunContext;
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
   };
@@ -151,6 +166,8 @@ export type Spec = {
   logInvocation?: boolean;
   onStart?: (pid: number) => void;
   onHeartbeat?: () => void;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
 };
 
 export class CliFailure extends Error {
@@ -327,7 +344,7 @@ export function updatePullRequestBody(
 ): void {
   const temp = join(tmpdir(), `sloop-pr-${process.pid}-${Date.now()}.md`);
   try {
-    writeFileSync(temp, body, 'utf8');
+    writeFileSync(temp, publicationBody(body), 'utf8');
     gh(['pr', 'edit', String(pr), '--body-file', temp], cwd, repository);
   } finally {
     rmSync(temp, { force: true });
@@ -340,7 +357,7 @@ export function commentPullRequest(
   cwd = defaultRoot,
   repository?: string,
 ): void {
-  gh(['pr', 'comment', String(pr), '--body', body], cwd, repository);
+  gh(['pr', 'comment', String(pr), '--body', publicationBody(body)], cwd, repository);
 }
 
 function commentIssueOnce(
@@ -349,13 +366,14 @@ function commentIssueOnce(
   cwd = defaultRoot,
   repository?: string,
 ): void {
+  const safeBody = publicationBody(body);
   const existing = ghJson<{ comments?: Array<{ body?: string }> }>(
     ['issue', 'view', String(issue), '--json', 'comments'],
     cwd,
     repository,
   );
-  if (!existing.comments?.some((comment) => comment.body === body))
-    gh(['issue', 'comment', String(issue), '--body', body], cwd, repository);
+  if (!existing.comments?.some((comment) => comment.body === safeBody))
+    gh(['issue', 'comment', String(issue), '--body', safeBody], cwd, repository);
 }
 
 function commentPullRequestOnce(
@@ -440,18 +458,22 @@ export function runCommand(spec: Spec | undefined, cwd = defaultRoot): Promise<s
       heartbeat();
       if (spec.input) child.stdin.write(spec.input);
       child.stdin.end();
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
       let out = '',
         err = '';
       child.stdout.on('data', (chunk) => {
         heartbeat();
         const s = chunk.toString();
         out += s;
+        spec.onStdout?.(s);
         process.stdout.write(s);
       });
       child.stderr.on('data', (chunk) => {
         heartbeat();
         const s = chunk.toString();
         err += s;
+        spec.onStderr?.(s);
         process.stderr.write(s);
       });
       const timer = setTimeout(() => child.kill(), spec.timeoutMs);
@@ -548,6 +570,7 @@ function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}
       : undefined);
   const errors = diagnostic === undefined ? {} : normalizedError(next, diagnostic, current);
   d.save({ ...current, issue, status: next, updatedAt: d.now(), ...extra, ...errors });
+  d.runLogger?.write('transition', { issue, from: current.status, to: next, state: extra });
   console.error(`[sloop] issue #${issue}: ${next}`);
   d.comment(
     issue,
@@ -608,11 +631,190 @@ function claimNewIssue(d: Deps, issue: number): void {
     drainStatus: 'running',
     updatedAt: d.now(),
   });
+  d.runLogger?.write('transition', { issue, from: current.status, to: 'claimed' });
   console.error(`[sloop] issue #${issue}: claimed`);
   d.comment(
     issue,
     `Sloop engineering v2: estado claimed. Skill activa: ${skillFor('claimed')}. QA precede la decisión humana; no se hace merge automático.`,
   );
+}
+
+function remoteOwner(d: Deps, issue: number): string {
+  return `${d.pid()}:${issue}`;
+}
+
+function remoteConfigFingerprint(cfg: Config): string {
+  return artifactKey('config', {
+    baseBranch: cfg.baseBranch ?? 'main',
+    workerCommand: cfg.workerCommand ?? null,
+    qaCommand: cfg.qaCommand ?? null,
+    requiredPrChecks: cfg.requiredPrChecks ?? [],
+  });
+}
+
+function remoteManifest(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  runId: string,
+  key: string,
+  phase: RunManifest['phase'],
+  leaseOwner?: string,
+  previous?: Partial<RunManifest>,
+): RunManifest {
+  const state = d.load();
+  return {
+    protocol: 1,
+    runId,
+    issue,
+    ...(phase !== 'claimed' && state.pr ? { pr: state.pr } : {}),
+    branch: phase === 'claimed' ? 'pending' : (state.branch ?? previous?.branch ?? 'pending'),
+    baseSha:
+      phase === 'claimed' ? '0000000' : (state.mainBaseSha ?? previous?.baseSha ?? '0000000'),
+    configFingerprint: remoteConfigFingerprint(cfg),
+    phase,
+    ...(leaseOwner
+      ? {
+          lease: {
+            owner: leaseOwner,
+            expiresAt: new Date(d.now() + (cfg.workerLeaseMs ?? 900000)).toISOString(),
+          },
+        }
+      : {}),
+    reviewRound: state.reviewRound ?? previous?.reviewRound ?? 1,
+    contextCursor: previous?.contextCursor ?? '',
+    artifacts: [...new Set([...(previous?.artifacts ?? []), key])],
+  };
+}
+
+function remoteProjection(
+  d: Deps,
+  issue: number,
+):
+  | {
+      projection: WorkflowProjection;
+      snapshot: ReturnType<NonNullable<Deps['remote']>['snapshot']>;
+    }
+  | undefined {
+  if (!d.remote) return undefined;
+  const snapshot = d.remote.snapshot(issue);
+  return { snapshot, projection: projectRemoteState(snapshot) };
+}
+
+function hydrateFromRemote(d: Deps, manifest: RunManifest): void {
+  const current = d.load();
+  d.save({
+    ...current,
+    issue: manifest.issue,
+    pr: manifest.pr,
+    branch: manifest.branch === 'pending' ? current.branch : manifest.branch,
+    mainBaseSha: manifest.baseSha === '0000000' ? current.mainBaseSha : manifest.baseSha,
+    workerRunId: manifest.runId,
+    reviewRound: manifest.reviewRound,
+    status: manifest.phase === 'review' ? 'worker_ready_for_review' : 'worker_recovery_pending',
+    updatedAt: d.now(),
+  });
+}
+
+function assertRemoteLeaseAvailable(projection: WorkflowProjection): void {
+  if (projection.openGates.includes('lease:owned'))
+    throw new CliFailure(3, 'another dispatcher owns the remote run lease');
+}
+
+/** Claim/reconcile under the local mutex; remote markers are the authority. */
+function ensureRemoteClaim(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  runId: string,
+  key: string,
+  recoveryManifest?: RunManifest,
+): RunManifest | undefined {
+  if (!d.remote) return undefined;
+  const current = remoteProjection(d, issue);
+  if (!current) throw new Error('remote authority is required for dispatcher lifecycle');
+  assertRemoteLeaseAvailable(current.projection);
+  const owner = remoteOwner(d, issue);
+  const manifest = recoveryManifest
+    ? remoteManifest(
+        cfg,
+        d,
+        issue,
+        recoveryManifest.runId,
+        key,
+        recoveryManifest.phase,
+        owner,
+        recoveryManifest,
+      )
+    : remoteManifest(cfg, d, issue, runId, key, 'claimed', owner);
+  if (current.projection.manifest) {
+    const existing = current.projection.manifest;
+    const existingKey = existing.artifacts.includes(key) || d.remote.reconcile(issue, key);
+    if (existingKey) {
+      const refreshed = remoteManifest(
+        cfg,
+        d,
+        issue,
+        existing.runId,
+        key,
+        existing.phase,
+        owner,
+        existing,
+      );
+      try {
+        d.remote.publish(issue, refreshed);
+      } catch (error) {
+        if (!d.remote.reconcile(issue, key)) throw error;
+      }
+      hydrateFromRemote(d, refreshed);
+      return refreshed;
+    }
+  }
+  try {
+    d.remote.claim(issue, key, manifest);
+  } catch (error) {
+    if (!d.remote.reconcile(issue, key)) throw error;
+  }
+  if (!d.remote.reconcile(issue, key))
+    throw new Error(`remote claim marker did not reconcile for issue #${issue}`);
+  hydrateFromRemote(d, manifest);
+  return manifest;
+}
+
+function publishRemoteManifest(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  phase: RunManifest['phase'],
+  previous: RunManifest,
+): void {
+  if (!d.remote) return;
+  const key = previous.artifacts[0] ?? artifactKey('run', { issue, runId: previous.runId });
+  const manifest = remoteManifest(
+    cfg,
+    d,
+    issue,
+    previous.runId,
+    key,
+    phase,
+    phase === 'complete' ? undefined : remoteOwner(d, issue),
+    previous,
+  );
+  try {
+    d.remote.publish(issue, manifest);
+  } catch (error) {
+    if (!d.remote.reconcile(issue, key)) throw error;
+  }
+}
+
+function publishCurrentRemoteManifest(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  phase: RunManifest['phase'],
+): void {
+  const current = remoteProjection(d, issue)?.projection.manifest;
+  if (current) publishRemoteManifest(cfg, d, issue, phase, current);
 }
 
 function rolePrompt(
@@ -937,6 +1139,13 @@ async function runWorker(
     throw new Error(`Worker PR baseBranch must be main; found ${cfg.baseBranch}`);
   if (!cfg.workerCommand) throw new Error('workerCommand is required');
   const runId = randomUUID();
+  const logger = new RunLogger(runDirectory(d.root, issue.number, runId));
+  d.setRunLogger?.(logger);
+  logger.write(
+    'context',
+    d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root },
+  );
+  logger.write('transition', { phase: 'worker', round, issue: issue.number, pr });
   status(d, issue.number, 'worker_recovery_pending', {
     workerRunId: runId,
     workerRecoveryCount: (d.load().workerRecoveryCount ?? 0) + 1,
@@ -951,7 +1160,10 @@ async function runWorker(
     issue.number,
     d.load().linkedClosingIssues ?? [],
   );
-  const output = await d.run(
+  logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
+  const output = await runLogged(
+    d,
+    logger,
     withWorkerLifecycle(
       d,
       {
@@ -977,6 +1189,7 @@ async function runWorker(
       runId,
     ),
   );
+  logger.write('result', { role: 'worker', output: allowlistedPublication(output) });
   const metadata = workerMetadata(output, pr);
   if (!metadata.pr || metadata.base !== (cfg.baseBranch ?? 'main'))
     throw new Error('Worker must report an existing PR based on main');
@@ -989,6 +1202,7 @@ async function runWorker(
   if (normalizedBody !== currentBody.trim())
     await d.updatePullRequestBody(metadata.pr, normalizedBody);
   d.save({ ...d.load(), pr: metadata.pr, workerPid: undefined, workerHeartbeatAt: d.now() });
+  publishCurrentRemoteManifest(cfg, d, issue.number, 'review');
   const evidence = await waitForEvidence(d, cfg, metadata.pr, (candidate) => {
     const head = candidate.headRefOid;
     return Boolean(latestWorkerComment(candidate, round, head));
@@ -1040,10 +1254,20 @@ async function runReview(
   const pending: Status = 'qa_review_pending';
   status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
   const configured = cfg.qaCommand;
+  const logger = new RunLogger(
+    runDirectory(d.root, issue.number, d.load().workerRunId ?? `review-${round}`),
+  );
+  d.setRunLogger?.(logger);
+  logger.write(
+    'context',
+    d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root },
+  );
+  logger.write('transition', { phase: 'qa', round, pr: prNumber });
   if (!configured) throw new Error(`${role} command is required`);
   const spec = roleCommand(configured, issue.number, cfg);
   if (!spec) throw new Error(`${role} command is required`);
-  await d.run({
+  logger.write('prompt', { role, round });
+  const output = await runLogged(d, logger, {
     ...spec,
     input: rolePrompt(
       issue,
@@ -1056,6 +1280,7 @@ async function runReview(
       d.load().workerRunId ?? 'dispatcher-run',
     ),
   });
+  logger.write('result', { role, output: allowlistedPublication(output) });
   const latest = await waitForEvidence(d, cfg, prNumber, (candidate) =>
     Boolean(latestReview(candidate, marker, round, candidate.headRefOid)),
   );
@@ -1063,6 +1288,63 @@ async function runReview(
   if (!review)
     throw new Error(`${role} exited successfully but did not publish ${marker} on PR #${prNumber}`);
   return { verdict: reviewVerdict(review.body), body: review.body, evidence: latest };
+}
+
+async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string> {
+  const context = d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root };
+  let stdout = '',
+    stderr = '',
+    sawOutput = false;
+  logger.write('command', {
+    command: spec.command,
+    args: spec.args,
+    cwd: context.executionRoot,
+    ...context,
+  });
+  try {
+    const output = await d.run({
+      ...spec,
+      onStdout: (chunk) => {
+        sawOutput = true;
+        stdout += chunk;
+        logger.stream('stdout', chunk);
+        logger.stream('codex', chunk);
+        spec.onStdout?.(chunk);
+      },
+      onStderr: (chunk) => {
+        sawOutput = true;
+        stderr += chunk;
+        logger.stream('stderr', chunk);
+        spec.onStderr?.(chunk);
+      },
+    });
+    if (!sawOutput && output) {
+      stdout = output;
+      logger.stream('stdout', output);
+      logger.stream('codex', output);
+    }
+    logger.write('command-result', {
+      command: spec.command,
+      args: spec.args,
+      cwd: context.executionRoot,
+      ...context,
+      stdout,
+      stderr,
+    });
+    return output;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!stderr) logger.stream('stderr', message);
+    logger.write('command-result', {
+      command: spec.command,
+      args: spec.args,
+      cwd: context.executionRoot,
+      ...context,
+      stdout,
+      stderr: stderr || message,
+    });
+    throw error;
+  }
 }
 
 function effectiveMaxRounds(cfg: Config, state: State): number {
@@ -1516,6 +1798,8 @@ export function acquire(d: Deps, ttl: number): string {
 }
 
 export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
+  if (d.remoteRequired && !d.remote)
+    throw new Error('remote authority is required for production dispatcher lifecycle');
   if ('codexSandbox' in (cfg as Record<string, unknown>))
     throw new Error(
       'codexSandbox is no longer supported; configure --sandbox in each role command args',
@@ -1523,11 +1807,13 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   if (cfg.baseBranch !== undefined && cfg.baseBranch !== 'main')
     throw new Error(`Worker PR baseBranch must be main; found ${cfg.baseBranch}`);
   const initial = d.load();
-  const recovery =
-    initial.status === 'worker_recovery_pending' ||
-    isStaleWorker(initial, cfg, d) ||
-    (initial.status === 'blocked' && hasPersistedRecoveryContext(initial));
-  if (isActiveStatus(initial.status) && !recovery)
+  const remoteAuthority = Boolean(d.remote);
+  let recovery =
+    !remoteAuthority &&
+    (initial.status === 'worker_recovery_pending' ||
+      isStaleWorker(initial, cfg, d) ||
+      (initial.status === 'blocked' && hasPersistedRecoveryContext(initial)));
+  if (isActiveStatus(initial.status) && !recovery && !remoteAuthority)
     throw new CliFailure(3, `active run exists for issue #${initial.issue}`);
   const lockToken = acquire(d, cfg.lockTtlMs ?? 900000);
   try {
@@ -1535,8 +1821,12 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
       throw new Error('workerCommand and qaCommand are required');
     roleCommand(cfg.workerCommand, 0, cfg);
     roleCommand(cfg.qaCommand, 0, cfg);
-    const processed = new Set<number>(d.load().completedIssues ?? []);
-    const existingIssue = recovery || isActiveStatus(d.load().status) ? d.load().issue : undefined;
+    applyRunRetention(d.root, cfg.loggingRetentionMs);
+    const processed = new Set<number>(remoteAuthority ? [] : (d.load().completedIssues ?? []));
+    let existingIssue =
+      !remoteAuthority && (recovery || isActiveStatus(d.load().status))
+        ? d.load().issue
+        : undefined;
     d.save({ ...d.load(), drainStatus: 'running' });
     while (true) {
       const issue = existingIssue
@@ -1555,51 +1845,95 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
       }
       processed.add(issue.number);
       try {
-        if (recovery) {
-          const persisted = d.load().branch;
-          const recovered = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
-          if (recovered) {
-            if (recovered.branch !== persisted)
-              throw new Error(
-                `recovery workspace branch does not match persisted branch ${persisted ?? 'none'}; found ${recovered.branch}`,
-              );
-          } else {
-            const expected = workerBranchName(issue.number);
-            if (!persisted || (persisted !== expected && !persisted.startsWith(`${expected}-`)))
-              throw new Error(
-                `recovery requires persisted worker branch for issue #${issue.number}; found ${persisted ?? 'none'}`,
-              );
-            d.checkoutWorkerBranch(persisted);
+        let runLogger: RunLogger | undefined;
+        await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
+          const remote = remoteProjection(d, issue.number);
+          const remoteManifest = remote?.projection.manifest;
+          if (remoteManifest && remoteManifest.phase !== 'complete') {
+            assertRemoteLeaseAvailable(remote.projection);
+            recovery = remoteManifest.branch !== 'pending';
+            existingIssue = issue.number;
+            hydrateFromRemote(d, remoteManifest);
           }
-          status(d, issue.number, 'worker_recovery_pending', {
-            pr: d.load().pr,
-            workerRecoveryCount: d.load().workerRecoveryCount ?? 0,
-          });
-          d.comment(
-            issue.number,
-            'Dispatcher detectó un Worker perdido y levantará una ejecución de recovery.',
+          const runId = d.load().workerRunId ?? randomUUID();
+          runLogger = new RunLogger(runDirectory(d.root, issue.number, runId));
+          d.setRunLogger?.(runLogger);
+          runLogger.write('transition', { phase: 'dispatch', issue: issue.number, recovery });
+          runLogger.write(
+            'context',
+            d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root },
           );
-        } else {
-          claimNewIssue(d, issue.number);
-          d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          d.save({ ...d.load(), workerRunId: randomUUID() });
-          const prepared = d.workspaceAdapter
-            ? d.workspaceAdapter.prepare(issue.number)
-            : d.prepareWorkerBranch(issue.number);
-          d.save({
-            ...d.load(),
-            branch: prepared.branch,
-            mainBaseSha: 'baseSha' in prepared ? prepared.baseSha : prepared.mainBaseSha,
-            ...('headSha' in prepared ? { headSha: prepared.headSha } : {}),
-            ...('ownership' in prepared ? { workerRunId: prepared.ownership.runId } : {}),
-          });
-        }
-        try {
-          await processIssue(cfg, d, issue);
-        } finally {
-          const facts = d.workspaceAdapter?.recover(issue.number, d.load().workerRunId ?? '');
-          if (facts) d.workspaceAdapter?.cleanup(facts);
-        }
+          if (remote) {
+            runLogger.write('remote-projection', {
+              projection: remote.projection,
+              snapshot: allowlistedPublication(remote.snapshot),
+            });
+          }
+          const key = artifactKey('run', { issue: issue.number, runId });
+          const claimed = ensureRemoteClaim(
+            cfg,
+            d,
+            issue.number,
+            runId,
+            key,
+            recovery && remoteManifest?.branch !== 'pending' ? remoteManifest : undefined,
+          );
+          if (!recovery) {
+            claimNewIssue(d, issue.number);
+            d.save({ ...d.load(), workerRunId: claimed?.runId ?? runId });
+            const prepared = d.workspaceAdapter
+              ? d.workspaceAdapter.prepare(issue.number)
+              : d.prepareWorkerBranch(issue.number);
+            d.save({
+              ...d.load(),
+              branch: prepared.branch,
+              mainBaseSha: 'baseSha' in prepared ? prepared.baseSha : prepared.mainBaseSha,
+              ...('headSha' in prepared ? { headSha: prepared.headSha } : {}),
+              ...('ownership' in prepared ? { workerRunId: prepared.ownership.runId } : {}),
+            });
+            if (claimed) publishRemoteManifest(cfg, d, issue.number, 'working', claimed);
+          } else {
+            const persisted = d.load().branch ?? remoteManifest?.branch;
+            const recovered = d.workspaceAdapter?.recover(
+              issue.number,
+              d.load().workerRunId ?? remoteManifest?.runId ?? '',
+              persisted,
+            );
+            if (recovered) {
+              if (persisted && recovered.branch !== persisted)
+                throw new Error(
+                  `recovery workspace branch does not match remote branch ${persisted}; found ${recovered.branch}`,
+                );
+            } else {
+              const expected = workerBranchName(issue.number);
+              if (!persisted || (persisted !== expected && !persisted.startsWith(`${expected}-`)))
+                throw new Error(
+                  `recovery requires persisted worker branch for issue #${issue.number}; remote worker branch was ${persisted ?? 'none'}`,
+                );
+              d.checkoutWorkerBranch(persisted);
+            }
+            status(d, issue.number, 'worker_recovery_pending', {
+              pr: d.load().pr,
+              workerRecoveryCount: d.load().workerRecoveryCount ?? 0,
+            });
+            d.comment(
+              issue.number,
+              'Dispatcher detectó un Worker perdido y levantará una ejecución de recovery.',
+            );
+            if (claimed) publishRemoteManifest(cfg, d, issue.number, 'working', claimed);
+          }
+          try {
+            await processIssue(cfg, d, issue);
+            if (claimed) publishRemoteManifest(cfg, d, issue.number, 'complete', claimed);
+          } finally {
+            const facts = d.workspaceAdapter?.recover(
+              issue.number,
+              d.load().workerRunId ?? claimed?.runId ?? '',
+              d.load().branch,
+            );
+            if (facts) d.workspaceAdapter?.cleanup(facts);
+          }
+        });
         // Temporarily process exactly one issue per invocation. This prevents
         // state from one completed issue leaking into the next issue while the
         // dispatcher transition logic is being hardened.
@@ -1621,6 +1955,8 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           pr: current.pr,
         });
         return 4;
+      } finally {
+        d.setRunLogger?.(undefined);
       }
     }
   } finally {

@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -177,6 +185,7 @@ function harness(
   const prBodyUpdates = [];
   const createdPrBodies = [];
   const reviews = [];
+  let activeLogger;
   const pr = {
     number: 14,
     state: 'OPEN',
@@ -226,6 +235,10 @@ function harness(
       state = next;
     },
     loadConfig: () => ({ ...baseConfig, ...overrides.config }),
+    setRunLogger: (logger) => {
+      activeLogger = logger;
+    },
+    runContext: () => ({ originalRepository: root, executionRoot: root }),
     status: (verbose) =>
       verbose
         ? state
@@ -247,6 +260,8 @@ function harness(
     run: async (spec) => {
       runs.push(spec);
       const role = roleOf(spec);
+      spec.onStdout?.(`${role} stdout ✓\nline two\n`);
+      spec.onStderr?.(`${role} stderr\nline err\n`);
       const round = Number(spec.input?.match(/review round (\d+)/)?.[1] ?? 1);
       if (role === 'worker') {
         workerCount += 1;
@@ -610,6 +625,22 @@ test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async
   assert.match(guide, /Approval checklist/);
   assert.equal(h.state().branch, 'codex/issue-1');
   assert.equal(h.state().mainBaseSha, 'main-sha-1');
+  const runDirectories = readdirSync(join(h.root, '.sloop', 'runs'));
+  assert.equal(runDirectories.length, 2);
+  const events = runDirectories.flatMap((directory) =>
+    readFileSync(join(h.root, '.sloop', 'runs', directory, 'events.jsonl'), 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)),
+  );
+  assert.ok(events.some((event) => event.type === 'context'));
+  assert.ok(events.some((event) => event.type === 'transition'));
+  assert.ok(events.some((event) => event.type === 'prompt'));
+  assert.ok(events.some((event) => event.type === 'result'));
+  assert.ok(events.some((event) => event.type === 'stdout'));
+  assert.ok(events.some((event) => event.type === 'stderr'));
+  assert.ok(events.some((event) => event.type === 'codex'));
+  assert.ok(events.every((event) => Number.isInteger(event.seq)));
 });
 
 test('existing human guide for the current commit is not published twice', async () => {
