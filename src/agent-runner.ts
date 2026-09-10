@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -67,12 +67,39 @@ function nonEmpty(value: unknown, name: string): string {
     throw new AgentContractError('malformed', `${name} must be non-empty`);
   return value;
 }
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  name: string,
+  optional: readonly string[] = [],
+) {
+  for (const key of keys)
+    if (!(key in value) && !optional.includes(key))
+      throw new AgentContractError('malformed', `${name}.${key} is required`);
+  for (const key of Object.keys(value))
+    if (!keys.includes(key)) throw new AgentContractError('malformed', `${name}.${key} is unknown`);
+}
+function strings(value: unknown, name: string) {
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.some((x) => typeof x !== 'string' || !x.trim())
+  )
+    throw new AgentContractError('malformed', `${name} must be non-empty strings`);
+}
+function records(value: unknown, name: string) {
+  if (!Array.isArray(value) || value.some((x) => !x || typeof x !== 'object' || Array.isArray(x)))
+    throw new AgentContractError('malformed', `${name} must be objects`);
+}
 function context(value: unknown): RunContext {
   const c = object(value, 'context');
+  exactKeys(c, ['run', 'issue', 'pr', 'round', 'sha', 'cursor'], 'context', ['pr']);
   const issue = c.issue as number;
   const round = c.round as number;
   if (!Number.isInteger(issue) || !Number.isInteger(round) || round < 1)
     throw new AgentContractError('wrong-context', 'invalid issue or round');
+  if (c.pr !== undefined && (!Number.isSafeInteger(c.pr) || (c.pr as number) < 1))
+    throw new AgentContractError('wrong-context');
   return {
     run: nonEmpty(c.run, 'run'),
     issue,
@@ -109,7 +136,16 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
   if (e.producer === 'worker') {
     if (!['ready', 'blocked'].includes(e.status as string))
       throw new AgentContractError('contradictory');
+    exactKeys(payload, ['summary', 'findingResolutions', 'verification', 'guide'], 'payload');
+    nonEmpty(payload.summary, 'summary');
+    records(payload.findingResolutions, 'findingResolutions');
+    strings(payload.verification, 'verification');
     const guide = object(payload.guide, 'guide');
+    exactKeys(
+      guide,
+      ['summary', 'steps', 'expected', 'isolation', 'limitations', 'checklist'],
+      'guide',
+    );
     for (const k of ['summary', 'isolation']) nonEmpty(guide[k], `guide.${k}`);
     for (const k of ['steps', 'expected', 'limitations', 'checklist'])
       if (
@@ -118,6 +154,20 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
         (guide[k] as unknown[]).some((x) => typeof x !== 'string' || !x.trim())
       )
         throw new AgentContractError('malformed', `guide.${k} must be non-empty`);
+  } else if (e.producer === 'qa' || e.producer === 'staff') {
+    if (!['accepted', 'changes-requested', 'blocked'].includes(e.status as string))
+      throw new AgentContractError('contradictory');
+    exactKeys(payload, ['summary', 'evidence', 'newFindings', 'dispositions'], 'payload');
+    nonEmpty(payload.summary, 'summary');
+    strings(payload.evidence, 'evidence');
+    records(payload.newFindings, 'newFindings');
+    records(payload.dispositions, 'dispositions');
+  } else {
+    if (!['uphold', 'overrule', 'defer'].includes(e.status as string))
+      throw new AgentContractError('contradictory');
+    exactKeys(payload, ['rationale', 'references'], 'payload');
+    nonEmpty(payload.rationale, 'rationale');
+    strings(payload.references, 'references');
   }
   return {
     schema: AGENT_OUTPUT_VERSION,
@@ -164,7 +214,7 @@ export interface AgentRunner {
 export class ArbitraryCommandRunner implements AgentRunner {
   constructor(
     private readonly command: string,
-    private readonly args: readonly string[],
+    protected readonly args: readonly string[],
     private readonly options: RunnerOptions,
   ) {}
   async run(input: string, context: RunContext): Promise<AgentEnvelope> {
@@ -188,12 +238,18 @@ export class ArbitraryCommandRunner implements AgentRunner {
     };
     let last: unknown;
     for (let attempt = 0; attempt <= (this.options.retries ?? 0); attempt++) {
-      const args = this.args.map((arg) =>
-        arg
-          .replaceAll('$SLOOP_AGENT_INPUT', inputPath)
-          .replaceAll('$SLOOP_AGENT_OUTPUT', outputPath)
-          .replaceAll('$SLOOP_AGENT_SCHEMA', schemaPath),
-      );
+      await rm(outputPath, { force: true });
+      const args = this.args
+        .map(
+          (arg) =>
+            arg
+              .replaceAll('$SLOOP_AGENT_INPUT', inputPath)
+              .replaceAll('$SLOOP_AGENT_OUTPUT', outputPath)
+              .replaceAll('$SLOOP_AGENT_SCHEMA', schemaPath),
+          // The Codex adapter uses this as its positional prompt; arbitrary
+          // adapters can consume the file paths through the environment.
+        )
+        .map((arg) => arg.replaceAll('$SLOOP_AGENT_INPUT_CONTENT', input));
       const r = await (this.options.execute ?? defaultExec)(this.command, args, {
         cwd: this.options.cwd,
         env,
@@ -234,6 +290,7 @@ export class CodexAgentRunner extends ArbitraryCommandRunner {
       '$SLOOP_AGENT_SCHEMA',
       '--output-last-message',
       '$SLOOP_AGENT_OUTPUT',
+      '$SLOOP_AGENT_INPUT_CONTENT',
     ];
     if (options.model) args.push('--model', options.model);
     if (options.reasoningEffort)

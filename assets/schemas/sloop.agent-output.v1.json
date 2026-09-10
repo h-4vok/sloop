@@ -6,9 +6,23 @@
   "additionalProperties": false,
   "properties": {
     "schema": { "const": "sloop.agent-output/v1" },
-    "context": { "type": "object", "required": ["run", "issue", "round", "sha", "cursor"] },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "issue", "round", "sha", "cursor"],
+      "properties": {
+        "run": { "type": "string", "minLength": 1 },
+        "issue": { "type": "integer", "minimum": 1 },
+        "pr": { "type": "integer", "minimum": 1 },
+        "round": { "type": "integer", "minimum": 1 },
+        "sha": { "type": "string", "minLength": 1 },
+        "cursor": { "type": "string", "minLength": 1 }
+      }
+    },
     "producer": { "enum": ["worker", "qa", "staff", "arbiter"] },
-    "status": { "type": "string" },
+    "status": {
+      "enum": ["ready", "blocked", "accepted", "changes-requested", "uphold", "overrule", "defer"]
+    },
     "payload": { "type": "object" }
   }
 }
