@@ -1,13 +1,13 @@
 # Production coverage scope
 
-`npm run coverage` enforces 100% lines, statements, functions, and branches for
-the executable production contracts named by issue #80: `config.ts`,
-`runtime.ts`, `release.ts`, `remote-state.ts`, and `mutex.ts`.
+The intermediate coverage issues use `npm run coverage` as a provisional,
+non-regression gate. The final issue in the epic, #84, raises it to 100% for
+lines, statements, functions, and branches after all assigned slices land.
 
 `core/boundaries.ts` contains only TypeScript type declarations. TypeScript
 emits its module as `dist/core/boundaries.js` containing only `export {}`; it
 has no executable statements, functions, branches, or runtime contract to
 exercise. It is therefore documented here as a narrow type-only exclusion.
 
-Other production modules remain covered by their existing focused tests, but
-are outside this issue's core-contract enforcement slice.
+Issues #80-#83 add focused tests for their assigned production areas; they do not
+move the final 100% gate early.
