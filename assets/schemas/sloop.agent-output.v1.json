@@ -23,6 +23,6 @@
     "status": {
       "enum": ["ready", "blocked", "accepted", "changes-requested", "uphold", "overrule", "defer"]
     },
-    "payload": { "type": "object" }
+    "payload": { "type": "object", "minProperties": 1 }
   }
 }

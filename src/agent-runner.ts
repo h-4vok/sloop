@@ -91,6 +91,13 @@ function records(value: unknown, name: string) {
   if (!Array.isArray(value) || value.some((x) => !x || typeof x !== 'object' || Array.isArray(x)))
     throw new AgentContractError('malformed', `${name} must be objects`);
 }
+function requiredRecordFields(value: unknown, name: string, fields: readonly string[]) {
+  records(value, name);
+  for (const [i, item] of (value as Record<string, unknown>[]).entries()) {
+    exactKeys(item, fields, `${name}[${i}]`);
+    for (const field of fields) nonEmpty(item[field], `${name}[${i}].${field}`);
+  }
+}
 function context(value: unknown): RunContext {
   const c = object(value, 'context');
   exactKeys(c, ['run', 'issue', 'pr', 'round', 'sha', 'cursor'], 'context', ['pr']);
@@ -111,6 +118,7 @@ function context(value: unknown): RunContext {
 }
 export function validateAgentEnvelope(value: unknown, expected?: RunContext): AgentEnvelope {
   const e = object(value, 'envelope');
+  exactKeys(e, ['schema', 'context', 'producer', 'status', 'payload'], 'envelope');
   if (e.schema !== AGENT_OUTPUT_VERSION) throw new AgentContractError('unknown-version');
   const c = context(e.context);
   if (
@@ -138,7 +146,11 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
       throw new AgentContractError('contradictory');
     exactKeys(payload, ['summary', 'findingResolutions', 'verification', 'guide'], 'payload');
     nonEmpty(payload.summary, 'summary');
-    records(payload.findingResolutions, 'findingResolutions');
+    requiredRecordFields(payload.findingResolutions, 'findingResolutions', [
+      'id',
+      'status',
+      'summary',
+    ]);
     strings(payload.verification, 'verification');
     const guide = object(payload.guide, 'guide');
     exactKeys(
@@ -160,8 +172,15 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
     exactKeys(payload, ['summary', 'evidence', 'newFindings', 'dispositions'], 'payload');
     nonEmpty(payload.summary, 'summary');
     strings(payload.evidence, 'evidence');
-    records(payload.newFindings, 'newFindings');
-    records(payload.dispositions, 'dispositions');
+    requiredRecordFields(payload.newFindings, 'newFindings', ['id', 'summary', 'severity']);
+    requiredRecordFields(payload.dispositions, 'dispositions', ['id', 'status', 'summary']);
+    const findingIds = new Set(
+      (payload.newFindings as Record<string, unknown>[]).map((finding) => finding.id),
+    );
+    for (const disposition of payload.dispositions as Record<string, unknown>[]) {
+      if (!findingIds.has(disposition.id))
+        throw new AgentContractError('malformed', 'disposition must reference a finding');
+    }
   } else {
     if (!['uphold', 'overrule', 'defer'].includes(e.status as string))
       throw new AgentContractError('contradictory');
@@ -261,7 +280,15 @@ export class ArbitraryCommandRunner implements AgentRunner {
         last = new AgentContractError('operational-failure', r.stderr || 'runner failed');
       else {
         try {
-          const raw = JSON.parse(await readFile(outputPath, 'utf8'));
+          const text = await readFile(outputPath, 'utf8');
+          if (!text.trim()) throw new AgentContractError('missing-result');
+          // JSON.parse rejects truncated/multiple documents; the contract also forbids
+          // duplicate object members because they make the durable result ambiguous.
+          const duplicate = /([{,])\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*:\s*[^,}]+\s*,\s*"\2"\s*:/.test(
+            text,
+          );
+          if (duplicate) throw new AgentContractError('malformed', 'duplicate JSON member');
+          const raw = JSON.parse(text);
           return validateAgentEnvelope(raw, context);
         } catch (error) {
           last = error;
