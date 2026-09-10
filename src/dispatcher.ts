@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { RunLogger, runDirectory } from './run-log.js';
+import { allowlistedPublication } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
@@ -937,6 +939,8 @@ async function runWorker(
     throw new Error(`Worker PR baseBranch must be main; found ${cfg.baseBranch}`);
   if (!cfg.workerCommand) throw new Error('workerCommand is required');
   const runId = randomUUID();
+  const logger = new RunLogger(runDirectory(d.root, issue.number, runId));
+  logger.write('transition', { phase: 'worker', round, issue: issue.number, pr });
   status(d, issue.number, 'worker_recovery_pending', {
     workerRunId: runId,
     workerRecoveryCount: (d.load().workerRecoveryCount ?? 0) + 1,
@@ -951,6 +955,7 @@ async function runWorker(
     issue.number,
     d.load().linkedClosingIssues ?? [],
   );
+  logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
   const output = await d.run(
     withWorkerLifecycle(
       d,
@@ -977,6 +982,7 @@ async function runWorker(
       runId,
     ),
   );
+  logger.write('result', { role: 'worker', output: allowlistedPublication(output) });
   const metadata = workerMetadata(output, pr);
   if (!metadata.pr || metadata.base !== (cfg.baseBranch ?? 'main'))
     throw new Error('Worker must report an existing PR based on main');
@@ -1040,10 +1046,15 @@ async function runReview(
   const pending: Status = 'qa_review_pending';
   status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
   const configured = cfg.qaCommand;
+  const logger = new RunLogger(
+    runDirectory(d.root, issue.number, d.load().workerRunId ?? `review-${round}`),
+  );
+  logger.write('transition', { phase: 'qa', round, pr: prNumber });
   if (!configured) throw new Error(`${role} command is required`);
   const spec = roleCommand(configured, issue.number, cfg);
   if (!spec) throw new Error(`${role} command is required`);
-  await d.run({
+  logger.write('prompt', { role, round });
+  const output = await d.run({
     ...spec,
     input: rolePrompt(
       issue,
@@ -1056,6 +1067,7 @@ async function runReview(
       d.load().workerRunId ?? 'dispatcher-run',
     ),
   });
+  logger.write('result', { role, output: allowlistedPublication(output) });
   const latest = await waitForEvidence(d, cfg, prNumber, (candidate) =>
     Boolean(latestReview(candidate, marker, round, candidate.headRefOid)),
   );

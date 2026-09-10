@@ -6,7 +6,8 @@ export function withEphemeralMutex<T>(root: string, owner: string, fn: () => T):
     mkdirSync(dir, { recursive: true });
     mkdirSync(join(dir, 'active'));
     writeFileSync(join(dir, 'active', 'owner'), owner, { mode: 0o600 });
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     throw new Error('another sloop process holds the local mutex');
   }
   try {

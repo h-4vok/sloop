@@ -35,6 +35,7 @@ export type WorkflowProjection = Readonly<{
   openGates: readonly string[];
   runId?: string;
   artifactKeys: readonly string[];
+  lease?: { owner: string; expiresAt: string; active: boolean };
 }>;
 const sorted = (xs: readonly string[] = []) => [...new Set(xs)].sort();
 export function artifactKey(kind: string, identity: Record<string, unknown>): string {
@@ -43,7 +44,16 @@ export function artifactKey(kind: string, identity: Record<string, unknown>): st
   );
   return `sloop-v1/${kind}/${createHash('sha256').update(canonical).digest('hex').slice(0, 32)}`;
 }
+export function leaseIsActive(lease: { expiresAt: string }, now = Date.now()): boolean {
+  const expiry = Date.parse(lease.expiresAt);
+  if (!Number.isFinite(expiry)) throw new Error('invalid lease expiry');
+  return expiry > now;
+}
+export function reconcileArtifact(markers: readonly string[], key: string): boolean {
+  return markers.includes(key);
+}
 export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
+  if (!Number.isInteger(s.issue) || s.issue <= 0) throw new Error('invalid issue number');
   if (s.protocol !== undefined && s.protocol !== REMOTE_PROTOCOL)
     throw new Error(`unsupported remote protocol: ${s.protocol}`);
   const markers = sorted(
@@ -51,15 +61,32 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
       x.startsWith('sloop/v1/'),
     ),
   );
-  const hasManifest =
-    Boolean(s.manifest?.runId) && markers.includes(`sloop/v1/run/${s.manifest!.runId}`);
+  const m = s.manifest;
+  const phases = new Set(['idle', 'claimed', 'working', 'review', 'blocked', 'complete']);
+  const validManifest = Boolean(
+    m &&
+    m.protocol === REMOTE_PROTOCOL &&
+    m.runId &&
+    m.issue === s.issue &&
+    typeof m.branch === 'string' &&
+    typeof m.baseSha === 'string' &&
+    typeof m.configFingerprint === 'string' &&
+    Number.isInteger(m.reviewRound) &&
+    (m.reviewRound ?? 0) >= 1 &&
+    typeof m.contextCursor === 'string' &&
+    Array.isArray(m.artifacts) &&
+    phases.has(m.phase ?? ''),
+  );
+  const hasManifest = Boolean(validManifest && markers.includes(`sloop/v1/run/${m!.runId}`));
   if (!hasManifest)
     return { protocol: REMOTE_PROTOCOL, phase: 'idle', openGates: [], artifactKeys: markers };
   const checks = (s.checks ?? [])
     .filter((x) => x.conclusion !== 'success')
     .map((x) => `check:${x.name}`)
     .sort();
-  const reviews = (s.reviews ?? []).filter((x) => !['APPROVED'].includes(x.state)).length;
+  const reviews = (s.reviews ?? []).filter(
+    (x) => !['APPROVED', 'DISMISSED'].includes(x.state.toUpperCase()),
+  ).length;
   const unresolved = (s.inlineThreads ?? []).filter((x) => !x.resolved).length;
   const gates = [
     ...checks,
@@ -67,16 +94,18 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
     ...(unresolved ? [`inline:${unresolved}`] : []),
   ];
   const phase =
-    s.manifest!.phase === 'complete'
+    m!.phase === 'complete'
       ? 'complete'
       : gates.length
         ? 'review'
-        : (s.manifest!.phase as WorkflowProjection['phase']) || 'working';
+        : (m!.phase as WorkflowProjection['phase']);
+  const lease = m!.lease ? { ...m!.lease, active: leaseIsActive(m!.lease) } : undefined;
   return {
     protocol: REMOTE_PROTOCOL,
     phase,
     openGates: gates,
     runId: s.manifest!.runId,
-    artifactKeys: markers,
+    artifactKeys: sorted([...markers, ...(m!.artifacts ?? [])]),
+    ...(lease ? { lease } : {}),
   };
 }
