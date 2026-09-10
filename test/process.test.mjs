@@ -11,8 +11,8 @@ test('resolveExecutable keeps explicit paths and extensions unchanged', async ()
     'tool.exe',
   );
   assert.equal(
-    resolveExecutable('C:\\tools\\tool', 'win32', () => ['tool.cmd']),
-    'C:\\tools\\tool',
+    resolveExecutable('/absolute/tool', 'win32', () => ['tool.cmd']),
+    '/absolute/tool',
   );
 });
 
