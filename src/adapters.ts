@@ -7,7 +7,6 @@ import type { SloopConfig } from './config.js';
 import { CliFailure } from './dispatcher.js';
 import {
   checkoutWorkerBranch,
-  commentPullRequest,
   defaultProcessAlive,
   dispatcherLockPath,
   eligible,
@@ -21,7 +20,6 @@ import {
   resetRunState,
   resolveReviewCap,
   runCommand,
-  updatePullRequestBody,
   writeState,
 } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
@@ -35,7 +33,68 @@ import {
 } from './workspace.js';
 import { loadConfigText } from './config.js';
 import { syncPrerequisites } from './sync.js';
-import { allowlistedPublication } from './publication.js';
+import { publicationBody } from './publication.js';
+
+type AdapterExecOptions = {
+  cwd: string;
+  encoding?: BufferEncoding;
+  stdio?: 'inherit';
+};
+type AdapterExec = (
+  file: string,
+  args: string[],
+  options: AdapterExecOptions,
+) => string | Buffer | void;
+
+const nativeAdapterExec: AdapterExec = (file, args, options) => execFileSync(file, args, options);
+
+export type ProductionAdapterOptions = Readonly<{
+  execFileSync?: AdapterExec;
+}>;
+
+function adapterGh(
+  execute: AdapterExec,
+  args: string[],
+  root: string,
+  repository: string,
+  options: Omit<AdapterExecOptions, 'cwd'> = {},
+): string {
+  try {
+    return String(execute('gh', [...args, '--repo', repository], { ...options, cwd: root }) ?? '');
+  } catch (error) {
+    throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function publishGhBody(
+  execute: AdapterExec,
+  args: string[],
+  body: unknown,
+  root: string,
+  repository: string,
+): void {
+  adapterGh(execute, [...args, '--body', publicationBody(body)], root, repository, {
+    stdio: 'inherit',
+  });
+}
+
+function publishPullRequestBody(
+  execute: AdapterExec,
+  pr: number,
+  body: unknown,
+  root: string,
+  repository: string,
+): void {
+  const temp = join(root, `.sloop-pr-${process.pid}-${Date.now()}.md`);
+  try {
+    writeFileSync(temp, publicationBody(body), 'utf8');
+    adapterGh(execute, ['pr', 'edit', String(pr), '--body-file', temp], root, repository, {
+      stdio: 'inherit',
+    });
+  } finally {
+    rmSync(temp, { force: true });
+  }
+}
 
 /**
  * Production seam for the reconciliation interfaces owned by the runtime.
@@ -99,7 +158,9 @@ export function productionDependencies(
   root: string,
   validatedConfig: SloopConfig,
   repository: string,
+  options: ProductionAdapterOptions = {},
 ): Deps {
+  const execute = options.execFileSync ?? nativeAdapterExec;
   const state = join(root, '.sloop', 'state.json');
   let executionRoot = root;
   let runLogger: RunEventLogger | undefined;
@@ -212,22 +273,7 @@ export function productionDependencies(
     comment: (issue, body) => {
       try {
         logGithub('request', 'issue.comment', { issue, body });
-        execFileSync(
-          'gh',
-          [
-            'issue',
-            'comment',
-            String(issue),
-            '--repo',
-            repository,
-            '--body',
-            String(allowlistedPublication(body)),
-          ],
-          {
-            cwd: root,
-            stdio: 'inherit',
-          },
-        );
+        publishGhBody(execute, ['issue', 'comment', String(issue)], body, root, repository);
         logGithub('response', 'issue.comment', { issue });
       } catch (error) {
         logGithub('error', 'issue.comment', error instanceof Error ? error.message : String(error));
@@ -248,14 +294,8 @@ export function productionDependencies(
     updatePullRequestBody: (pr, body) => {
       logGithub('request', 'updatePullRequestBody', { pr, body });
       try {
-        const result = updatePullRequestBody(
-          pr,
-          String(allowlistedPublication(body)),
-          root,
-          repository,
-        );
+        publishPullRequestBody(execute, pr, body, root, repository);
         logGithub('response', 'updatePullRequestBody', { pr });
-        return result;
       } catch (error) {
         logGithub(
           'error',
@@ -283,14 +323,8 @@ export function productionDependencies(
     prComment: (pr, body) => {
       logGithub('request', 'prComment', { pr, body });
       try {
-        const result = commentPullRequest(
-          pr,
-          String(allowlistedPublication(body)),
-          root,
-          repository,
-        );
+        publishGhBody(execute, ['pr', 'comment', String(pr)], body, root, repository);
         logGithub('response', 'prComment', { pr });
-        return result;
       } catch (error) {
         logGithub('error', 'prComment', error instanceof Error ? error.message : String(error));
         throw error;
@@ -313,10 +347,11 @@ export function productionDependencies(
       snapshot: (issue) => {
         try {
           logGithub('request', 'remote.snapshot', { issue });
-          const raw = execFileSync(
-            'gh',
-            ['issue', 'view', String(issue), '--repo', repository, '--json', 'labels,comments'],
-            { cwd: root, encoding: 'utf8' },
+          const raw = adapterGh(
+            execute,
+            ['issue', 'view', String(issue), '--json', 'labels,comments'],
+            root,
+            repository,
           );
           const value = JSON.parse(raw) as {
             labels?: { name: string }[];
@@ -349,10 +384,11 @@ export function productionDependencies(
       reconcile: (issue, key) => {
         try {
           logGithub('request', 'remote.reconcile', { issue, key });
-          const raw = execFileSync(
-            'gh',
-            ['issue', 'view', String(issue), '--repo', repository, '--json', 'comments'],
-            { cwd: root, encoding: 'utf8' },
+          const raw = adapterGh(
+            execute,
+            ['issue', 'view', String(issue), '--json', 'comments'],
+            root,
+            repository,
           );
           const result =
             JSON.parse(raw).comments?.some((comment: { body: string }) =>
@@ -376,11 +412,7 @@ export function productionDependencies(
         const marker = `sloop/v1/lease/${issue}/${owner}/${expiresAt}`;
         try {
           logGithub('request', 'remote.claim', { issue, owner, expiresAt, marker });
-          execFileSync(
-            'gh',
-            ['issue', 'comment', String(issue), '--repo', repository, '--body', marker],
-            { cwd: root, stdio: 'inherit' },
-          );
+          publishGhBody(execute, ['issue', 'comment', String(issue)], marker, root, repository);
           logGithub('response', 'remote.claim', { issue, marker });
         } catch (error) {
           logGithub(
