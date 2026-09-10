@@ -1212,7 +1212,7 @@ export function prepareRecovery(
     ...state,
     issue,
     pr,
-    branch: workerBranchName(issue),
+    branch: state.branch ?? workerBranchName(issue),
     status: 'worker_running',
     workerRunId: randomUUID(),
     workerPid: -1,
@@ -1565,9 +1565,9 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
               );
           } else {
             const expected = workerBranchName(issue.number);
-            if (persisted !== expected)
+            if (!persisted || (persisted !== expected && !persisted.startsWith(`${expected}-`)))
               throw new Error(
-                `recovery requires persisted worker branch ${expected}; found ${persisted ?? 'none'}`,
+                `recovery requires persisted worker branch for issue #${issue.number}; found ${persisted ?? 'none'}`,
               );
             d.checkoutWorkerBranch(persisted);
           }
