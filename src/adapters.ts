@@ -237,6 +237,63 @@ export function productionDependencies(
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
     listAllWorktrees: () => listWorkspaces(root, state),
     clearAllWorktrees: () => clearWorkspaces(root, state),
+    remote: {
+      snapshot: (issue) => {
+        try {
+          const raw = execFileSync(
+            'gh',
+            ['issue', 'view', String(issue), '--repo', repository, '--json', 'labels,comments'],
+            { cwd: root, encoding: 'utf8' },
+          );
+          const value = JSON.parse(raw) as {
+            labels?: { name: string }[];
+            comments?: { body: string }[];
+          };
+          const comments = value.comments ?? [];
+          const markers = comments.flatMap((comment) =>
+            [...comment.body.matchAll(/sloop\/v1\/[^\s`]+/g)].map((m) => m[0]),
+          );
+          return {
+            issue,
+            labels: (value.labels ?? []).map((label) => label.name),
+            comments: comments.map((comment) => ({ body: comment.body })),
+            markers,
+          };
+        } catch (error) {
+          throw new CliFailure(
+            5,
+            `GitHub snapshot unavailable: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
+      reconcile: (issue, key) => {
+        try {
+          const raw = execFileSync(
+            'gh',
+            ['issue', 'view', String(issue), '--repo', repository, '--json', 'comments'],
+            { cwd: root, encoding: 'utf8' },
+          );
+          return (
+            JSON.parse(raw).comments?.some((comment: { body: string }) =>
+              comment.body.includes(key),
+            ) ?? false
+          );
+        } catch (error) {
+          throw new CliFailure(
+            5,
+            `GitHub reconciliation unavailable: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
+      claim: (issue, owner, expiresAt) => {
+        const marker = `sloop/v1/lease/${issue}/${owner}/${expiresAt}`;
+        execFileSync(
+          'gh',
+          ['issue', 'comment', String(issue), '--repo', repository, '--body', marker],
+          { cwd: root, stdio: 'inherit' },
+        );
+      },
+    },
     pid: () => process.pid,
     processAlive: defaultProcessAlive,
     now: Date.now,

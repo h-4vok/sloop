@@ -1621,7 +1621,21 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         } else {
           claimNewIssue(d, issue.number);
           d.comment(issue.number, 'Dispatcher reclama esta issue de forma exclusiva.');
-          d.save({ ...d.load(), workerRunId: randomUUID() });
+          const runId = randomUUID();
+          if (d.remote) {
+            const remoteSnapshot = d.remote.snapshot(issue.number);
+            const remoteProjection = projectRemoteState(remoteSnapshot as never);
+            if (remoteProjection.openGates.includes('lease:owned'))
+              throw new Error('remote run has an active lease');
+            const key = artifactKey('run', { issue: issue.number, runId });
+            if (!d.remote.reconcile(issue.number, key))
+              d.remote.claim(
+                issue.number,
+                `${process.pid}:${issue.number}`,
+                new Date(d.now() + (cfg.workerLeaseMs ?? 900000)).toISOString(),
+              );
+          }
+          d.save({ ...d.load(), workerRunId: runId });
           const prepared = d.workspaceAdapter
             ? d.workspaceAdapter.prepare(issue.number)
             : d.prepareWorkerBranch(issue.number);
@@ -1638,7 +1652,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
             const runLogger = new RunLogger(
               runDirectory(d.root, issue.number, d.load().workerRunId ?? 'dispatcher-run'),
             );
-            const snapshot = d.remote.snapshot(issue.number);
+            const snapshot = d.remote!.snapshot(issue.number);
             const projection = projectRemoteState(snapshot as never);
             if (projection.openGates.includes('lease:owned'))
               throw new Error('remote run has an active lease');
@@ -1650,12 +1664,9 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
               projection,
               snapshot: allowlistedPublication(snapshot),
             });
-            if (!d.remote.reconcile(issue.number, key))
-              d.remote.claim(
-                issue.number,
-                `${process.pid}:${issue.number}`,
-                new Date(d.now() + (cfg.workerLeaseMs ?? 900000)).toISOString(),
-              );
+            // The claim is made before workspace preparation. Reconciliation here
+            // closes the lease/write acknowledgement window without duplicating it.
+            d.remote!.reconcile(issue.number, key);
           }
           try {
             await processIssue(cfg, d, issue);
