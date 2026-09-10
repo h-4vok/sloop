@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { productionDependencies } from '../dist/adapters.js';
 import { loadConfigText, canonicalConfigYaml } from '../dist/config.js';
 import { CliFailure } from '../dist/dispatcher.js';
+import { runManifestMarker } from '../dist/remote-state.js';
 
 test('production assembly supplies every typed external-concern boundary', () => {
   const dependencies = productionDependencies(
@@ -95,6 +96,49 @@ test('production adapters sanitize every GitHub body and marker publication path
   assert.match(published, /https:\/\/<redacted>@example\.test/);
   assert.match(published, /"accessToken":<redacted>/);
   assert.match(published, /sloop\/v1\/lease\/33\/owner\//);
+});
+
+test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
+  const calls = [];
+  const manifest = {
+    protocol: 1,
+    runId: 'run-1',
+    issue: 33,
+    pr: 77,
+    branch: 'codex/issue-33',
+    baseSha: 'abcdef1',
+    configFingerprint: 'config-1',
+    phase: 'review',
+    reviewRound: 1,
+    contextCursor: 'cursor-1',
+    artifacts: [],
+  };
+  const execute = (file, args, options) => {
+    calls.push({ file, args: [...args], options });
+    if (args[0] === 'issue')
+      return JSON.stringify({ labels: [], comments: [{ body: runManifestMarker(manifest) }] });
+    if (args[0] === 'pr')
+      return JSON.stringify({ number: 77, comments: [], reviews: [], statusCheckRollup: [] });
+    if (args[0] === 'api')
+      return JSON.stringify({
+        data: {
+          repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: false }] } } },
+        },
+      });
+    throw new Error(`unexpected gh command: ${args.join(' ')}`);
+  };
+  const dependencies = productionDependencies(
+    mkdtempSync(join(tmpdir(), 'sloop-adapter-test-')),
+    loadConfigText(canonicalConfigYaml()),
+    'h-4vok/sloop',
+    { execFileSync: execute },
+  );
+
+  const snapshot = dependencies.remote.snapshot(33);
+  const apiCall = calls.find((call) => call.args[0] === 'api');
+  assert.ok(apiCall);
+  assert.equal(apiCall.args.includes('--repo'), false);
+  assert.deepEqual(snapshot.inlineThreads, [{ resolved: false }]);
 });
 
 test('typed CLI failures preserve stable busy and external exit classes', () => {
