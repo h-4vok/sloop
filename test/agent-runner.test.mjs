@@ -95,19 +95,24 @@ test('arbitrary runner reads only the declared result, captures streams, and ret
   ]);
 });
 
-test('Codex runner builds separated structured-output argv', async () => {
+test('Codex runner builds separated structured-output argv and captures a result', async () => {
   let seen;
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
     model: 'm',
     reasoningEffort: 'high',
     sandbox: 'read-only',
-    execute: async (command, args) => {
+    execute: async (command, args, options) => {
       seen = [command, args];
-      return { stdout: '', stderr: '', code: 1, signal: null };
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+      );
+      options.onStdout('marker-like json');
+      options.onStderr('diagnostic');
+      return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
-  await assert.rejects(runner.run('prompt', context), (e) => e.code === 'operational-failure');
+  assert.equal((await runner.run('prompt', context)).status, 'ready');
   assert.equal(seen[0], 'codex');
   assert.deepEqual(seen[1].slice(0, 8), [
     'exec',
@@ -176,5 +181,5 @@ test('runner handles timeout, missing output, duplicate members, and idempotent 
   });
   assert.equal((await runner.run('input', context)).status, 'ready');
   assert.equal((await runner.run('input', context)).status, 'ready');
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
 });

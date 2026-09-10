@@ -4,7 +4,11 @@
   "type": "object",
   "required": ["schema", "context", "producer", "status", "payload"],
   "additionalProperties": false,
-  "$defs": {},
+  "$defs": {
+    "worker": { "$ref": "worker.v1.json" },
+    "reviewer": { "$ref": "reviewer.v1.json" },
+    "arbiter": { "$ref": "arbiter.v1.json" }
+  },
   "properties": {
     "schema": { "type": "string", "const": "sloop.agent-output/v1" },
     "context": {
@@ -47,17 +51,21 @@
         "rationale": { "type": "string" },
         "references": { "type": "array", "items": { "type": "string" } }
       },
-      "required": [
-        "summary",
-        "findingResolutions",
-        "verification",
-        "guide",
-        "evidence",
-        "newFindings",
-        "dispositions",
-        "rationale",
-        "references"
-      ]
+      "required": []
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "producer": { "const": "worker" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/worker" } } }
+    },
+    {
+      "if": { "properties": { "producer": { "enum": ["qa", "staff"] } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/reviewer" } } }
+    },
+    {
+      "if": { "properties": { "producer": { "const": "arbiter" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/arbiter" } } }
+    }
+  ]
 }

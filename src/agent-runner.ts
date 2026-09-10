@@ -232,12 +232,16 @@ export interface AgentRunner {
   run(input: string, context: RunContext): Promise<AgentEnvelope>;
 }
 export class ArbitraryCommandRunner implements AgentRunner {
+  private readonly reconciled = new Map<string, AgentEnvelope>();
   constructor(
     private readonly command: string,
     protected readonly args: readonly string[],
     private readonly options: RunnerOptions,
   ) {}
   async run(input: string, context: RunContext): Promise<AgentEnvelope> {
+    const invocationKey = JSON.stringify([input, context]);
+    const existing = this.reconciled.get(invocationKey);
+    if (existing) return existing;
     const dir = await mkdtemp(join(tmpdir(), 'sloop-agent-'));
     const inputPath = join(dir, 'input.json');
     const outputPath = join(dir, 'output.json');
@@ -319,7 +323,9 @@ export class ArbitraryCommandRunner implements AgentRunner {
           );
           if (duplicate) throw new AgentContractError('malformed', 'duplicate JSON member');
           const raw = JSON.parse(text);
-          return validateAgentEnvelope(raw, context);
+          const result = validateAgentEnvelope(raw, context);
+          this.reconciled.set(invocationKey, result);
+          return result;
         } catch (error) {
           last =
             error instanceof AgentContractError
