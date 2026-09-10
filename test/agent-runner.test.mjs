@@ -121,3 +121,60 @@ test('Codex runner builds separated structured-output argv', async () => {
   ]);
   assert.ok(seen[1].includes('prompt'));
 });
+
+test('runner exposes the complete canonical schema and rejects operational failure matrix', async () => {
+  const seen = [];
+  const runner = new ArbitraryCommandRunner('fake', [], {
+    cwd: process.cwd(),
+    retries: 1,
+    timeoutMs: 5,
+    execute: async (_command, _args, options) => {
+      seen.push(JSON.parse(await readFile(options.env.SLOOP_AGENT_SCHEMA, 'utf8')));
+      if (seen.length === 1) return { stdout: '', stderr: 'crash', code: 1, signal: null };
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, '{"schema":"sloop.agent-output/v1"'),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+  });
+  await assert.rejects(runner.run('input', context), (error) => error.code === 'malformed');
+  assert.equal(seen.length, 2);
+  assert.ok(seen[0].$defs.worker);
+  assert.ok(seen[0].$defs.reviewer);
+  assert.ok(seen[0].$defs.arbiter);
+  assert.equal(seen[0].$id, 'sloop.agent-output/v1');
+});
+
+test('runner handles timeout, missing output, duplicate members, and idempotent valid retry', async () => {
+  for (const mode of ['timeout', 'missing', 'duplicate']) {
+    const runner = new ArbitraryCommandRunner('fake', [], {
+      cwd: process.cwd(),
+      timeoutMs: 1,
+      execute: async (_command, _args, options) => {
+        if (mode === 'timeout') return { stdout: '', stderr: '', code: null, signal: 'SIGTERM' };
+        if (mode === 'duplicate')
+          await import('node:fs/promises').then(({ writeFile }) =>
+            writeFile(options.env.SLOOP_AGENT_OUTPUT, '{"schema":1,"schema":2}'),
+          );
+        return { stdout: '', stderr: '', code: 0, signal: null };
+      },
+    });
+    await assert.rejects(runner.run('input', context), (error) =>
+      ['operational-failure', 'missing-result', 'malformed'].includes(error.code),
+    );
+  }
+  let calls = 0;
+  const runner = new ArbitraryCommandRunner('fake', [], {
+    cwd: process.cwd(),
+    execute: async (_command, _args, options) => {
+      calls++;
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+  });
+  assert.equal((await runner.run('input', context)).status, 'ready');
+  assert.equal((await runner.run('input', context)).status, 'ready');
+  assert.equal(calls, 2);
+});

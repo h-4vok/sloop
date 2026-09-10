@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const AGENT_OUTPUT_VERSION = 'sloop.agent-output/v1' as const;
 export type Role = 'worker' | 'qa' | 'staff' | 'arbiter';
@@ -242,7 +243,24 @@ export class ArbitraryCommandRunner implements AgentRunner {
     const outputPath = join(dir, 'output.json');
     const schemaPath = join(dir, 'schema.json');
     await writeFile(inputPath, input);
-    await writeFile(schemaPath, JSON.stringify({ $id: AGENT_OUTPUT_VERSION }));
+    const schemaRoot = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'schemas');
+    const envelope = JSON.parse(
+      await readFile(join(schemaRoot, 'sloop.agent-output.v1.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const defs = envelope.$defs as Record<string, Record<string, unknown>>;
+    const roles = [
+      ['workerEnvelope', 'worker.v1.json'],
+      ['reviewerEnvelope', 'reviewer.v1.json'],
+      ['arbiterEnvelope', 'arbiter.v1.json'],
+    ] as const;
+    for (const [, file] of roles) {
+      const roleSchema = JSON.parse(await readFile(join(schemaRoot, file), 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      defs[file.slice(0, -8)] = roleSchema;
+    }
+    await writeFile(schemaPath, JSON.stringify(envelope));
     const env = {
       ...process.env,
       SLOOP_AGENT_INPUT: inputPath,
@@ -303,7 +321,14 @@ export class ArbitraryCommandRunner implements AgentRunner {
           const raw = JSON.parse(text);
           return validateAgentEnvelope(raw, context);
         } catch (error) {
-          last = error;
+          last =
+            error instanceof AgentContractError
+              ? error
+              : error instanceof SyntaxError
+                ? new AgentContractError('malformed', 'invalid JSON result')
+                : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
+                  ? new AgentContractError('missing-result')
+                  : new AgentContractError('malformed', 'unable to read result');
         }
       }
     }

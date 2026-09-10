@@ -4,16 +4,17 @@
   "type": "object",
   "required": ["schema", "context", "producer", "status", "payload"],
   "additionalProperties": false,
+  "$defs": {},
   "properties": {
-    "schema": { "const": "sloop.agent-output/v1" },
+    "schema": { "type": "string", "const": "sloop.agent-output/v1" },
     "context": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["run", "issue", "round", "sha", "cursor"],
+      "required": ["run", "issue", "pr", "round", "sha", "cursor"],
       "properties": {
         "run": { "type": "string", "minLength": 1 },
         "issue": { "type": "integer", "minimum": 1 },
-        "pr": { "type": "integer", "minimum": 1 },
+        "pr": { "type": ["integer", "null"], "minimum": 1 },
         "round": { "type": "integer", "minimum": 1 },
         "sha": { "type": "string", "minLength": 1 },
         "cursor": { "type": "string", "minLength": 1 }
@@ -23,6 +24,40 @@
     "status": {
       "enum": ["ready", "blocked", "accepted", "changes-requested", "uphold", "overrule", "defer"]
     },
-    "payload": { "type": "object", "minProperties": 1 }
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "type": "string" },
+        "findingResolutions": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false }
+        },
+        "verification": { "type": "array", "items": { "type": "string" } },
+        "guide": { "type": "object", "additionalProperties": false },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "newFindings": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false }
+        },
+        "dispositions": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false }
+        },
+        "rationale": { "type": "string" },
+        "references": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": [
+        "summary",
+        "findingResolutions",
+        "verification",
+        "guide",
+        "evidence",
+        "newFindings",
+        "dispositions",
+        "rationale",
+        "references"
+      ]
+    }
   }
 }
