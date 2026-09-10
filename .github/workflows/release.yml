@@ -1,0 +1,75 @@
+name: Release merged work
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run format:check
+      - name: Calculate release
+        id: release
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          kind=$(node --input-type=module -e "import {parseReleaseKind} from './dist/release.js'; console.log(parseReleaseKind(process.env.PR_TITLE))")
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          [ "$kind" = none ] && exit 0
+          latest=$(git tag --list 'v*' --sort=-version:refname | head -n1)
+          latest=${latest#v}; [ -n "$latest" ] || latest=$(node -p "require('./package.json').version")
+          version=$(node --input-type=module -e "import {nextVersion} from './dist/release.js'; console.log(nextVersion(process.argv[1], process.argv[2]))" "$latest" "$kind")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Publish release metadata
+        if: steps.release.outputs.kind != 'none'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          tag="v$VERSION"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tag_target=$(git rev-list -n1 "$tag")
+            if gh release view "$tag" --json tagName,targetCommitish > release.json 2>/dev/null; then
+              export HEAD_SHA="$tag_target"
+              export TAG="$tag"
+              node --input-type=module -e "import {verifyReleaseState} from './dist/release.js'; import {readFileSync} from 'node:fs'; const release=JSON.parse(readFileSync('release.json')); verifyReleaseState({tagName:process.env.TAG, tagTarget:process.env.HEAD_SHA, releaseTagName:release.tagName, releaseTarget:release.targetCommitish}, process.env.TAG, process.env.HEAD_SHA)"
+              echo "$tag and its GitHub Release already match; reusing existing release without metadata mutation."
+              exit 0
+            fi
+            gh release create "$tag" --title "$tag" --generate-notes
+            echo "$tag existed without a GitHub Release; created the missing release without metadata mutation."
+            exit 0
+          fi
+          export RELEASE_DATE=$(date -u +%F)
+          metadata_matches=$(node --input-type=module -e "import {hasReleaseMetadata} from './dist/release.js'; import {readFileSync} from 'node:fs'; console.log(hasReleaseMetadata(readFileSync('package.json','utf8'), readFileSync('CHANGELOG.md','utf8'), process.env.VERSION, process.env.RELEASE_DATE, Number(process.env.PR_NUMBER)))" )
+          if [ "$metadata_matches" = true ]; then
+            echo "Release metadata for $tag is already committed; resuming publication."
+          else
+            node --input-type=module -e "import {updateRepositoryMetadata} from './dist/release.js'; updateRepositoryMetadata(process.env.VERSION, process.env.RELEASE_DATE, Number(process.env.PR_NUMBER))"
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package.json CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore(release): v$VERSION"
+          if ! git rev-parse "$tag" >/dev/null 2>&1; then
+            git tag "v$VERSION"
+          fi
+          git push origin main "v$VERSION"
+          export HEAD_SHA=$(git rev-parse HEAD)
+          gh release create "$tag" --title "$tag" --generate-notes
