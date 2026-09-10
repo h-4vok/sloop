@@ -25,7 +25,7 @@ export type RunManifest = Readonly<{
   branch: string;
   baseSha: string;
   configFingerprint: string;
-  phase: string;
+  phase: 'idle' | 'claimed' | 'working' | 'review' | 'blocked' | 'complete';
   lease?: { owner: string; expiresAt: string };
   reviewRound: number;
   contextCursor: string;
@@ -36,9 +36,31 @@ export type WorkflowProjection = Readonly<{
   phase: 'idle' | 'claimed' | 'working' | 'review' | 'blocked' | 'complete';
   openGates: readonly string[];
   runId?: string;
+  manifest?: RunManifest;
   artifactKeys: readonly string[];
   lease?: { owner: string; expiresAt: string; active: boolean };
 }>;
+const manifestPrefix = '<!-- sloop/v1/manifest ';
+const manifestSuffix = ' -->';
+
+/** Fixed, hidden protocol marker used as the durable workflow record. */
+export function runManifestMarker(manifest: RunManifest): string {
+  return `${manifestPrefix}${Buffer.from(JSON.stringify(manifest), 'utf8').toString('base64url')}${manifestSuffix}`;
+}
+
+/** Decode only the fixed manifest marker; free-form comments are never state. */
+export function parseRunManifestMarker(body: string, issue: number): RunManifest | undefined {
+  const match = body.match(/<!-- sloop\/v1\/manifest ([A-Za-z0-9_-]+) -->/);
+  if (!match) return undefined;
+  try {
+    const manifest = JSON.parse(
+      Buffer.from(match[1], 'base64url').toString('utf8'),
+    ) as Partial<RunManifest>;
+    return validateRunManifest(manifest, issue) ? manifest : undefined;
+  } catch {
+    return undefined;
+  }
+}
 const sorted = (xs: readonly string[] = []) => [...new Set(xs)].sort();
 export function artifactKey(kind: string, identity: Record<string, unknown>): string {
   const canonical = JSON.stringify(
@@ -107,7 +129,8 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
     ...checks,
     ...(reviews ? ['review'] : []),
     ...(unresolved ? [`inline:${unresolved}`] : []),
-    ...(s.labels ?? [])
+    ...[...(s.labels ?? [])]
+      .sort()
       .filter((x) => /^(Automation Blocked|Blocked)$/i.test(x))
       .map((x) => `label:${x}`),
     ...(s.branch !== undefined && s.branch !== m!.branch ? ['branch:mismatch'] : []),
@@ -131,6 +154,7 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
     phase,
     openGates: gates,
     runId: s.manifest!.runId,
+    ...(validManifest ? { manifest: m as RunManifest } : {}),
     artifactKeys: sorted([...markers, ...(m!.artifacts ?? [])]),
     ...(lease ? { lease } : {}),
   };

@@ -34,6 +34,8 @@ import {
 import { loadConfigText } from './config.js';
 import { syncPrerequisites } from './sync.js';
 import { publicationBody } from './publication.js';
+import { artifactKey, parseRunManifestMarker, runManifestMarker } from './remote-state.js';
+import type { RunManifest } from './remote-state.js';
 
 type AdapterExecOptions = {
   cwd: string;
@@ -188,7 +190,7 @@ export function productionDependencies(
       executionRoot = facts.executionRoot;
       return facts;
     },
-    recover: (issue, runId) => {
+    recover: (issue, runId, branch) => {
       const facts = recoverWorkspace({
         repositoryRoot: root,
         remote: validatedConfig.repository.remote,
@@ -196,6 +198,7 @@ export function productionDependencies(
         branchPrefix: validatedConfig.repository.branchPrefix ?? 'codex/issue-',
         issue,
         runId,
+        branch,
         worktreeRoot: validatedConfig.workspace.worktreeRoot,
         mode: validatedConfig.workspace.mode,
         stateFile: state,
@@ -216,6 +219,7 @@ export function productionDependencies(
     writeFileSync(file, JSON.stringify(owner, null, 2) + '\n');
   return {
     root,
+    remoteRequired: true,
     setRunLogger: (logger) => {
       runLogger = logger;
     },
@@ -358,14 +362,81 @@ export function productionDependencies(
             comments?: { body: string }[];
           };
           const comments = value.comments ?? [];
-          const markers = comments.flatMap((comment) =>
-            [...comment.body.matchAll(/sloop\/v1\/[^\s`]+/g)].map((m) => m[0]),
+          const issueManifests = comments
+            .map((comment) => parseRunManifestMarker(comment.body, issue))
+            .filter((manifest): manifest is RunManifest => Boolean(manifest));
+          const manifest = issueManifests.at(-1);
+          let prData: {
+            number?: number;
+            headRefName?: string;
+            headRefOid?: string;
+            comments?: { body: string }[];
+            reviews?: { state: string }[];
+            statusCheckRollup?: { name: string; status: string; conclusion?: string }[];
+          } = {};
+          let inlineThreads: { resolved: boolean }[] = [];
+          if (manifest?.pr) {
+            const prRaw = adapterGh(
+              execute,
+              [
+                'pr',
+                'view',
+                String(manifest.pr),
+                '--json',
+                'number,headRefName,headRefOid,comments,reviews,statusCheckRollup',
+              ],
+              root,
+              repository,
+            );
+            prData = JSON.parse(prRaw) as typeof prData;
+            const [owner, name] = repository.split('/', 2);
+            if (!owner || !name) throw new Error('configured GitHub repository must be owner/name');
+            const threadRaw = adapterGh(
+              execute,
+              [
+                'api',
+                'graphql',
+                '-f',
+                'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}',
+                '-f',
+                `owner=${owner}`,
+                '-f',
+                `name=${name}`,
+                '-F',
+                `number=${manifest.pr}`,
+              ],
+              root,
+              repository,
+            );
+            inlineThreads =
+              JSON.parse(threadRaw).data?.repository?.pullRequest?.reviewThreads?.nodes?.map(
+                (thread: { isResolved: boolean }) => ({ resolved: thread.isResolved }),
+              ) ?? [];
+          }
+          const allComments = [...comments, ...(prData.comments ?? [])];
+          const allManifests = allComments
+            .map((comment) => parseRunManifestMarker(comment.body, issue))
+            .filter((candidate): candidate is RunManifest => Boolean(candidate));
+          const selected = allManifests.at(-1) ?? manifest;
+          const markers = allComments.flatMap((comment) =>
+            [...comment.body.matchAll(/(?:sloop\/v1\/[^\s`]+|sloop-v1\/[^\s`]+)/g)].map(
+              (m) => m[0],
+            ),
           );
           const result = {
             issue,
             labels: (value.labels ?? []).map((label) => label.name),
-            comments: comments.map((comment) => ({ body: comment.body })),
+            pr: prData.number ?? selected?.pr,
+            comments: allComments.map((comment) => ({ body: comment.body })),
             markers,
+            manifest: selected,
+            branch: prData.headRefName ?? selected?.branch,
+            sha: prData.headRefOid,
+            checks: prData.statusCheckRollup,
+            reviews: prData.reviews,
+            inlineThreads,
+            now: Date.now(),
+            leaseOwner: `${process.pid}:${issue}`,
           };
           logGithub('response', 'remote.snapshot', result);
           return result;
@@ -408,16 +479,38 @@ export function productionDependencies(
           );
         }
       },
-      claim: (issue, owner, expiresAt) => {
-        const marker = `sloop/v1/lease/${issue}/${owner}/${expiresAt}`;
+      claim: (issue, key, manifest) => {
+        const body =
+          typeof manifest === 'string'
+            ? `sloop/v1/lease/${issue}/${key}/${manifest}`
+            : `${runManifestMarker({
+                ...manifest,
+                artifacts: [...new Set([...(manifest.artifacts ?? []), key])],
+              })}\nsloop/v1/run/${manifest.runId}\n${key}\nsloop/v1/lease/${issue}/${manifest.lease?.owner ?? key}/${manifest.lease?.expiresAt ?? ''}`;
         try {
-          logGithub('request', 'remote.claim', { issue, owner, expiresAt, marker });
-          publishGhBody(execute, ['issue', 'comment', String(issue)], marker, root, repository);
-          logGithub('response', 'remote.claim', { issue, marker });
+          logGithub('request', 'remote.claim', { issue, key, manifest });
+          publishGhBody(execute, ['issue', 'comment', String(issue)], body, root, repository);
+          logGithub('response', 'remote.claim', { issue, key });
         } catch (error) {
           logGithub(
             'error',
             'remote.claim',
+            error instanceof Error ? error.message : String(error),
+          );
+          throw error;
+        }
+      },
+      publish: (issue, manifest) => {
+        const key = manifest.artifacts[0] ?? artifactKey('run', { issue, runId: manifest.runId });
+        const body = `${runManifestMarker(manifest)}\nsloop/v1/run/${manifest.runId}\n${key}`;
+        try {
+          logGithub('request', 'remote.publish', { issue, key, manifest });
+          publishGhBody(execute, ['issue', 'comment', String(issue)], body, root, repository);
+          logGithub('response', 'remote.publish', { issue, key });
+        } catch (error) {
+          logGithub(
+            'error',
+            'remote.publish',
             error instanceof Error ? error.message : String(error),
           );
           throw error;

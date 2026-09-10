@@ -6,6 +6,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 export type WorkspaceFacts = Readonly<{
   workspaceRoot: string;
   executionRoot: string;
+  worktreeRoot?: string;
   branch: string;
   baseSha: string;
   headSha: string;
@@ -19,6 +20,7 @@ export type WorkspaceOptions = Readonly<{
   branchPrefix: string;
   issue: number;
   runId: string;
+  branch?: string;
   worktreeRoot?: string;
   stateFile?: string;
 }>;
@@ -126,6 +128,7 @@ export function prepareWorktreeWorkspace(o: WorkspaceOptions): WorkspaceFacts {
   const facts = {
     workspaceRoot: root,
     executionRoot,
+    worktreeRoot: parent,
     branch: name,
     baseSha,
     headSha: baseSha,
@@ -148,7 +151,23 @@ export function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefine
       (o.worktreeRoot === undefined || inside(parent, x.executionRoot)) &&
       (o.worktreeRoot === undefined || (existsSync(x.executionRoot) && exactWorkspace(root, x))),
   );
-  return found && found.headSha ? found : undefined;
+  if (found && found.headSha) return found;
+
+  // Remote manifests are the durable authority. Reconstruct a worktree from
+  // Git when the local workspace registry was lost with state.json.
+  if (!o.branch || o.branch === 'pending') return undefined;
+  const live = worktrees(root).find((entry) => entry.branch === o.branch);
+  if (!live) return undefined;
+  const baseSha = git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root);
+  return {
+    workspaceRoot: root,
+    executionRoot: live.path,
+    worktreeRoot: parent,
+    branch: o.branch,
+    baseSha,
+    headSha: live.head,
+    ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
+  };
 }
 export function listWorkspaces(
   repositoryRoot: string,
@@ -205,7 +224,20 @@ export function cleanupWorkspace(
       x.ownership.issue === facts.ownership.issue &&
       x.ownership.protocol === facts.ownership.protocol,
   );
-  if (!entry) throw new Error('workspace ownership could not be verified');
+  if (!entry) {
+    const parent = resolve(facts.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
+    if (!inside(parent, facts.executionRoot)) throw new Error('unsafe worktree target');
+    const live = worktrees(root).find(
+      (candidate) =>
+        resolve(candidate.path) === resolve(facts.executionRoot) &&
+        candidate.branch === facts.branch &&
+        candidate.head === facts.headSha,
+    );
+    if (!live || !cleanWorktree({ ...facts, repositoryRoot: root }))
+      throw new Error('remote-owned workspace could not be verified');
+    git(['worktree', 'remove', facts.executionRoot], root);
+    return;
+  }
   const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
   if (!inside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
   if (!exactWorkspace(root, entry))

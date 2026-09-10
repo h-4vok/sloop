@@ -1,4 +1,6 @@
 /** Internal replacement seams for every external concern used by the core loop. */
+import type { RemoteSnapshot, RunManifest } from '../remote-state.js';
+
 export interface Workspace<State> {
   readonly root: string;
   load(): State;
@@ -47,13 +49,16 @@ export interface GitProvider {
 export interface RemoteAuthority {
   snapshot(issue: number): RemoteSnapshot;
   reconcile(issue: number, key: string): boolean;
-  claim(issue: number, owner: string, expiresAt: string): void;
+  /** Publish the first durable claim. Implementations must include key and manifest. */
+  claim(issue: number, key: string, manifest: RunManifest): void;
+  /** Append a new manifest version for the same deterministic artifact. */
+  publish(issue: number, manifest: RunManifest): void;
 }
-export type RemoteSnapshot = Readonly<Record<string, unknown> & { issue: number }>;
 
 export type WorkspaceFacts = Readonly<{
   workspaceRoot: string;
   executionRoot: string;
+  worktreeRoot?: string;
   branch: string;
   baseSha: string;
   headSha: string;
@@ -62,7 +67,7 @@ export type WorkspaceFacts = Readonly<{
 
 export interface WorkspaceAdapter {
   prepare(issue: number): WorkspaceFacts;
-  recover(issue: number, runId: string): WorkspaceFacts | undefined;
+  recover(issue: number, runId: string, branch?: string): WorkspaceFacts | undefined;
   cleanup(facts: WorkspaceFacts): void;
   context?(): RunContext;
   readonly mode?: 'checkout' | 'worktree';

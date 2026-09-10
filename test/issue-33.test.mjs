@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { artifactKey, projectRemoteState } from '../dist/remote-state.js';
+import { dispatch, CliFailure } from '../dist/dispatcher.js';
 import { RunLogger, runDirectory, applyRunRetention } from '../dist/run-log.js';
 import { allowlistedPublication } from '../dist/publication.js';
 import { withEphemeralMutex } from '../dist/mutex.js';
@@ -161,4 +162,253 @@ test('publication boundary removes bearer, cookie, and URL credentials', () => {
   assert.equal(String(value).includes('abc'), false);
   assert.equal(String(value).includes('xyz'), false);
   assert.equal(String(value).includes('u:p@'), false);
+});
+
+const faultConfig = {
+  baseBranch: 'main',
+  workerCommand: {
+    command: 'codex',
+    args: ['exec', '--sandbox', 'read-only'],
+    timeoutMs: 1000,
+    retries: 0,
+  },
+  qaCommand: {
+    command: 'codex',
+    args: ['exec', '--sandbox', 'read-only'],
+    timeoutMs: 1000,
+    retries: 0,
+  },
+  requiredPrChecks: ['pr-checks'],
+  checkPollIntervalMs: 0,
+  checkTimeoutMs: 1000,
+  evidencePollIntervalMs: 0,
+  evidenceTimeoutMs: 1000,
+  workerLeaseMs: 60_000,
+  maxReviewRounds: 3,
+};
+
+function faultManifest(overrides = {}) {
+  const runId = overrides.runId ?? 'fault-run';
+  const key = artifactKey('run', { issue: 33, runId });
+  return {
+    protocol: 1,
+    runId,
+    issue: 33,
+    pr: 14,
+    branch: 'codex/issue-33-fault',
+    baseSha: 'abcdef1',
+    configFingerprint: 'config-fingerprint',
+    phase: 'working',
+    reviewRound: 1,
+    contextCursor: 'cursor',
+    artifacts: [key],
+    ...(overrides.lease ? { lease: overrides.lease } : {}),
+  };
+}
+
+function faultHarness({
+  remoteManifest,
+  outage = false,
+  ambiguous = false,
+  crashAfterClaim = false,
+} = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-fault-'));
+  let state = {};
+  let remote = remoteManifest;
+  let claimCount = 0;
+  let publishCount = 0;
+  const publishedManifests = [];
+  let prepareCount = 0;
+  let crashTriggered = false;
+  const comments = [];
+  const reviews = [];
+  const pr = {
+    number: 14,
+    state: 'OPEN',
+    baseRefName: 'main',
+    headRefName: 'codex/issue-33-fault',
+    headRefOid: 'abcdef1',
+    body: 'Summary',
+    mergeStateStatus: 'CLEAN',
+    mergeable: 'MERGEABLE',
+    comments,
+    reviews,
+    statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+  };
+  const snapshot = () => {
+    if (outage) throw new Error('GitHub outage');
+    return {
+      issue: 33,
+      markers: remote ? [`sloop/v1/run/${remote.runId}`, ...remote.artifacts] : [],
+      manifest: remote,
+      branch: remote?.branch,
+      sha: remote?.baseSha,
+      now: Date.now(),
+      leaseOwner: '7001:33',
+    };
+  };
+  const deps = {
+    root,
+    load: () => state,
+    save: (next) => {
+      if (crashAfterClaim && claimCount > 0 && next.workerRunId && !crashTriggered) {
+        crashTriggered = true;
+        throw new Error('crash before local acknowledgement');
+      }
+      state = structuredClone(next);
+    },
+    loadConfig: () => faultConfig,
+    status: (verbose) => (verbose ? state : { issue: state.issue, status: state.status }),
+    list: () => [],
+    recoverLock: () => 'none',
+    reset: () => {},
+    resolveReviewCap: () => {},
+    linkIssue: () => {},
+    prepareRecovery: () => 14,
+    eligible: () => [{ number: 33, title: 'fault injection' }],
+    comment: (issue, body) => comments.push({ issue, body }),
+    run: async (spec) => {
+      if (spec.input?.includes('Use the worker skill')) {
+        spec.onStart?.(7002);
+        comments.push({
+          body: `[Worker] round=1 status=ready_for_review pr=14 base=main commit=abcdef2\n\n[Human Verification]\n\`\`\`json\n{"summary":"fault","steps":["run"],"expected":["pass"],"isolation":"temp","limitations":["none"],"checklist":["pass"]}\n\`\`\``,
+        });
+        pr.headRefOid = 'abcdef2';
+        return 'WORKER_RESULT pr=14 base=main';
+      }
+      if (spec.input?.includes('Use the qa-sdet skill')) {
+        reviews.push({
+          body: '[QA/SDET Review] round=1 verdict=passed commit=abcdef2',
+          commitId: 'abcdef2',
+          submittedAt: '1',
+        });
+        return 'QA_RESULT';
+      }
+      return 'ok';
+    },
+    pullRequest: () => structuredClone(pr),
+    updatePullRequestBody: (_number, body) => {
+      pr.body = body;
+    },
+    pullRequestBody: () => pr.body,
+    prComment: (_number, body) => comments.push({ body }),
+    now: () => Date.now(),
+    pid: () => 7001,
+    processAlive: () => true,
+    sleep: async () => {},
+    onReclaim: () => {},
+    tryAcquire: () => true,
+    readOwner: () => {
+      throw new Error('unused');
+    },
+    tryBeginReclaim: () => true,
+    readReclaimOwner: () => {
+      throw new Error('unused');
+    },
+    reclaimAgeMs: () => 0,
+    finishReclaim: () => {},
+    abandonReclaim: () => {},
+    release: () => {},
+    prepareWorkerBranch: () => ({ branch: 'codex/issue-33-fault', mainBaseSha: 'abcdef1' }),
+    checkoutWorkerBranch: () => {},
+    workspaceAdapter: {
+      prepare: () => {
+        prepareCount += 1;
+        return {
+          workspaceRoot: root,
+          executionRoot: root,
+          branch: 'codex/issue-33-fault',
+          baseSha: 'abcdef1',
+          headSha: 'abcdef1',
+          ownership: {
+            runId: state.workerRunId ?? 'fault-run',
+            issue: 33,
+            protocol: 'sloop-workspace-v1',
+          },
+        };
+      },
+      recover: (_issue, runId, branch) =>
+        remote && branch && branch !== 'pending'
+          ? {
+              workspaceRoot: root,
+              executionRoot: root,
+              branch,
+              baseSha: 'abcdef1',
+              headSha: 'abcdef1',
+              ownership: { runId, issue: 33, protocol: 'sloop-workspace-v1' },
+            }
+          : undefined,
+      cleanup: () => {},
+    },
+    remote: {
+      snapshot,
+      reconcile: (_issue, key) => Boolean(remote?.artifacts.includes(key)),
+      claim: (_issue, key, manifest) => {
+        claimCount += 1;
+        remote = { ...manifest, artifacts: [key] };
+        if (ambiguous) throw new Error('ambiguous remote response');
+      },
+      publish: (_issue, manifest) => {
+        publishCount += 1;
+        publishedManifests.push(manifest);
+        remote = manifest;
+      },
+    },
+  };
+  return {
+    deps,
+    counts: () => ({ claimCount, publishCount, prepareCount }),
+    remote: () => remote,
+    published: () => publishedManifests,
+  };
+}
+
+test('dispatcher fails closed on GitHub outage before any remote write or workspace work', async () => {
+  const h = faultHarness({ outage: true });
+  assert.equal(await dispatch(faultConfig, h.deps), 4);
+  assert.deepEqual(h.counts(), { claimCount: 0, publishCount: 0, prepareCount: 0 });
+});
+
+test('dispatcher reconciles an ambiguous claim instead of publishing a duplicate', async () => {
+  const h = faultHarness({ ambiguous: true });
+  assert.equal(await dispatch(faultConfig, h.deps), 0);
+  assert.equal(h.counts().claimCount, 1);
+  assert.equal(h.counts().prepareCount, 1);
+  assert.ok(h.counts().publishCount >= 1);
+});
+
+test('dispatcher recovers a remote marker after crash before local acknowledgement', async () => {
+  const first = faultHarness({ crashAfterClaim: true });
+  assert.equal(await dispatch(faultConfig, first.deps), 4);
+  const second = faultHarness({ remoteManifest: first.remote() });
+  assert.equal(await dispatch(faultConfig, second.deps), 0);
+  assert.equal(second.counts().claimCount, 0);
+  assert.equal(second.counts().prepareCount, 1);
+});
+
+test('dispatcher reclaims an expired remote lease and preserves the artifact identity', async () => {
+  const manifest = faultManifest({
+    lease: { owner: 'old-owner', expiresAt: new Date(Date.now() - 1).toISOString() },
+  });
+  const h = faultHarness({ remoteManifest: manifest });
+  assert.equal(await dispatch(faultConfig, h.deps), 0);
+  assert.equal(h.counts().claimCount, 0);
+  assert.ok(h.counts().publishCount >= 1);
+  assert.equal(h.remote().artifacts[0], manifest.artifacts[0]);
+  assert.equal(
+    h.published().find((candidate) => candidate.phase === 'working').lease.owner,
+    '7001:33',
+  );
+});
+
+test('dispatcher refuses a competing live remote lease', async () => {
+  const manifest = faultManifest({
+    lease: { owner: 'other-owner', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+  });
+  const h = faultHarness({ remoteManifest: manifest });
+  await assert.rejects(
+    () => dispatch(faultConfig, h.deps),
+    (error) => error instanceof CliFailure && error.exitCode === 3,
+  );
+  assert.equal(h.counts().prepareCount, 0);
 });
