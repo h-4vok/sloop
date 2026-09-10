@@ -1,4 +1,12 @@
-import { appendFileSync, chmodSync, mkdirSync, openSync, closeSync } from 'node:fs';
+import {
+  appendFileSync,
+  chmodSync,
+  mkdirSync,
+  openSync,
+  closeSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs';
 import { join } from 'node:path';
 export type RunEvent = Readonly<{ at: string; type: string; data?: unknown }>;
 export function runDirectory(root: string, issue: number, runId: string, at = new Date()): string {
@@ -25,5 +33,22 @@ export class RunLogger {
       ...(data === undefined ? {} : { data }),
     };
     appendFileSync(this.file, JSON.stringify(event) + '\n', { mode: 0o600 });
+  }
+  command(command: string, stdout: string, stderr: string, cwd: string): void {
+    this.write('command', { command, stdout, stderr, cwd });
+  }
+  stream(source: 'stdout' | 'stderr' | 'codex', chunk: string): void {
+    this.write(source, chunk);
+  }
+}
+/** Retention is opt-in; omitted/undefined deliberately leaves all runs intact. */
+export function applyRunRetention(root: string, retentionDays?: number, now = Date.now()): void {
+  if (retentionDays === undefined) return;
+  if (!Number.isSafeInteger(retentionDays) || retentionDays < 0)
+    throw new Error('retentionDays must be non-negative');
+  const runs = join(root, '.sloop', 'runs');
+  for (const name of readdirSync(runs, { withFileTypes: true })) {
+    if (name.isDirectory() && now - Date.parse(name.name.slice(0, 16)) > retentionDays * 86400000)
+      rmSync(join(runs, name.name), { recursive: true, force: true });
   }
 }

@@ -35,6 +35,7 @@ import {
 } from './workspace.js';
 import { loadConfigText } from './config.js';
 import { syncPrerequisites } from './sync.js';
+import { allowlistedPublication } from './publication.js';
 
 /**
  * Production seam for the reconciliation interfaces owned by the runtime.
@@ -210,9 +211,11 @@ export function productionDependencies(
       }
     },
     pullRequest: (pr) => pullRequest(pr, root, repository),
-    updatePullRequestBody: (pr, body) => updatePullRequestBody(pr, body, root, repository),
+    updatePullRequestBody: (pr, body) =>
+      updatePullRequestBody(pr, String(allowlistedPublication(body)), root, repository),
     pullRequestBody: (pr) => pullRequestBody(pr, root, repository),
-    prComment: (pr, body) => commentPullRequest(pr, body, root, repository),
+    prComment: (pr, body) =>
+      commentPullRequest(pr, String(allowlistedPublication(body)), root, repository),
     workspaceAdapter,
     run: (spec) => runCommand(spec, executionRoot),
     prepareWorkerBranch: (issue) =>
