@@ -127,6 +127,40 @@ test('Codex runner builds separated structured-output argv and captures a result
   assert.ok(seen[1].includes('prompt'));
 });
 
+test('non-interactive Codex structured-output smoke uses declared paths and one validated result', async () => {
+  const events = [];
+  let executable = '';
+  const runner = new CodexAgentRunner({
+    cwd: process.cwd(),
+    model: 'smoke-model',
+    sandbox: 'read-only',
+    timeoutMs: 1000,
+    execute: async (command, args, options) => {
+      executable = command;
+      events.push(['argv', args]);
+      const schema = JSON.parse(await readFile(options.env.SLOOP_AGENT_SCHEMA, 'utf8'));
+      assert.equal(schema.$id, 'sloop.agent-output/v1');
+      assert.ok(options.env.SLOOP_AGENT_INPUT.endsWith('input.json'));
+      assert.ok(options.env.SLOOP_AGENT_OUTPUT.endsWith('output.json'));
+      options.onStdout('diagnostic marker: {"status":"blocked"}');
+      options.onStderr('isolated smoke diagnostic');
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+    log: (source, chunk) => events.push([source, chunk]),
+  });
+  const result = await runner.run('non-interactive smoke prompt', context);
+  assert.equal(executable, 'codex');
+  assert.equal(result.schema, 'sloop.agent-output/v1');
+  assert.equal(result.status, 'ready');
+  assert.equal(events[1][0], 'stdout');
+  assert.equal(events[2][0], 'stderr');
+  assert.ok(events[0][1].includes('--output-schema'));
+  assert.ok(events[0][1].includes('--output-last-message'));
+});
+
 test('runner exposes the complete canonical schema and rejects operational failure matrix', async () => {
   const seen = [];
   const runner = new ArbitraryCommandRunner('fake', [], {
