@@ -258,24 +258,36 @@ export class ArbitraryCommandRunner implements AgentRunner {
     let last: unknown;
     for (let attempt = 0; attempt <= (this.options.retries ?? 0); attempt++) {
       await rm(outputPath, { force: true });
-      const args = this.args
-        .map(
-          (arg) =>
-            arg
-              .replaceAll('$SLOOP_AGENT_INPUT', inputPath)
-              .replaceAll('$SLOOP_AGENT_OUTPUT', outputPath)
-              .replaceAll('$SLOOP_AGENT_SCHEMA', schemaPath),
-          // The Codex adapter uses this as its positional prompt; arbitrary
-          // adapters can consume the file paths through the environment.
-        )
-        .map((arg) => arg.replaceAll('$SLOOP_AGENT_INPUT_CONTENT', input));
-      const r = await (this.options.execute ?? defaultExec)(this.command, args, {
-        cwd: this.options.cwd,
-        env,
-        timeoutMs: this.options.timeoutMs ?? 120000,
-        onStdout: (s) => this.options.log?.('stdout', s),
-        onStderr: (s) => this.options.log?.('stderr', s),
-      });
+      const args = this.args.map(
+        (arg) =>
+          arg
+            // Replace the content token first: it shares a prefix with
+            // SLOOP_AGENT_INPUT and must remain a distinct argv value.
+            .replaceAll('$SLOOP_AGENT_INPUT_CONTENT', input)
+            .replaceAll('$SLOOP_AGENT_INPUT', inputPath)
+            .replaceAll('$SLOOP_AGENT_OUTPUT', outputPath)
+            .replaceAll('$SLOOP_AGENT_SCHEMA', schemaPath),
+        // The Codex adapter uses this as its positional prompt; arbitrary
+        // adapters can consume the file paths through the environment.
+      );
+      let r: ProcessResult;
+      try {
+        r = await (this.options.execute ?? defaultExec)(this.command, args, {
+          cwd: this.options.cwd,
+          env,
+          timeoutMs: this.options.timeoutMs ?? 120000,
+          onStdout: (s) => this.options.log?.('stdout', s),
+          onStderr: (s) => this.options.log?.('stderr', s),
+        });
+      } catch (error) {
+        // Process launch failures (for example, a missing executable) are
+        // operational failures too and must use the same bounded retry path.
+        last = new AgentContractError(
+          'operational-failure',
+          error instanceof Error ? error.message : 'runner launch failed',
+        );
+        continue;
+      }
       if (r.code !== 0 || r.signal)
         last = new AgentContractError('operational-failure', r.stderr || 'runner failed');
       else {
