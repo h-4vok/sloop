@@ -148,6 +148,11 @@ test('runner exposes the complete canonical schema and rejects operational failu
   assert.ok(seen[0].$defs.reviewer);
   assert.ok(seen[0].$defs.arbiter);
   assert.equal(seen[0].$id, 'sloop.agent-output/v1');
+  assert.equal(seen[0].oneOf.length, 3);
+  assert.deepEqual(
+    seen[0].oneOf.map((branch) => branch.properties.producer),
+    [{ const: 'worker' }, { enum: ['qa', 'staff'] }, { const: 'arbiter' }],
+  );
 });
 
 test('runner handles timeout, missing output, duplicate members, and idempotent valid retry', async () => {

@@ -54,18 +54,27 @@
       "required": []
     }
   },
-  "allOf": [
+  "oneOf": [
     {
-      "if": { "properties": { "producer": { "const": "worker" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/worker" } } }
+      "properties": {
+        "producer": { "const": "worker" },
+        "status": { "enum": ["ready", "blocked"] },
+        "payload": { "$ref": "#/$defs/worker" }
+      }
     },
     {
-      "if": { "properties": { "producer": { "enum": ["qa", "staff"] } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/reviewer" } } }
+      "properties": {
+        "producer": { "enum": ["qa", "staff"] },
+        "status": { "enum": ["accepted", "changes-requested", "blocked"] },
+        "payload": { "$ref": "#/$defs/reviewer" }
+      }
     },
     {
-      "if": { "properties": { "producer": { "const": "arbiter" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/arbiter" } } }
+      "properties": {
+        "producer": { "const": "arbiter" },
+        "status": { "enum": ["uphold", "overrule", "defer"] },
+        "payload": { "$ref": "#/$defs/arbiter" }
+      }
     }
   ]
 }
