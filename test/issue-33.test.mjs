@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { artifactKey, projectRemoteState } from '../dist/remote-state.js';
+import {
+  artifactKey,
+  projectRemoteState,
+  parseRunManifestMarker,
+  runManifestMarker,
+  validateRunManifest,
+} from '../dist/remote-state.js';
 import { dispatch, CliFailure } from '../dist/dispatcher.js';
 import { RunLogger, runDirectory, applyRunRetention } from '../dist/run-log.js';
 import { allowlistedPublication } from '../dist/publication.js';
-import { withEphemeralMutex } from '../dist/mutex.js';
+import { withEphemeralMutex, withEphemeralMutexAsync } from '../dist/mutex.js';
 import { command, runCommand } from '../dist/dispatcher.js';
 
 test('remote projection is deterministic and ignores unrelated markers', () => {
@@ -104,6 +110,60 @@ test('ephemeral mutex releases after the run', () => {
     withEphemeralMutex(root, 'b', () => 4),
     4,
   );
+});
+
+test('remote manifest contracts reject malformed markers and validate boundaries', () => {
+  const manifest = {
+    protocol: 1,
+    runId: 'run-1',
+    issue: 33,
+    branch: 'codex/issue-33',
+    baseSha: 'abcdef1',
+    configFingerprint: 'cfg',
+    phase: 'working',
+    reviewRound: 1,
+    contextCursor: '',
+    artifacts: [],
+  };
+  assert.deepEqual(parseRunManifestMarker(runManifestMarker(manifest), 33), manifest);
+  assert.equal(parseRunManifestMarker('<!-- sloop/v1/manifest !!! -->', 33), undefined);
+  assert.equal(parseRunManifestMarker(runManifestMarker(manifest), 34), undefined);
+  assert.equal(validateRunManifest({ ...manifest, baseSha: 'short' }, 33), false);
+  assert.equal(validateRunManifest({ ...manifest, reviewRound: 0 }, 33), false);
+  assert.equal(validateRunManifest(undefined, 33), false);
+});
+
+test('ephemeral mutex rejects contention and always releases after failure', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-mutex-contract-'));
+  assert.throws(
+    () =>
+      withEphemeralMutex(root, 'first', () => {
+        assert.equal(
+          readFileSync(join(root, '.sloop', 'mutex', 'active', 'owner'), 'utf8'),
+          'first',
+        );
+        assert.throws(
+          () => withEphemeralMutex(root, 'second', () => 'unreachable'),
+          /another sloop/,
+        );
+        throw new Error('callback failure');
+      }),
+    /callback failure/,
+  );
+  assert.equal(existsSync(join(root, '.sloop', 'mutex', 'active')), false);
+});
+
+test('async ephemeral mutex preserves the lease until resolution and cleanup', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-async-mutex-contract-'));
+  const result = await withEphemeralMutexAsync(root, 'async-owner', async () => {
+    assert.equal(
+      readFileSync(join(root, '.sloop', 'mutex', 'active', 'owner'), 'utf8'),
+      'async-owner',
+    );
+    return 42;
+  });
+  assert.equal(result, 42);
+  assert.equal(existsSync(join(root, '.sloop', 'mutex', 'active')), false);
 });
 
 test('projection handles leases, gates, unsupported protocols, and marker reconciliation', () => {
