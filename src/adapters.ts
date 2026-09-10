@@ -62,7 +62,10 @@ function adapterGh(
   options: Omit<AdapterExecOptions, 'cwd'> = {},
 ): string {
   try {
-    return String(execute('gh', [...args, '--repo', repository], { ...options, cwd: root }) ?? '');
+    // `gh api` has no `--repo` flag. API requests must scope themselves through
+    // their endpoint or request fields (the GraphQL caller supplies owner/name).
+    const scopedArgs = args[0] === 'api' ? args : [...args, '--repo', repository];
+    return String(execute('gh', scopedArgs, { ...options, cwd: root }) ?? '');
   } catch (error) {
     throw new CliFailure(5, error instanceof Error ? error.message : String(error));
   }

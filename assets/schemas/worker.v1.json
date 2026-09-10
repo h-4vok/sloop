@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sloop.agent-output/worker/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "findingResolutions", "verification", "guide"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1 },
+    "findingResolutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "summary"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "guide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "steps", "expected", "isolation", "limitations", "checklist"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "expected": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "isolation": { "type": "string", "minLength": 1 },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "checklist": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

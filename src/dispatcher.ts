@@ -1851,9 +1851,24 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           const remoteManifest = remote?.projection.manifest;
           if (remoteManifest && remoteManifest.phase !== 'complete') {
             assertRemoteLeaseAvailable(remote.projection);
-            recovery = remoteManifest.branch !== 'pending';
+            // A claimed manifest may not have a branch yet, but it can still
+            // represent recovery when it already points at an existing PR.
+            recovery = remoteManifest.branch !== 'pending' || Boolean(remoteManifest.pr);
             existingIssue = issue.number;
             hydrateFromRemote(d, remoteManifest);
+            if (remoteManifest.pr) {
+              const evidence = await d.pullRequest(remoteManifest.pr);
+              if (evidence.state?.toUpperCase() !== 'OPEN' || !evidence.headRefName)
+                throw new Error(`PR #${remoteManifest.pr} has no recoverable open head branch`);
+              if (d.load().branch !== evidence.headRefName) {
+                d.save({
+                  ...d.load(),
+                  pr: evidence.number,
+                  branch: evidence.headRefName,
+                  headSha: evidence.headRefOid,
+                });
+              }
+            }
           }
           const runId = d.load().workerRunId ?? randomUUID();
           runLogger = new RunLogger(runDirectory(d.root, issue.number, runId));
@@ -1893,7 +1908,22 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
             });
             if (claimed) publishRemoteManifest(cfg, d, issue.number, 'working', claimed);
           } else {
-            const persisted = d.load().branch ?? remoteManifest?.branch;
+            let persisted = d.load().branch ?? remoteManifest?.branch;
+            if (!persisted || persisted === 'pending' || remoteManifest?.branch === 'pending') {
+              const existingPr = d.load().pr ?? remoteManifest?.pr;
+              if (existingPr) {
+                const evidence = await d.pullRequest(existingPr);
+                if (evidence.state?.toUpperCase() === 'OPEN' && evidence.headRefName) {
+                  persisted = evidence.headRefName;
+                  d.save({
+                    ...d.load(),
+                    pr: evidence.number,
+                    branch: persisted,
+                    headSha: evidence.headRefOid,
+                  });
+                }
+              }
+            }
             const recovered = d.workspaceAdapter?.recover(
               issue.number,
               d.load().workerRunId ?? remoteManifest?.runId ?? '',
@@ -1905,8 +1935,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
                   `recovery workspace branch does not match remote branch ${persisted}; found ${recovered.branch}`,
                 );
             } else {
-              const expected = workerBranchName(issue.number);
-              if (!persisted || (persisted !== expected && !persisted.startsWith(`${expected}-`)))
+              if (!persisted || persisted === 'pending')
                 throw new Error(
                   `recovery requires persisted worker branch for issue #${issue.number}; remote worker branch was ${persisted ?? 'none'}`,
                 );

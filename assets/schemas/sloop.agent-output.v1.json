@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sloop.agent-output/v1",
+  "type": "object",
+  "required": ["schema", "context", "producer", "status", "payload"],
+  "additionalProperties": false,
+  "$defs": {
+    "worker": { "$ref": "worker.v1.json" },
+    "reviewer": { "$ref": "reviewer.v1.json" },
+    "arbiter": { "$ref": "arbiter.v1.json" }
+  },
+  "properties": {
+    "schema": { "type": "string", "const": "sloop.agent-output/v1" },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "issue", "pr", "round", "sha", "cursor"],
+      "properties": {
+        "run": { "type": "string", "minLength": 1 },
+        "issue": { "type": "integer", "minimum": 1 },
+        "pr": { "type": ["integer", "null"], "minimum": 1 },
+        "round": { "type": "integer", "minimum": 1 },
+        "sha": { "type": "string", "minLength": 1 },
+        "cursor": { "type": "string", "minLength": 1 }
+      }
+    },
+    "producer": { "enum": ["worker", "qa", "staff", "arbiter"] },
+    "status": {
+      "enum": ["ready", "blocked", "accepted", "changes-requested", "uphold", "overrule", "defer"]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "type": "string" },
+        "findingResolutions": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false }
+        },
+        "verification": { "type": "array", "items": { "type": "string" } },
+        "guide": { "type": "object", "additionalProperties": false },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "newFindings": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false }
+        },
+        "dispositions": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false }
+        },
+        "rationale": { "type": "string" },
+        "references": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": []
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "producer": { "const": "worker" },
+        "status": { "enum": ["ready", "blocked"] },
+        "payload": { "$ref": "#/$defs/worker" }
+      }
+    },
+    {
+      "properties": {
+        "producer": { "enum": ["qa", "staff"] },
+        "status": { "enum": ["accepted", "changes-requested", "blocked"] },
+        "payload": { "$ref": "#/$defs/reviewer" }
+      }
+    },
+    {
+      "properties": {
+        "producer": { "const": "arbiter" },
+        "status": { "enum": ["uphold", "overrule", "defer"] },
+        "payload": { "$ref": "#/$defs/arbiter" }
+      }
+    }
+  ]
+}
