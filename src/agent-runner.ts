@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -226,6 +227,8 @@ export type RunnerOptions = Readonly<{
   retries?: number;
   execute?: ProcessExecutor;
   log?: (source: 'stdout' | 'stderr', chunk: string) => void;
+  /** Durable boundary owned by the dispatcher; enables recovery reconciliation. */
+  reconciliationDir?: string;
 }>;
 
 export interface AgentRunner {
@@ -242,6 +245,24 @@ export class ArbitraryCommandRunner implements AgentRunner {
     const invocationKey = JSON.stringify([input, context]);
     const existing = this.reconciled.get(invocationKey);
     if (existing) return existing;
+    const persistedPath = this.options.reconciliationDir
+      ? join(
+          this.options.reconciliationDir,
+          `${createHash('sha256').update(invocationKey).digest('hex')}.json`,
+        )
+      : undefined;
+    if (persistedPath) {
+      try {
+        const result = validateAgentEnvelope(
+          JSON.parse(await readFile(persistedPath, 'utf8')),
+          context,
+        );
+        this.reconciled.set(invocationKey, result);
+        return result;
+      } catch {
+        // A missing or invalid persisted result is not a reconciliation hit.
+      }
+    }
     const dir = await mkdtemp(join(tmpdir(), 'sloop-agent-'));
     const inputPath = join(dir, 'input.json');
     const outputPath = join(dir, 'output.json');
@@ -265,6 +286,11 @@ export class ArbitraryCommandRunner implements AgentRunner {
       defs[file.slice(0, -8)] = roleSchema;
     }
     await writeFile(schemaPath, JSON.stringify(envelope));
+    // The declared schema is a resolvable contract: keep its canonical $refs beside it.
+    for (const [, file] of roles) {
+      await writeFile(join(dir, file), await readFile(join(schemaRoot, file), 'utf8'));
+    }
+    if (persistedPath) await mkdir(this.options.reconciliationDir!, { recursive: true });
     const env = {
       ...process.env,
       SLOOP_AGENT_INPUT: inputPath,
@@ -325,6 +351,12 @@ export class ArbitraryCommandRunner implements AgentRunner {
           const raw = JSON.parse(text);
           const result = validateAgentEnvelope(raw, context);
           this.reconciled.set(invocationKey, result);
+          if (persistedPath)
+            await writeFile(persistedPath, JSON.stringify(result), { flag: 'wx' }).catch(
+              async (error: NodeJS.ErrnoException) => {
+                if (error.code !== 'EEXIST') throw error;
+              },
+            );
           return result;
         } catch (error) {
           last =

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile as readFileFromFs } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -186,5 +186,34 @@ test('runner handles timeout, missing output, duplicate members, and idempotent 
   });
   assert.equal((await runner.run('input', context)).status, 'ready');
   assert.equal((await runner.run('input', context)).status, 'ready');
+  assert.equal(calls, 1);
+});
+
+test('declared schema resolves canonical role refs and reconciliation survives a new runner', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-persist-'));
+  const reconciliationDir = join(root, 'results');
+  let calls = 0;
+  const execute = async (_command, _args, options) => {
+    calls++;
+    const schema = JSON.parse(await readFileFromFs(options.env.SLOOP_AGENT_SCHEMA, 'utf8'));
+    assert.ok(schema.$defs.worker);
+    for (const file of ['worker.v1.json', 'reviewer.v1.json', 'arbiter.v1.json']) {
+      assert.ok(await readFileFromFs(join(options.env.SLOOP_AGENT_SCHEMA, '..', file), 'utf8'));
+    }
+    await import('node:fs/promises').then(({ writeFile }) =>
+      writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+    );
+    return { stdout: '', stderr: '', code: 0, signal: null };
+  };
+  const first = new ArbitraryCommandRunner('fake', [], { cwd: root, reconciliationDir, execute });
+  assert.equal((await first.run('persisted input', context)).status, 'ready');
+  const second = new ArbitraryCommandRunner('fake', [], {
+    cwd: root,
+    reconciliationDir,
+    execute: async () => {
+      throw new Error('must reconcile without execution');
+    },
+  });
+  assert.equal((await second.run('persisted input', context)).status, 'ready');
   assert.equal(calls, 1);
 });
