@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sloop.agent-output/v1",
+  "type": "object",
+  "required": ["schema", "context", "producer", "status", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "sloop.agent-output/v1" },
+    "context": { "type": "object", "required": ["run", "issue", "round", "sha", "cursor"] },
+    "producer": { "enum": ["worker", "qa", "staff", "arbiter"] },
+    "status": { "type": "string" },
+    "payload": { "type": "object" }
+  }
+}

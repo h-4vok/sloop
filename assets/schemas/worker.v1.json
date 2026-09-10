@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sloop.agent-output/worker/v1",
+  "type": "object",
+  "required": ["summary", "guide"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1 },
+    "guide": {
+      "type": "object",
+      "required": ["summary", "steps", "expected", "isolation", "limitations", "checklist"]
+    }
+  }
+}
