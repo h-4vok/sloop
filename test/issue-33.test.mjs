@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,10 +9,12 @@ import {
   parseRunManifestMarker,
   runManifestMarker,
   validateRunManifest,
+  reconcileArtifact,
+  leaseIsActive,
 } from '../dist/remote-state.js';
 import { dispatch, CliFailure } from '../dist/dispatcher.js';
 import { RunLogger, runDirectory, applyRunRetention } from '../dist/run-log.js';
-import { allowlistedPublication } from '../dist/publication.js';
+import { allowlistedPublication, publicationBody } from '../dist/publication.js';
 import { withEphemeralMutex, withEphemeralMutexAsync } from '../dist/mutex.js';
 import { command, runCommand } from '../dist/dispatcher.js';
 
@@ -100,6 +102,15 @@ test('publication allowlist excludes raw channels and redacts credentials', () =
   });
 });
 
+test('publication boundary preserves safe values and rejects non-string GitHub bodies', () => {
+  assert.deepEqual(allowlistedPublication(['safe', 4, null]), ['safe', 4, null]);
+  assert.deepEqual(allowlistedPublication({ nested: { value: true }, stderr: 'omit' }), {
+    nested: { value: true },
+  });
+  assert.equal(publicationBody('safe body'), 'safe body');
+  assert.throws(() => publicationBody({ summary: 'not a body' }), TypeError);
+});
+
 test('ephemeral mutex releases after the run', () => {
   const root = mkdtempSync(join(tmpdir(), 'sloop-'));
   assert.equal(
@@ -131,6 +142,28 @@ test('remote manifest contracts reject malformed markers and validate boundaries
   assert.equal(validateRunManifest({ ...manifest, baseSha: 'short' }, 33), false);
   assert.equal(validateRunManifest({ ...manifest, reviewRound: 0 }, 33), false);
   assert.equal(validateRunManifest(undefined, 33), false);
+  for (const broken of [
+    { ...manifest, protocol: 2 },
+    { ...manifest, runId: '' },
+    { ...manifest, issue: 34 },
+    { ...manifest, branch: '' },
+    { ...manifest, configFingerprint: '' },
+    { ...manifest, phase: 'unknown' },
+    { ...manifest, contextCursor: 1 },
+    { ...manifest, artifacts: {} },
+  ])
+    assert.equal(validateRunManifest(broken, 33), false);
+  assert.equal(reconcileArtifact(['key/child'], 'key'), true);
+  assert.equal(reconcileArtifact(['other'], 'key'), false);
+  assert.equal(
+    leaseIsActive({ expiresAt: '2026-01-02T00:00:00.000Z' }, Date.parse('2026-01-01')),
+    true,
+  );
+  assert.equal(
+    leaseIsActive({ expiresAt: '2026-01-01T00:00:00.000Z' }, Date.parse('2026-01-01')),
+    false,
+  );
+  assert.throws(() => leaseIsActive({ expiresAt: 'not-a-date' }), /invalid lease/);
 });
 
 test('ephemeral mutex rejects contention and always releases after failure', () => {
@@ -192,6 +225,27 @@ test('projection handles leases, gates, unsupported protocols, and marker reconc
   assert.equal(projected.phase, 'review');
   assert.ok(projected.openGates.includes('lease:owned'));
   assert.throws(() => projectRemoteState({ issue: 33, protocol: 99 }), /unsupported/);
+  assert.throws(() => projectRemoteState({ issue: 0 }), /invalid issue/);
+  const complete = projectRemoteState({
+    issue: 33,
+    comments: [{ marker: 'sloop/v1/run/r' }],
+    manifest: { ...manifest, phase: 'complete' },
+    checks: [{ name: 'pr-checks', conclusion: 'success' }],
+    reviews: [{ state: 'APPROVED' }, { state: 'dismissed' }],
+    inlineThreads: [{ resolved: true }],
+    branch: 'b',
+    sha: 'abcdef1',
+  });
+  assert.equal(complete.phase, 'complete');
+  assert.deepEqual(complete.openGates, []);
+});
+
+test('mutex surfaces filesystem failures that are not normal contention', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-mutex-filesystem-'));
+  const impossibleRoot = join(root, 'file');
+  writeFileSync(impossibleRoot, 'not a directory');
+  assert.throws(() => withEphemeralMutex(impossibleRoot, 'owner', () => {}));
+  await assert.rejects(() => withEphemeralMutexAsync(impossibleRoot, 'owner', async () => {}));
 });
 
 test('logging retains runs by default and supports explicit retention', () => {
@@ -202,6 +256,19 @@ test('logging retains runs by default and supports explicit retention', () => {
   assert.ok(statSync(logger.file).mode & 0o200);
   applyRunRetention(root);
   assert.ok(readFileSync(logger.file, 'utf8').includes('multi'));
+  assert.throws(() => applyRunRetention(root, -1), /non-negative/);
+  applyRunRetention(join(root, 'missing'), 0);
+});
+
+test('run logger preserves append-only evidence after a malformed prior line', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-log-corrupt-'));
+  const directory = runDirectory(root, 33, 'corrupt');
+  new RunLogger(directory);
+  const file = join(directory, 'events.jsonl');
+  await import('node:fs').then(({ appendFileSync }) => appendFileSync(file, '{bad json}\n'));
+  const logger = new RunLogger(directory);
+  logger.write('safe');
+  assert.match(readFileSync(file, 'utf8'), /"type":"safe"/);
 });
 
 test('explicit retention removes only expired run directories and never unsafe siblings', () => {
@@ -213,6 +280,16 @@ test('explicit retention removes only expired run directories and never unsafe s
   applyRunRetention(root, 24 * 60 * 60 * 1000, Date.parse('2026-09-10T00:00:00Z'));
   assert.equal(existsSync(old), false);
   assert.equal(existsSync(fresh), true);
+});
+
+test('retention leaves non-directory and unparseable entries untouched', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-retention-safe-'));
+  const runs = join(root, '.sloop', 'runs');
+  mkdirSync(join(runs, 'not-a-timestamp'), { recursive: true });
+  writeFileSync(join(runs, 'notes.txt'), 'keep');
+  applyRunRetention(root, 0, Date.now() + 1);
+  assert.equal(existsSync(join(runs, 'not-a-timestamp')), true);
+  assert.equal(existsSync(join(runs, 'notes.txt')), true);
 });
 
 test('publication boundary removes bearer, cookie, and URL credentials', () => {

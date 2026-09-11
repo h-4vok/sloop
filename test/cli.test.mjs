@@ -68,6 +68,150 @@ test('unknown argv fails before dispatcher loading or preflight', async () => {
   assert.deepEqual(output.stderr, []);
 });
 
+test('CLI reports non-Error usage failures and fallback help', async () => {
+  const output = captureConsole();
+  process.exitCode = undefined;
+  try {
+    await runCli(['unknown'], process.version, {
+      runtime: {
+        emitNodeVersionFailure: assert.fail,
+        emitUsageFailure: (_args, message) => {
+          assert.equal(message, 'plain failure');
+          return 9;
+        },
+        parseCliCommand: () => {
+          throw 'plain failure';
+        },
+        runDispatcherPreflight: assert.fail,
+        runReadOnlyCommand: assert.fail,
+      },
+      dispatcher: { runDispatcherCli: assert.fail },
+      adapters: { productionDependencies: assert.fail },
+    });
+    assert.equal(process.exitCode, 9);
+    await runCli(['help'], process.version, {
+      runtime: {
+        emitNodeVersionFailure: assert.fail,
+        emitUsageFailure: assert.fail,
+        parseCliCommand: () => ({ kind: 'help', target: 'unknown-target' }),
+        runDispatcherPreflight: assert.fail,
+        runReadOnlyCommand: assert.fail,
+      },
+      dispatcher: { runDispatcherCli: assert.fail },
+      adapters: { productionDependencies: assert.fail },
+    });
+  } finally {
+    process.exitCode = undefined;
+    output.restore();
+  }
+  assert.deepEqual(output.stdout, [HELP]);
+});
+
+test('config show uses the production repository discovery and read-only configuration path', () => {
+  const result = spawnSync(process.execPath, [cli, 'config', 'show'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^schemaVersion:/m);
+});
+
+test('runCli routes config commands through injected config adapters after discovery', async () => {
+  const calls = [];
+  process.exitCode = undefined;
+  try {
+    await runCli(['config', 'show'], process.version, {
+      runtime: {
+        emitNodeVersionFailure: assert.fail,
+        emitUsageFailure: assert.fail,
+        parseCliCommand: () => ({ kind: 'config', args: ['show'] }),
+        runDispatcherPreflight: assert.fail,
+        runReadOnlyCommand: assert.fail,
+        discoverRepository: (io) => {
+          assert.equal(typeof io.run, 'function');
+          assert.equal(typeof io.readFile, 'function');
+          assert.equal(io.run(process.execPath, ['--version']).status, 0);
+          assert.match(io.readFile(resolve('package.json')), /"name": "sloop"/);
+          return 'C:/isolated';
+        },
+      },
+      dispatcher: { runDispatcherCli: assert.fail },
+      adapters: { productionDependencies: assert.fail },
+      config: {
+        productionConfigReconciler: (root) => {
+          calls.push(['reconciler', root]);
+          return async () => {};
+        },
+        runConfigCommand: async (root, args, reconciler) => {
+          calls.push(['run', root, args, typeof reconciler]);
+          return 0;
+        },
+      },
+    });
+    assert.equal(process.exitCode, 0);
+  } finally {
+    process.exitCode = undefined;
+  }
+  assert.deepEqual(calls, [
+    ['reconciler', 'C:/isolated'],
+    ['run', 'C:/isolated', ['show'], 'function'],
+  ]);
+});
+
+test('runCli routes dispatcher preflight failure and success through injected modules', async () => {
+  const calls = [];
+  process.exitCode = undefined;
+  try {
+    const modules = {
+      runtime: {
+        emitNodeVersionFailure: assert.fail,
+        emitUsageFailure: assert.fail,
+        parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+        runDispatcherPreflight: () => ({ code: 6, diagnostics: [] }),
+        runReadOnlyCommand: assert.fail,
+      },
+      dispatcher: { runDispatcherCli: assert.fail },
+      adapters: { productionDependencies: assert.fail },
+    };
+    await runCli(['--list'], process.version, modules);
+    assert.equal(process.exitCode, 6);
+    modules.runtime.runDispatcherPreflight = () => ({
+      code: 0,
+      diagnostics: [],
+      root: '/repo',
+      config: { mode: 'test' },
+      repository: 'owner/repo',
+    });
+    modules.adapters.productionDependencies = (root, config, repository) => {
+      calls.push(['dependencies', root, config, repository]);
+      return { isolated: true };
+    };
+    modules.dispatcher.runDispatcherCli = async (command, dependencies) => {
+      calls.push(['dispatcher', command, dependencies]);
+      return 0;
+    };
+    await runCli(['--list'], process.version, modules);
+    assert.equal(process.exitCode, 0);
+  } finally {
+    process.exitCode = undefined;
+  }
+  assert.deepEqual(calls, [
+    ['dependencies', '/repo', { mode: 'test' }, 'owner/repo'],
+    ['dispatcher', { kind: 'list' }, { isolated: true }],
+  ]);
+});
+
+test('CLI executes the production config imports in the current repository', async () => {
+  const output = captureConsole();
+  process.exitCode = undefined;
+  try {
+    await runCli(['config', 'show']);
+    assert.equal(process.exitCode, 0);
+  } finally {
+    process.exitCode = undefined;
+    output.restore();
+  }
+  assert.equal(output.stderr.length, 0);
+  assert.equal(output.stdout.length, 1);
+});
+
 test('help and version work outside the Sloop checkout', () => {
   const outside = mkdtempSync(join(tmpdir(), 'sloop-cli-outside-'));
   try {

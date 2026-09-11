@@ -95,6 +95,27 @@ test('arbitrary runner reads only the declared result, captures streams, and ret
   ]);
 });
 
+test('arbitrary runner executes the production child-process adapter for a valid envelope', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-default-exec-'));
+  const payload = JSON.stringify(worker());
+  const script = [
+    "const fs = require('node:fs');",
+    "process.stdout.write('started');",
+    "process.stderr.write('diagnostic');",
+    `fs.writeFileSync(process.env.SLOOP_AGENT_OUTPUT, ${JSON.stringify(payload)});`,
+  ].join('');
+  const logs = [];
+  const runner = new ArbitraryCommandRunner(process.execPath, ['-e', script], {
+    cwd: root,
+    log: (source, chunk) => logs.push([source, chunk]),
+  });
+  assert.equal((await runner.run('production adapter', context)).status, 'ready');
+  assert.deepEqual(logs, [
+    ['stdout', 'started'],
+    ['stderr', 'diagnostic'],
+  ]);
+});
+
 test('Codex runner builds separated structured-output argv and captures a result', async () => {
   let seen;
   const runner = new CodexAgentRunner({
@@ -250,4 +271,100 @@ test('declared schema resolves canonical role refs and reconciliation survives a
   });
   assert.equal((await second.run('persisted input', context)).status, 'ready');
   assert.equal(calls, 1);
+});
+
+test('runner handles durable write races and every result-read error family', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-race-'));
+  const reconciliationDir = join(root, 'results');
+  const input = 'race';
+  const { createHash } = await import('node:crypto');
+  const path = join(
+    reconciliationDir,
+    `${createHash('sha256')
+      .update(JSON.stringify([input, context]))
+      .digest('hex')}.json`,
+  );
+  await import('node:fs/promises').then(({ mkdir, writeFile }) =>
+    mkdir(reconciliationDir, { recursive: true }).then(() => writeFile(path, 'not json')),
+  );
+  const raced = new ArbitraryCommandRunner('fake', [], {
+    cwd: root,
+    reconciliationDir,
+    execute: async (_command, _args, options) => {
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+  });
+  assert.equal((await raced.run(input, context)).status, 'ready');
+  for (const mode of ['blank', 'directory']) {
+    const runner = new ArbitraryCommandRunner('fake', [], {
+      cwd: root,
+      execute: async (_command, _args, options) => {
+        await import('node:fs/promises').then(({ mkdir, writeFile }) =>
+          mode === 'blank'
+            ? writeFile(options.env.SLOOP_AGENT_OUTPUT, ' ')
+            : mkdir(options.env.SLOOP_AGENT_OUTPUT),
+        );
+        return { stdout: '', stderr: '', code: 0, signal: null };
+      },
+    });
+    await assert.rejects(
+      runner.run(mode, context),
+      (error) => error.code === 'missing-result' || error.code === 'malformed',
+    );
+  }
+  await assert.rejects(
+    new ArbitraryCommandRunner('fake', [], { cwd: root, retries: -1 }).run('none', context),
+    (error) => error.code === 'missing-result',
+  );
+});
+
+test('Codex runner applies its default sandbox', async () => {
+  let args;
+  const runner = new CodexAgentRunner({
+    cwd: process.cwd(),
+    execute: async (_command, received, options) => {
+      args = received;
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(
+          options.env.SLOOP_AGENT_OUTPUT,
+          JSON.stringify({ ...worker(), context: { ...context, pr: undefined } }),
+        ),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+  });
+  await runner.run('default sandbox', { ...context, pr: undefined });
+  assert.equal(args[4], 'workspace-write');
+});
+
+test('runner reports non-Error launch failures and rethrows durable write failures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-durable-error-'));
+  const launch = new ArbitraryCommandRunner('fake', [], {
+    cwd: root,
+    execute: async () => {
+      throw 'missing executable';
+    },
+  });
+  await assert.rejects(launch.run('launch', context), (error) =>
+    /runner launch failed/.test(error.message),
+  );
+  const durable = new ArbitraryCommandRunner('fake', [], {
+    cwd: root,
+    reconciliationDir: join(root, 'results'),
+    writeReconciliation: async () => {
+      const error = new Error('cannot persist');
+      Object.assign(error, { code: 'EACCES' });
+      throw error;
+    },
+    execute: async (_command, _args, options) => {
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+  });
+  await assert.rejects(durable.run('durable', context), (error) => error.code === 'malformed');
 });

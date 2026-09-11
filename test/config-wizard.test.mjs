@@ -357,3 +357,49 @@ test('init cancellation does not create YAML', async () => {
   );
   assert.equal(existsSync(join(root, 'sloop.config.yaml')), false);
 });
+
+test('config command rejects conflicting flags and exercises direct-init migration and reconciliation failures', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-config-branches-'));
+  const file = join(root, 'sloop.config.yaml');
+  writeFileSync(file, canonicalConfigYaml().replaceAll('sloop-worker', 'worker'));
+  assert.equal(await runConfigCommand(root, ['--init']), 0);
+  assert.match(readFileSync(file, 'utf8'), /sloop-worker/);
+  assert.equal(await runConfigCommand(root, ['--sync', '--no-sync']), 2);
+  assert.equal(await runConfigCommand(root, ['--wizard']), 2);
+  assert.equal(await runConfigCommand(root, ['workspace.path', 'subdir']), 2);
+  assert.equal(
+    await runConfigCommand(root, ['--install', '--force'], async () => {
+      throw new Error('no access');
+    }),
+    2,
+  );
+  const blank = mkdtempSync(join(tmpdir(), 'sloop-config-direct-'));
+  const events = [];
+  assert.equal(
+    await runConfigCommand(blank, ['--init', '--force'], async (_root, kind) => events.push(kind)),
+    0,
+  );
+  assert.deepEqual(events, ['github']);
+});
+
+test('interactive init writes gitignore, list and argv wizard values, and synchronizes explicit kinds', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-config-interactive-'));
+  writeFileSync(join(root, '.gitignore'), 'node_modules');
+  const events = [];
+  const io = scriptedIO(['["git","status"]', 'y', 'y']);
+  assert.equal(
+    await runConfigCommand(
+      root,
+      ['--init', '--wizard', 'health.command', '--sync'],
+      async (_root, kind) => events.push(kind),
+      io,
+    ),
+    0,
+  );
+  assert.match(
+    readFileSync(join(root, 'sloop.config.yaml'), 'utf8'),
+    /command:\n    - git\n    - status/,
+  );
+  assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /\.sloop\//);
+  assert.deepEqual(events, []);
+});

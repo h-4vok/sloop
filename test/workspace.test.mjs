@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -122,4 +122,37 @@ test('recovery and cleanup fail closed for fake or dirty registered targets', as
   writeFileSync(join(facts.executionRoot, 'user.txt'), 'keep');
   assert.throws(() => cleanupWorkspace(facts, root), /dirty/);
   assert.equal(listWorkspaces(root).length, 1);
+});
+
+test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } = await workspace();
+  const root = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  git(remote, 'init', '--bare');
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '-u', 'origin', 'main');
+  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(opts);
+  const stateFile = join(root, '.sloop', 'state.json');
+  writeFileSync(stateFile, '{"workspaces":[]}\n');
+  assert.deepEqual(recoverWorkspace({ ...opts, branch: facts.branch }), facts);
+  cleanupWorkspace(facts, root);
+  assert.equal(existsSync(facts.executionRoot), false);
+});
+
+test('clear retains registrations whose Git ancestry cannot be verified', async () => {
+  const { prepareWorktreeWorkspace, clearWorkspaces, listWorkspaces } = await workspace();
+  const root = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  git(remote, 'init', '--bare');
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '-u', 'origin', 'main');
+  const facts = prepareWorktreeWorkspace(options(root, { worktreeRoot: join(root, 'isolated') }));
+  const stateFile = join(root, '.sloop', 'state.json');
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  state.workspaces[0].baseSha = 'not-a-commit';
+  writeFileSync(stateFile, JSON.stringify(state));
+  clearWorkspaces(root);
+  assert.equal(listWorkspaces(root).length, 1);
+  assert.equal(existsSync(facts.executionRoot), true);
 });

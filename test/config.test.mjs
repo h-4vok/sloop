@@ -12,6 +12,12 @@ import {
   loadConfigText,
   updateConfigFile,
   updateConfigText,
+  configFileExists,
+  configPaths,
+  configValue,
+  getConfigField,
+  parseConfig,
+  parseConfigValue,
 } from '../dist/config.js';
 
 const canonical = canonicalConfigYaml();
@@ -463,4 +469,87 @@ test('file update uses atomic replacement and leaves no temporary sibling', () =
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('public config helpers validate every scalar family and structural invariant', () => {
+  const value = loadConfigText(canonical);
+  assert.equal(configValue(value, 'repository.remote'), 'origin');
+  assert.equal(getConfigField('missing.path'), undefined);
+  assert.deepEqual(configPaths('missing.path'), []);
+  assert.equal(parseConfigValue(getConfigField('health.enabled'), 'false'), false);
+  assert.equal(parseConfigValue(getConfigField('arbiter.decisions'), '4'), 4);
+  assert.equal(parseConfigValue(getConfigField('loop.interval'), '3s'), 3000);
+  assert.throws(
+    () => parseConfigValue(getConfigField('skills.required'), 'x'),
+    ConfigValidationError,
+  );
+  const plain = JSON.parse(JSON.stringify(value));
+  for (const [mutate, path] of [
+    [
+      (v) => {
+        v.schemaVersion = 2;
+      },
+      '$.schemaVersion',
+    ],
+    [
+      (v) => {
+        v.workflow.reviewOrder = ['worker'];
+      },
+      '$.workflow.reviewOrder',
+    ],
+    [
+      (v) => {
+        v.github.roleMarkers.qa = v.github.roleMarkers.worker;
+      },
+      '$.github.roleMarkers',
+    ],
+    [
+      (v) => {
+        v.github.labels.priority = ['p', 'p'];
+      },
+      '$.github.labels.priority',
+    ],
+    [
+      (v) => {
+        v.workspace.path = '';
+      },
+      '$.workspace.path',
+    ],
+    [
+      (v) => {
+        v.workspace.mode = 'worktree';
+        v.workspace.worktreeRoot = '';
+      },
+      '$.workspace.worktreeRoot',
+    ],
+    [
+      (v) => {
+        v.schedule.enabled = true;
+        v.schedule.expression = '';
+      },
+      '$.schedule.expression',
+    ],
+    [
+      (v) => {
+        v.arbiter.decisions = 0;
+      },
+      '$.arbiter.decisions',
+    ],
+  ]) {
+    const next = structuredClone(plain);
+    mutate(next);
+    assert.throws(
+      () => parseConfig(next),
+      (error) => error.diagnostics.some((item) => item.path === path),
+    );
+  }
+});
+
+test('config file existence is a direct filesystem contract', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-config-exists-'));
+  const file = join(root, 'sloop.config.yaml');
+  assert.equal(configFileExists(file), false);
+  writeFileSync(file, canonical);
+  assert.equal(configFileExists(file), true);
+  rmSync(root, { recursive: true, force: true });
 });

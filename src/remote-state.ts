@@ -116,6 +116,7 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
   const hasManifest = Boolean(validManifest && markers.includes(`sloop/v1/run/${m!.runId}`));
   if (!hasManifest)
     return { protocol: REMOTE_PROTOCOL, phase: 'idle', openGates: [], artifactKeys: markers };
+  const manifest = m as RunManifest;
   const checks = (s.checks ?? [])
     .filter((x) => x.conclusion !== 'success')
     .map((x) => `check:${x.name}`)
@@ -124,7 +125,7 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
     (x) => !['APPROVED', 'DISMISSED'].includes(x.state.toUpperCase()),
   ).length;
   const unresolved = (s.inlineThreads ?? []).filter((x) => !x.resolved).length;
-  const baseSha = m!.baseSha ?? '';
+  const baseSha = manifest.baseSha;
   const gates = [
     ...checks,
     ...(reviews ? ['review'] : []),
@@ -133,19 +134,15 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
       .sort()
       .filter((x) => /^(Automation Blocked|Blocked)$/i.test(x))
       .map((x) => `label:${x}`),
-    ...(s.branch !== undefined && s.branch !== m!.branch ? ['branch:mismatch'] : []),
+    ...(s.branch !== undefined && s.branch !== manifest.branch ? ['branch:mismatch'] : []),
     ...(s.sha !== undefined && s.sha !== baseSha && s.sha !== baseSha.slice(0, 7)
       ? ['sha:mismatch']
       : []),
   ];
   const phase =
-    m!.phase === 'complete'
-      ? 'complete'
-      : gates.length
-        ? 'review'
-        : (m!.phase as WorkflowProjection['phase']);
-  const lease = m!.lease
-    ? { ...m!.lease, active: leaseIsActive(m!.lease, s.now ?? Date.now()) }
+    manifest.phase === 'complete' ? 'complete' : gates.length ? 'review' : manifest.phase;
+  const lease = manifest.lease
+    ? { ...manifest.lease, active: leaseIsActive(manifest.lease, s.now ?? Date.now()) }
     : undefined;
   if (lease && lease.active && s.leaseOwner && lease.owner !== s.leaseOwner)
     gates.push('lease:owned');
@@ -153,9 +150,9 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
     protocol: REMOTE_PROTOCOL,
     phase,
     openGates: gates,
-    runId: s.manifest!.runId,
-    ...(validManifest ? { manifest: m as RunManifest } : {}),
-    artifactKeys: sorted([...markers, ...(m!.artifacts ?? [])]),
+    runId: manifest.runId,
+    manifest,
+    artifactKeys: sorted([...markers, ...manifest.artifacts]),
     ...(lease ? { lease } : {}),
   };
 }
