@@ -232,3 +232,31 @@ test('runCli preserves the public blocked exit and JSON stream contract', async 
   assert.equal(envelope.phase, 'workflow');
   assert.deepEqual(envelope.references, { issues: [31], pullRequests: [54] });
 });
+
+test('runCli handles injected help and version commands without preflight', async () => {
+  const output = captureConsole();
+  process.exitCode = undefined;
+  const parseResults = [{ kind: 'help', target: 'status' }, { kind: 'version' }];
+  try {
+    for (const command of parseResults) {
+      await runCli(['status'], process.version, {
+        runtime: {
+          emitNodeVersionFailure: assert.fail,
+          emitUsageFailure: assert.fail,
+          parseCliCommand: () => command,
+          runDispatcherPreflight: assert.fail,
+          runReadOnlyCommand: assert.fail,
+        },
+        dispatcher: { runDispatcherCli: assert.fail },
+        adapters: { productionDependencies: assert.fail },
+      });
+      assert.equal(process.exitCode, undefined);
+    }
+  } finally {
+    process.exitCode = undefined;
+    output.restore();
+  }
+  assert.equal(output.stdout[0], 'Usage: sloop status [--verbose] [--json]');
+  assert.equal(output.stdout[1], '0.1.2');
+  assert.deepEqual(output.stderr, []);
+});
