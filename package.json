@@ -20,10 +20,9 @@
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test \"test/*.test.mjs\"",
     "coverage": "npm run build && c8 --all --include=dist --exclude=dist/core/boundaries.js --reporter=text --reporter=text-summary --reporter=lcovonly --check-coverage --lines=100 --statements=100 --functions=100 --branches=100 npm run test",
-    "pr-checks": "npm run format:check && npm test && npm run coverage && npm run build",
+    "pr-checks": "npm run format:check && npm run typecheck && npm test && npm run coverage && npm run build",
     "check": "npm test",
     "test:integration": "npm run build && node --test \"integration/*.test.mjs\"",
-    "loop": "node dist/cli.js",
     "sloop": "node dist/cli.js",
     "link:local": "npm unlink --global sloop && npm run build && npm link",
     "unlink:local": "npm unlink --global sloop",
@@ -31,7 +30,6 @@
     "version": "node dist/cli.js --version",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "allchecks": "npm run build && npm run typecheck && npm run link:local && npm run test && npm run format:check"
   },
   "dependencies": {
     "@openai/codex": "^0.154.0",
