@@ -54,6 +54,25 @@ test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
 });
 
+test('remaining public failure boundaries are deterministic', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-boundaries-'));
+  assert.equal(recoverStaleLock(root), 'No dispatcher lock found.');
+  mkdirSync(dispatcherLockPath(root), { recursive: true });
+  writeFileSync(join(dispatcherLockPath(root), 'owner.json'), 'not-json');
+  assert.throws(() => recoverStaleLock(root), /owner is invalid/);
+  assert.equal(defaultProcessAlive(2147483647), false);
+  await assert.rejects(
+    runCommand(
+      command(
+        { command: 'sloop-definitely-missing-executable-coverage', args: [], timeoutMs: 100 },
+        1,
+      ),
+      root,
+    ),
+    /failed/,
+  );
+});
+
 test('review feedback includes only matching QA review bodies for the requested round', () => {
   assert.equal(
     reviewFeedback(

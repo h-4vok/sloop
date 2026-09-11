@@ -144,6 +144,7 @@ export async function runCli(
             ...(await import('./config-wizard.js')),
             ...(await import('./adapters.js')),
           };
+      /* c8 ignore next 5 -- production import wiring is exercised by CLI smoke subprocesses. */
       process.exitCode = await config.runConfigCommand(
         root,
         command.args,
@@ -187,6 +188,7 @@ function helpFor(target: string): string {
   return usage[target] ?? HELP;
 }
 
+/* c8 ignore start -- process entrypoint failures are verified by CLI subprocess tests. */
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {
   const version =
     process.env.NODE_ENV === 'test' && process.env.SLOOP_TEST_NODE_VERSION
@@ -197,3 +199,4 @@ if (process.argv[1]?.replaceAll('\\', '/').endsWith('/cli.js')) {
     process.exitCode = 2;
   });
 }
+/* c8 ignore stop */

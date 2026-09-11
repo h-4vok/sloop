@@ -32,6 +32,11 @@ test('tracked canonical YAML is the exact registry-generated document', () => {
   );
 });
 
+test('numeric duration updates preserve their millisecond value', () => {
+  const updated = updateConfigText(canonical, 'agents.worker.timeout', 123);
+  assert.match(updated, /timeout:\s*\n\s*# worker runner timeout in milliseconds\.\s*\n\s*123/);
+});
+
 test('canonical schema produces an immutable typed config and stable redacted fingerprint', () => {
   const first = loadConfigText(canonical);
   const second = loadConfigText(

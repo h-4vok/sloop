@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { PassThrough, Writable } from 'node:stream';
 import { canonicalConfigYaml } from '../dist/config.js';
 import { configPaths } from '../dist/config.js';
-import { runConfigCommand } from '../dist/config-wizard.js';
+import { reconcileConfig, runConfigCommand } from '../dist/config-wizard.js';
 import { getConfigField } from '../dist/config.js';
 import { productionConfigReconciler } from '../dist/adapters.js';
 import { parseCliCommand } from '../dist/runtime.js';
@@ -40,6 +40,12 @@ function scriptedIO(answers, end = true) {
   });
   return { input, output, text: () => captured };
 }
+
+test('default reconciler fails visibly for mutation-capable integrations', async () => {
+  await assert.rejects(() => reconcileConfig('.', 'github'), /No production reconciler/);
+  assert.throws(() => reconcileConfig.preflight('.', 'skills'), /No production reconciler/);
+  assert.doesNotThrow(() => reconcileConfig.preflight('.', 'none'));
+});
 
 function blankAnswers(scope, tail) {
   return configPaths(scope)

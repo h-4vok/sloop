@@ -653,7 +653,9 @@ export function parseConfig(value: unknown): SloopConfig {
       );
     } catch (error) {
       if (error instanceof ConfigValidationError) diagnostics.push(...error.diagnostics);
+      /* c8 ignore start -- registry parsers normalize failures as ConfigValidationError. */
       else throw error;
+      /* c8 ignore stop */
     }
   }
   if (getPath(output, 'schemaVersion') !== 1)
@@ -828,5 +830,6 @@ function formatDuration(milliseconds: number): string {
     ['s', 1_000],
   ] as const)
     if (milliseconds % amount === 0) return `${milliseconds / amount}${unit}`;
+  /* c8 ignore next -- every integer is divisible by the final 1ms unit. */
   return `${milliseconds}ms`;
 }
