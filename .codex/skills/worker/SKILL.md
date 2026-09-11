@@ -1,12 +1,29 @@
 ---
 name: worker
-description: Implement one claimed Sloop issue in the local checkout, open or update a PR targeting main, and leave reproducible test evidence without merging. Use for sloop work execution or manual implementation.
+description: Implement one claimed Sloop issue in the local checkout, open or update a PR targeting main, and leave reproducible test evidence without merging.
 ---
 
 # worker
 
-Work only on the claimed issue in the current checkout. Inspect the issue and `main`, make the smallest coherent change, run relevant checks, and report files, tests, and residual risk. Create or update a PR with base `main`. Entry: claimed/in_progress issue and a suitable checkout. Exit: PR plus evidence, or documented blocker. Update `worker: in_progress`, `worker: ready_for_review`, or `worker: blocked`. Do not work in parallel, alter unrelated changes, merge, or target `main`.
+Work only on the claimed issue. Inspect the issue and main, make the smallest coherent change, run relevant checks, and create or update one PR targeting main. Do not work in parallel, alter unrelated changes, merge, or target main directly.
 
-Before reporting `ready_for_review`, inspect the PR mergeability against `main`. If the PR is `CONFLICTING` or `DIRTY`, update the branch from `main`, resolve all conflicts, rerun relevant checks, and verify that the PR is clean/mergeable. Never publish `ready_for_review` evidence while conflicts remain; publish `blocked` evidence if they cannot be resolved safely.
+Before ready_for_review, verify the PR is clean and mergeable. Recognize only exact leading `[Staff Review]` and `[QA/SDET Review]` markers as feedback. Reply in the same thread with `- [Worker] round=<N> ref=<S<n>|Q<n>> status=<fixed|answered|not_fixed> — <response>`. Finish with exactly one `[Worker] round=<N> status=<ready_for_review|blocked>` evidence comment plus tests and residual risk. The comment must include the current PR, base, and commit.
 
-Review routing: recognize only exact leading markers `[Staff Review]` and `[QA/SDET Review]` as review feedback. Worker status/evidence comments begin `[Worker]` and are never feedback. Reply in the same thread, preserving IDs (`S<n>`/`Q<n>`): `- [Worker] round=<N> ref=<S<n>|Q<n>> status=<fixed|answered|not_fixed> — <response> (file:<line> if applicable)`. State changed files/commit and verification when fixed. Finish with exactly one `[Worker] round=<N> status=<ready_for_review|blocked>` evidence comment plus tests and residual risk. For `ready_for_review`, include in that same comment a fenced JSON `[Human Verification]` guide with non-empty `summary`, `steps`, `expected`, `isolation`, `limitations`, and `checklist` fields. This guide is for a Sloop operator or end user, not a developer: use only normal Sloop configuration/commands and observable Sloop or GitHub behavior. Do not ask the human to create commits, advance remotes, inspect source/tests, or simulate process failures; describe those as automated coverage or limitations instead. Do not put `npm test`, build/format commands, `git`/`gh` commands, source paths, commit SHAs, CI checks, or code-review instructions in the guide; report those separately as Worker evidence. Checklist entries must be plain text without `[ ]` prefixes because the dispatcher renders the checkboxes. Make the guide reproducible for a human and specific to the implemented change. Ignore unmarked comments unless a human explicitly directs otherwise.
+## Required response shape
+
+Answer every QA/Staff finding in order. If there are no review findings, answer every issue acceptance criterion in order. Always include a `HITL steer` entry explaining the effect of a `resolve-review-cap` steer, or write `HITL steer: none supplied`.
+
+Example only; values are fictitious:
+
+```text
+[Worker] round=2 status=ready_for_review pr=123 base=main commit=abc1234
+
+Resolved Q1 — Added validation; focused check passes.
+Resolved Q2 — Added recovery coverage; behavior preserved.
+Issue criteria — Remaining criteria checked point by point; no additional gaps found.
+HITL steer — Kept the change limited to the claimed issue as requested.
+
+Verification: npm test passed; npm run build passed; npm run format:check passed. PR targets main and is clean/mergeable. No merge performed.
+```
+
+The `[Human Verification]` guide is supplementary, readable Markdown for an end user. Describe normal Sloop commands and observable Sloop/GitHub behavior. Do not ask the human to run tests, inspect source, create commits, or simulate process failures.
