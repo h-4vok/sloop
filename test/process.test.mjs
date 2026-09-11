@@ -27,6 +27,16 @@ test('resolveExecutable falls back to the original command when lookup fails', a
   );
 });
 
+test('resolveExecutable prefers Windows shims and handles empty lookup results', async () => {
+  const { resolveExecutable } = await processModule();
+
+  assert.equal(resolveExecutable('npm', 'win32', () => ['npm.exe', 'npm.cmd']), 'npm.cmd');
+  assert.equal(resolveExecutable('npm', 'win32', () => ['npm.exe']), 'npm.exe');
+  assert.equal(resolveExecutable('npm', 'win32', () => ['npm']), 'npm');
+  assert.equal(resolveExecutable('npm', 'linux', () => ['npm.cmd']), 'npm');
+  assert.equal(resolveExecutable('npm', undefined, () => ['npm.cmd']), 'npm.cmd');
+});
+
 test('runSyncCommand trims output and passes direct-process options', async () => {
   const { runSyncCommand } = await processModule();
   const calls = [];
@@ -65,4 +75,21 @@ test('batch invocation rejects command-parser metacharacters before launch', asy
     () => childProcessInvocation('npm.cmd', ['run', 'test&whoami'], 'win32', 'cmd.exe'),
     /unsafe cmd\.exe syntax/,
   );
+});
+
+test('batch invocation quotes safe arguments and honors an empty command processor', async () => {
+  const { childProcessInvocation } = await processModule();
+
+  assert.deepEqual(
+    childProcessInvocation('npm.cmd', ['run', 'test'], 'win32', ''),
+    {
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/v:off', '/c', '\"\"npm.cmd\" \"run\" \"test\"\"'],
+      windowsVerbatimArguments: true,
+    },
+  );
+  assert.deepEqual(childProcessInvocation('npm.exe', [], 'win32', 'cmd.exe'), {
+    command: 'npm.exe',
+    args: [],
+  });
 });
