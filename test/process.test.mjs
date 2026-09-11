@@ -59,7 +59,7 @@ test('resolveExecutable prefers Windows shims and handles empty lookup results',
     'tool.exe',
   );
   assert.equal(
-    resolveExecutable('npm', undefined, () => ['npm.cmd']),
+    resolveExecutable('npm', 'win32', () => ['npm.cmd']),
     'npm.cmd',
   );
 });
