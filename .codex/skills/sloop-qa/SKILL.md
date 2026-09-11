@@ -9,6 +9,28 @@ GitHub review publishing: use `gh pr review <number> --body-file <file> --commen
 
 Map every acceptance criterion to a check. Run focused tests, regression tests, build, and configured smoke/health commands. Publish one comment per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. List checks as `- [Q<n>] <pass|fail|blocked> - <criterion>; <command> - <result>`. Passed checks stay concise. Every failed or product-blocked check follows the failure evidence contract below. Questions use `question`. Never use `[Worker]` or `[Staff Review]`. Entry: staff review approved or findings resolved. Exit: `qa-sdet: passed` or `qa-sdet: failed` with reproduction and `changes_requested`/`blocked`. Do not waive failures, alter tests to hide defects, or merge.
 
+## Required response shape
+
+Keep the first line machine-readable and answer every acceptance criterion or QA finding point by point. Keep each Q item separate; do not merge several failures into a vague summary. Example only; values and findings are fictitious:
+
+```text
+[QA/SDET Review] round=1 verdict=changes_requested
+
+commit=abc1234
+
+- [Q1] fail - Recovery preserves the claimed issue identity; npm test - 1 focused test failed.
+  - Plain language: A recovery can attach evidence to the wrong issue.
+  - Code path: src/dispatcher.ts:100; reproduce with the supplied stale manifest.
+  - Expected: The stale identity is rejected.
+  - Actual: The transition was accepted.
+  - Requested fix: Reject the stale identity and add a regression test.
+- [Q2] pass - Build; npm run build - passed.
+
+HITL steer: none supplied.
+```
+
+The review must be understandable to a human operator while retaining exact commands, SHA, and evidence for the dispatcher. Human Verification material, when present, should describe user-facing Sloop behavior rather than asking a human to run tests or inspect implementation details.
+
 ## Failure evidence contract
 
 For every `fail` or product `blocked` result include:
