@@ -7,8 +7,8 @@ The CLI bootstrap (`dist/cli.js`) is included. `dist/core/boundaries.js` is
 excluded narrowly because it is the TypeScript-emitted runtime shell for
 interfaces and type aliases only; it contains no executable production logic.
 
-Baseline from Node 22 on 2026-09-10 (the report is intentionally below the
-enforced acceptance gate until the missing production paths are covered):
+The historical baseline from Node 22 on 2026-09-10 was below the final gate.
+The final gate is now enforced at 100% for every metric.
 
 | Metric     |           Baseline |
 | ---------- | -----------------: |

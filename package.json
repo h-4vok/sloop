@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "npm run build && node --test \"test/*.test.mjs\"",
-    "coverage": "npm run build && c8 --all --include=dist --exclude=dist/core/boundaries.js --reporter=text --reporter=text-summary --reporter=lcovonly --check-coverage --lines=80 --statements=80 --functions=75 --branches=75 npm run test",
+    "coverage": "npm run build && c8 --all --include=dist --exclude=dist/core/boundaries.js --reporter=text --reporter=text-summary --reporter=lcovonly --check-coverage --lines=100 --statements=100 --functions=100 --branches=100 npm run test",
     "check": "npm test",
     "test:integration": "npm run build && node --test \"integration/*.test.mjs\"",
     "loop": "node dist/cli.js",
