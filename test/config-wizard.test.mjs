@@ -256,6 +256,38 @@ test('config install asks for confirmation unless forced', async () => {
   assert.equal(calls, 1);
 });
 
+test('config install rejects missing configuration without side effects', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-install-missing-'));
+  let called = false;
+  const result = await runConfigCommand(root, ['--install'], async () => {
+    called = true;
+  });
+  assert.equal(result, 2);
+  assert.equal(called, false);
+  assert.equal(existsSync(join(root, 'sloop.config.yaml')), false);
+});
+
+test('config install requires a TTY unless forced', async () => {
+  const { root } = fixture();
+  const input = new PassThrough();
+  const output = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    },
+  });
+  let called = false;
+  const result = await runConfigCommand(
+    root,
+    ['--install'],
+    async () => {
+      called = true;
+    },
+    { input, output },
+  );
+  assert.equal(result, 2);
+  assert.equal(called, false);
+});
+
 test('complex setters fail without changing the document', async () => {
   const { root, file } = fixture();
   const before = readFileSync(file);

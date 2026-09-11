@@ -92,6 +92,50 @@ function wizardAnswers(variant, confirmation) {
   return values;
 }
 
+test('CLI integration contracts preserve discovery, JSON, exit classes, and safe failures', () => {
+  const outside = mkdtempSync(join(tmpdir(), 'sloop-contracts-outside-'));
+  temporaryRepos.add(outside);
+
+  const help = runCli(outside, ['--help']);
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /Usage: sloop/);
+
+  const version = runCli(outside, ['--version']);
+  assert.equal(version.status, 0);
+  assert.match(version.stdout, /^0\.1\.2\r?\n$/);
+
+  const unknown = runCli(outside, ['--unknown']);
+  assert.equal(unknown.status, 2);
+  assert.equal(unknown.stdout, '');
+  assert.match(unknown.stderr, /Command usage is invalid/);
+
+  const json = runCli(outside, ['status', '--json']);
+  assert.equal(json.status, 2);
+  assert.equal(json.stderr, '');
+  const envelope = JSON.parse(json.stdout);
+  assert.equal(envelope.status, 'failed');
+  assert.equal(envelope.phase, 'discovery');
+  assert.match(envelope.diagnostics[0].message, /Git repository/);
+});
+
+test('config integration contracts reject invalid and cancelled changes without side effects', async () => {
+  const root = createRepo();
+  const file = join(root, 'sloop.config.yaml');
+  const init = await runConfigCommand(root, ['--init']);
+  assert.equal(init, 0);
+  const before = readFileSync(file);
+
+  const invalid = await runConfigCommand(root, ['workspace.mode', 'not-a-mode']);
+  assert.equal(invalid, 2);
+  assert.deepEqual(readFileSync(file), before);
+
+  const cancelled = scriptedIO(['worktree', 'n']);
+  const result = await runConfigCommand(root, ['workspace.mode'], undefined, cancelled);
+  assert.equal(result, 0);
+  assert.deepEqual(readFileSync(file), before);
+  assert.match(cancelled.text(), /workspace\.mode/);
+});
+
 test('CLI config init creates a valid canonical default config without a TTY', () => {
   const root = createRepo();
   const result = runCli(root, ['config', 'init']);
