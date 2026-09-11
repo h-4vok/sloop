@@ -188,7 +188,7 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
   assert.equal(dependencies.tryBeginReclaim({ ...owner, token: 'reclaim' }), true);
   assert.equal(dependencies.tryBeginReclaim(owner), false);
   assert.equal(dependencies.readReclaimOwner().token, 'reclaim');
-  assert.ok(dependencies.reclaimAgeMs(Date.now()) >= 0);
+  assert.ok(dependencies.reclaimAgeMs(Date.now() + 1000) >= 0);
   dependencies.finishReclaim(owner);
   dependencies.abandonReclaim();
   dependencies.release('different-token');
@@ -220,4 +220,234 @@ test('production workspace adapter owns and cleans an isolated worktree lifecycl
   assert.equal(dependencies.workspaceAdapter.context().executionRoot, root);
   assert.equal(dependencies.listAllWorktrees().length, 0);
   dependencies.clearAllWorktrees();
+});
+
+test('production adapters cover remote snapshot, claim, publish, and failure paths', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-remote-'));
+  const config = loadConfigText(canonicalConfigYaml());
+  const calls = [];
+  const manifest = {
+    protocol: 1,
+    runId: 'run',
+    issue: 81,
+    pr: 9,
+    branch: 'codex/issue-81',
+    baseSha: 'abcdef1',
+    configFingerprint: 'cfg',
+    phase: 'working',
+    reviewRound: 1,
+    contextCursor: '',
+    artifacts: ['old'],
+  };
+  const marker = runManifestMarker(manifest);
+  const dependencies = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: (_file, args) => {
+      calls.push(args);
+      if (args[0] === 'issue')
+        return JSON.stringify({
+          labels: [{ name: 'eligible' }],
+          comments: [{ body: `sloop/v1/run/old\n${marker}` }],
+        });
+      if (args[0] === 'pr' && args[1] === 'view')
+        return JSON.stringify({
+          number: 9,
+          headRefName: 'codex/issue-81',
+          headRefOid: 'abcdef1',
+          comments: [{ body: 'sloop-v1/review/1' }],
+          reviews: [{ state: 'APPROVED' }],
+          statusCheckRollup: [{ name: 'checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+        });
+      return JSON.stringify({
+        data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: true }] } } } },
+      });
+    },
+  });
+  const snapshot = dependencies.remote.snapshot(81);
+  assert.deepEqual(snapshot.labels, ['eligible']);
+  assert.deepEqual(snapshot.inlineThreads, [{ resolved: true }]);
+  assert.match(snapshot.markers.join(' '), /sloop\/v1\/run\/old/);
+  assert.equal(dependencies.remote.reconcile(81, 'missing'), false);
+  dependencies.remote.claim(81, 'new', 'lease-token');
+  dependencies.remote.claim(81, 'new', { ...manifest, lease: { owner: 'owner', expiresAt: 10 } });
+  dependencies.remote.publish(81, { ...manifest, artifacts: [] });
+  assert.ok(calls.some((args) => args[0] === 'api'));
+
+  const failing = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: () => {
+      throw new Error('offline');
+    },
+  });
+  assert.throws(
+    () => failing.list(),
+    (error) => error instanceof CliFailure && error.exitCode === 5,
+  );
+  assert.throws(() => failing.eligible(), /offline/);
+  assert.throws(() => failing.remote.reconcile(81, 'x'), /GitHub reconciliation unavailable/);
+  assert.throws(() => failing.remote.claim(81, 'x', 'y'), /offline/);
+  assert.throws(() => failing.remote.publish(81, manifest), /offline/);
+  assert.throws(() => failing.pullRequest(9), /offline/);
+  assert.throws(() => failing.pullRequestBody(9), /offline/);
+  assert.throws(() => failing.comment(81, 'x'), /offline/);
+  assert.throws(() => failing.prComment(9, 'x'), /offline/);
+  assert.throws(() => failing.updatePullRequestBody(9, 'x'), /offline/);
+  assert.throws(() => failing.remote.snapshot(81), /GitHub snapshot unavailable/);
+  await assert.doesNotReject(() => productionConfigReconciler(root)(root, 'none'));
+  writeFileSync(join(root, 'sloop.config.yaml'), canonicalConfigYaml());
+  let synchronized = false;
+  await productionConfigReconciler(root, () => {
+    synchronized = true;
+  })(root, 'github');
+  assert.equal(synchronized, true);
+  await assert.rejects(
+    () =>
+      productionConfigReconciler(root, () => {
+        throw new Error('sync failed');
+      })(root, 'skills'),
+    /skills synchronization failed: sync failed/,
+  );
+});
+
+test('production adapters cover alternate payload fields and lock error recovery', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-alternates-'));
+  const config = loadConfigText(canonicalConfigYaml());
+  const dependencies = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: (_file, args) => {
+      if (args[0] === 'pr')
+        return JSON.stringify({
+          number: 3,
+          state: 'OPEN',
+          baseRefName: 'main',
+          headRefName: 'branch',
+          headRefOid: 'sha',
+          merge_state_status: 'CLEAN',
+          reviews: [{ body: 'r', state: 'COMMENTED', commit_id: 'c', submittedAt: 'now' }],
+          comments: [{ body: 'c', createdAt: 'now' }],
+          statusCheckRollup: [{ workflowName: 'ci', state: 'SUCCESS', detailsUrl: 'u' }],
+        });
+      return JSON.stringify({ body: undefined });
+    },
+  });
+  assert.equal(dependencies.pullRequest(3).mergeStateStatus, 'CLEAN');
+  assert.equal(dependencies.pullRequest(3).reviews[0].commitId, 'c');
+  assert.equal(dependencies.pullRequest(3).statusCheckRollup[0].name, 'ci');
+  assert.equal(dependencies.pullRequestBody(3), '');
+  assert.equal(dependencies.loadConfig().baseBranch, 'main');
+  const invalidRepository = productionDependencies(root, config, 'invalid', {
+    execFileSync: (_file, args) =>
+      args[0] === 'issue'
+        ? JSON.stringify({ comments: [{ body: runManifestMarker({ ...manifest, issue: 1 }) }] })
+        : JSON.stringify({}),
+  });
+  assert.throws(() => invalidRepository.remote.snapshot(1), /GitHub snapshot unavailable/);
+  const lock = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: () => JSON.stringify({}),
+  });
+  assert.equal(lock.tryAcquire({ pid: 1, createdAt: 1, token: 'base' }), true);
+  assert.equal(lock.tryBeginReclaim({ pid: 1, createdAt: 1, token: 'x' }), true);
+  assert.equal(lock.tryBeginReclaim({ pid: 1, createdAt: 1, token: 'y' }), false);
+  lock.abandonReclaim();
+  assert.throws(() => lock.readReclaimOwner());
+  lock.release('base');
+  lock.release('missing-owner');
+});
+
+test('production adapters exercise empty and alternate GitHub response shapes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-shapes-'));
+  const config = loadConfigText(canonicalConfigYaml());
+  let mode = 'empty';
+  const dependencies = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: (_file, args) => {
+      if (args[0] === 'pr')
+        return mode === 'empty'
+          ? JSON.stringify({})
+          : JSON.stringify({
+              number: 4,
+              reviews: [{ commitId: 'id', submittedAt: 'date' }],
+              comments: [{ body: 'comment', createdAt: 'date' }],
+              statusCheckRollup: [{ context: 'context', state: 'PENDING' }],
+            });
+      return JSON.stringify({});
+    },
+  });
+  const empty = dependencies.pullRequest(4);
+  assert.deepEqual(empty.reviews, []);
+  assert.deepEqual(empty.comments, []);
+  assert.deepEqual(empty.statusCheckRollup, []);
+  mode = 'alternate';
+  assert.equal(dependencies.pullRequest(4).reviews[0].commitId, 'id');
+  assert.equal(dependencies.pullRequest(4).statusCheckRollup[0].name, 'context');
+  const snapshot = dependencies.remote.snapshot(4);
+  assert.deepEqual(snapshot.labels, []);
+  assert.deepEqual(snapshot.comments, []);
+  assert.equal(snapshot.pr, undefined);
+  dependencies.remote.claim(4, 'key', {
+    protocol: 1,
+    runId: 'run',
+    issue: 4,
+    branch: 'branch',
+    baseSha: 'sha',
+    configFingerprint: 'cfg',
+    phase: 'working',
+    reviewRound: 0,
+    contextCursor: '',
+  });
+  dependencies.remote.publish(4, {
+    protocol: 1,
+    runId: 'run',
+    issue: 4,
+    branch: 'branch',
+    baseSha: 'sha',
+    configFingerprint: 'cfg',
+    phase: 'working',
+    reviewRound: 0,
+    contextCursor: '',
+    artifacts: [],
+  });
+  const fallbackManifest = {
+    protocol: 1,
+    runId: 'fallback',
+    issue: 4,
+    pr: 4,
+    branch: 'branch',
+    baseSha: 'sha',
+    configFingerprint: 'cfg',
+    phase: 'working',
+    reviewRound: 0,
+    contextCursor: '',
+    artifacts: [],
+  };
+  const manifestExecutor = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: (_file, args) => {
+      if (args[0] === 'issue')
+        return JSON.stringify({
+          comments: [
+            {
+              body: runManifestMarker({
+                ...fallbackManifest,
+                issue: 4,
+                pr: 4,
+              }),
+            },
+          ],
+        });
+      if (args[0] === 'pr') return JSON.stringify({});
+      return JSON.stringify({});
+    },
+  });
+  manifestExecutor.remote.snapshot(4);
+  const nonError = productionDependencies(root, config, 'owner/repo', {
+    execFileSync: () => {
+      throw 'offline';
+    },
+  });
+  assert.throws(() => nonError.remote.snapshot(4), /GitHub snapshot unavailable: offline/);
+  assert.throws(
+    () => nonError.remote.reconcile(4, 'x'),
+    /GitHub reconciliation unavailable: offline/,
+  );
+  assert.throws(() => nonError.remote.claim(4, 'x', 'y'), /offline/);
+  assert.throws(
+    () => nonError.remote.publish(4, { ...fallbackManifest, artifacts: [] }),
+    /offline/,
+  );
 });

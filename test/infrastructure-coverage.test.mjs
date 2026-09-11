@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { productionConfigReconciler, productionDependencies } from '../dist/adapters.js';
 import { canonicalConfigYaml, loadConfigText } from '../dist/config.js';
+import { CliFailure } from '../dist/dispatcher.js';
 import { withEphemeralMutex, withEphemeralMutexAsync } from '../dist/mutex.js';
 import { RunLogger, applyRunRetention, runDirectory } from '../dist/run-log.js';
 import { runManifestMarker } from '../dist/remote-state.js';
@@ -176,6 +177,51 @@ test('adapter workspace callbacks use the configured checkout lifecycle', () => 
   assert.equal(facts.executionRoot, checkout);
   deps.workspaceAdapter.cleanup(facts);
   assert.equal(deps.workspaceAdapter.context().executionRoot, checkout);
+});
+
+test('adapter covers non-Error failures and every optional remote snapshot shape', () => {
+  const base = manifest({ artifacts: [] });
+  let issueMode = 'empty';
+  const deps = dependencies((_file, args) => {
+    if (args[0] === 'issue' && args[1] === 'view') {
+      if (issueMode === 'manifest')
+        return JSON.stringify({ comments: [{ body: runManifestMarker(base) }] });
+      if (issueMode === 'comments')
+        return JSON.stringify({ comments: [{ body: 'sloop/v1/marker' }] });
+      return JSON.stringify({});
+    }
+    if (args[0] === 'pr') return JSON.stringify({ statusCheckRollup: [{}] });
+    if (args[0] === 'api') return JSON.stringify({});
+    return '';
+  });
+  assert.deepEqual(deps.remote.snapshot(81).inlineThreads, []);
+  issueMode = 'comments';
+  assert.deepEqual(deps.remote.snapshot(81).comments, [{ body: 'sloop/v1/marker' }]);
+  issueMode = 'manifest';
+  const fallback = deps.remote.snapshot(81);
+  assert.equal(fallback.pr, 9);
+  assert.equal(fallback.branch, 'codex/issue-81-x');
+  assert.equal(deps.remote.reconcile(81, 'missing'), false);
+
+  const rawFailure = dependencies(() => {
+    throw 'raw failure';
+  });
+  assert.throws(() => rawFailure.comment(81, 'body'), /raw failure/);
+  assert.throws(() => rawFailure.prComment(81, 'body'), /raw failure/);
+  assert.throws(() => rawFailure.updatePullRequestBody(81, 'body'), /raw failure/);
+  assert.throws(() => rawFailure.pullRequestBody(81), /raw failure/);
+  assert.throws(() => rawFailure.remote.snapshot(81), /raw failure/);
+  assert.throws(() => rawFailure.remote.reconcile(81, 'key'), /raw failure/);
+  assert.throws(() => rawFailure.remote.claim(81, 'key', 'lease'), /raw failure/);
+  assert.throws(() => rawFailure.remote.publish(81, base), /raw failure/);
+
+  const cliFailure = dependencies(() => {
+    throw new CliFailure(5, 'already normalized');
+  });
+  assert.throws(
+    () => cliFailure.list(),
+    (error) => error instanceof CliFailure && error.message === 'already normalized',
+  );
 });
 
 test('local mutex removes its lease after sync and async results or failures', async () => {
