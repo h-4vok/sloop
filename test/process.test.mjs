@@ -27,6 +27,17 @@ test('resolveExecutable falls back to the original command when lookup fails', a
   );
 });
 
+test('resolveExecutable covers host defaults and safely falls back for an impossible command', async () => {
+  const { resolveExecutable } = await processModule();
+  const missing = 'sloop-coverage-missing-command-7c3f2';
+
+  // The no-argument call exercises the production platform default. Supplying
+  // win32 below executes the production where.exe locator on every host; the
+  // deliberately impossible command must always take its documented fallback.
+  assert.equal(resolveExecutable(missing), missing);
+  assert.equal(resolveExecutable(missing, 'win32'), missing);
+});
+
 test('resolveExecutable prefers Windows shims and handles empty lookup results', async () => {
   const { resolveExecutable } = await processModule();
 
@@ -93,6 +104,14 @@ test('runSyncCommand trims output and passes direct-process options', async () =
       },
     },
   ]);
+});
+
+test('runSyncCommand uses its native executor when no test executor is supplied', async () => {
+  const { runSyncCommand } = await processModule();
+  assert.equal(
+    runSyncCommand(process.execPath, ['-e', "process.stdout.write(' native output ')"]),
+    'native output',
+  );
 });
 
 test('batch invocation rejects command-parser metacharacters before launch', async () => {

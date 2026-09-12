@@ -9,6 +9,8 @@ import {
   parseCliCommand,
   parseReadOnlyCommand,
   parseDispatcherCommand,
+  emitNodeVersionFailure,
+  emitUsageFailure,
   runDispatcherPreflight,
   runReadOnlyCommand,
 } from '../dist/runtime.js';
@@ -359,4 +361,287 @@ test('local configuration controls the base branch selector', () => {
   });
   assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io), EXIT.ok);
   assert.equal(JSON.parse(h.stdout[0]).result.configRef, 'working-tree');
+});
+
+test('runtime diagnostics cover unavailable tools, malformed GitHub responses, and every read-only result', () => {
+  const cases = [
+    [{ 'gh --version': { stdout: '', stderr: '', status: 1 } }, ['issues', 'list', '--json'], 'gh'],
+    [
+      {
+        'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+          stdout: '{',
+          stderr: '',
+          status: 0,
+        },
+      },
+      ['issues', 'list', '--json'],
+      'repository-identity',
+    ],
+    [
+      {
+        'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+          stdout: '{"viewerPermission":"READ"}',
+          stderr: '',
+          status: 0,
+        },
+      },
+      ['issues', 'list', '--json'],
+      'repository-identity',
+    ],
+    [
+      {
+        'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+          stdout: '{"nameWithOwner":"o/r","viewerPermission":"NONE"}',
+          stderr: '',
+          status: 0,
+        },
+      },
+      ['issues', 'list', '--json'],
+      'permissions',
+    ],
+    [
+      {
+        'gh label list --repo o/r --limit 1000 --json name': { stdout: '{', stderr: '', status: 0 },
+      },
+      ['issues', 'list', '--json'],
+      'labels',
+    ],
+    [
+      {
+        'gh label list --repo o/r --limit 1000 --json name': {
+          stdout: '[]',
+          stderr: '',
+          status: 0,
+        },
+      },
+      ['issues', 'list', '--json'],
+      'labels',
+    ],
+    [
+      {
+        'gh label list --repo o/r --limit 1000 --json name': { stdout: '', stderr: '', status: 1 },
+      },
+      ['issues', 'list', '--json'],
+      'permissions',
+    ],
+  ];
+  for (const [overrides, args, check] of cases) {
+    const h = harness(overrides);
+    assert.equal(runReadOnlyCommand(parseReadOnlyCommand(args), h.io), EXIT.preflight);
+    assert.ok(JSON.parse(h.stdout[0]).diagnostics.some((item) => item.check === check));
+  }
+  for (const [stdout, expected] of [
+    ['not json', EXIT.external],
+    ['[]', EXIT.ok],
+  ]) {
+    const h = harness({
+      'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
+        { stdout, stderr: '', status: 0 },
+    });
+    assert.equal(
+      runReadOnlyCommand(parseReadOnlyCommand(['issues', 'list', '--json']), h.io),
+      expected,
+    );
+  }
+});
+
+test('runtime parser and preflight exercise all dispatcher variants and user-facing emitters', () => {
+  for (const args of [
+    ['--list'],
+    ['--recover-lock'],
+    ['--reset'],
+    ['--list-all-worktrees'],
+    ['--clear-all-worktrees'],
+    ['--link-issue', '1'],
+    ['--resolve-review-cap', '--steer', 'go', '--waive-all-outstanding'],
+    ['--resolve-review-cap', '--steer', 'go', '--abandon'],
+  ])
+    assert.doesNotThrow(() => parseDispatcherCommand(args));
+  for (const args of [
+    ['status', '--verbose', '--json'],
+    ['issues', 'list', '--json'],
+    ['doctor'],
+    ['config', 'install', '--force'],
+    ['config', 'x'],
+  ])
+    assert.doesNotThrow(() => parseCliCommand(args));
+  const h = harness({
+    'git remote get-url origin': { stdout: 'not-a-github-url', stderr: '', status: 0 },
+  });
+  assert.equal(
+    runDispatcherPreflight(parseDispatcherCommand(['--status']), h.io).code,
+    EXIT.preflight,
+  );
+  const output = [];
+  const errors = [];
+  assert.equal(
+    emitNodeVersionFailure(['status', '--json'], 'v1.0.0', {
+      ...h.io,
+      stdout: (v) => output.push(v),
+      stderr: (v) => errors.push(v),
+    }),
+    EXIT.preflight,
+  );
+  assert.equal(JSON.parse(output[0]).diagnostics[0].check, 'node');
+  assert.equal(
+    emitNodeVersionFailure(['status'], 'v1.0.0', {
+      ...h.io,
+      stdout: (v) => output.push(v),
+      stderr: (v) => errors.push(v),
+    }),
+    EXIT.preflight,
+  );
+  assert.match(errors.at(-1), /Node.js 22/);
+  assert.equal(emitUsageFailure(['--json'], 'bad input'), EXIT.preflight);
+});
+
+test('runtime covers production IO, doctor policy, dispatcher command names, and state presentations', () => {
+  const original = process.cwd();
+  const outside = mkdtempSync(join(tmpdir(), 'sloop-production-io-'));
+  try {
+    assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json'])), EXIT.ok);
+    process.chdir(outside);
+    assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json'])), EXIT.preflight);
+  } finally {
+    process.chdir(original);
+    rmSync(outside, { recursive: true, force: true });
+  }
+  const doctor = harness({
+    'git --version': { stdout: '', stderr: '', status: 1 },
+    'git remote get-url origin': { stdout: '', stderr: '', status: 1 },
+    'git rev-parse --verify origin/main^{commit}': { stdout: '', stderr: '', status: 1 },
+    'gh --version': { stdout: '', stderr: '', status: 1 },
+    'codex --version': { stdout: '', stderr: '', status: 1 },
+    'git status --porcelain': { stdout: '', stderr: '', status: 1 },
+    'git symbolic-ref --short HEAD': { stdout: '', stderr: '', status: 1 },
+  });
+  doctor.io.platform = 'freebsd';
+  doctor.io.nodeVersion = 'unknown';
+  assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['doctor']), doctor.io), EXIT.preflight);
+  const checks = doctor.stderr[0];
+  for (const check of [
+    'platform',
+    'node',
+    'git',
+    'remote',
+    'base-branch',
+    'gh',
+    'codex',
+    'skills',
+    'working-tree',
+    'branch-policy',
+  ])
+    assert.match(checks, new RegExp(`\\[${check}\\]`));
+
+  const invalid = harness({ localConfig: 'schemaVersion: [' });
+  for (const command of [
+    { kind: 'workflow' },
+    { kind: 'list' },
+    { kind: 'recover-lock' },
+    { kind: 'reset' },
+    { kind: 'prepare-recovery', issue: 1 },
+    {
+      kind: 'resolve-review-cap',
+      options: {
+        steer: 'x',
+        additionalRounds: 0,
+        waivedFindingIds: [],
+        waiveAllOutstanding: true,
+        abandon: false,
+      },
+    },
+    { kind: 'link-issue', issue: 1 },
+    { kind: 'list-all-worktrees' },
+    { kind: 'clear-all-worktrees' },
+    { kind: 'status', verbose: false },
+  ])
+    assert.equal(runDispatcherPreflight(command, invalid.io).code, EXIT.preflight);
+
+  const root = mkdtempSync(join(tmpdir(), 'sloop-runtime-state-'));
+  try {
+    mkdirSync(join(root, '.sloop'));
+    for (const [status, expected] of [
+      ['blocked', EXIT.blocked],
+      ['running', EXIT.ok],
+      ['complete', EXIT.ok],
+    ]) {
+      writeFileSync(
+        join(root, '.sloop', 'state.json'),
+        JSON.stringify({ status, issue: 7, pr: 8 }),
+      );
+      const h = harness({
+        'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+      });
+      h.io.cwd = root;
+      assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io), expected);
+      assert.equal(
+        runReadOnlyCommand(parseReadOnlyCommand(['status', '--verbose', '--json']), h.io),
+        expected,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+  assert.deepEqual(parseCliCommand(['config', 'init', '--wizard']), {
+    kind: 'config',
+    args: ['--init', '--wizard'],
+  });
+  assert.deepEqual(parseCliCommand(['config', 'install', '--force']), {
+    kind: 'config',
+    args: ['--install', '--force'],
+  });
+  assert.throws(() => parseCliCommand(['config', 'init', '--force']), /usage/);
+  assert.throws(() => parseCliCommand(['config', 'install', '--wizard']), /usage/);
+});
+
+test('runtime covers GitHub write preflight, repository URL failures, and doctor branch policy', () => {
+  for (const command of [
+    parseDispatcherCommand(['--list']),
+    parseDispatcherCommand(['--link-issue', '9']),
+    parseDispatcherCommand([
+      '--resolve-review-cap',
+      '--steer',
+      'continue',
+      '--waive-all-outstanding',
+    ]),
+  ]) {
+    const h = harness();
+    assert.equal(runDispatcherPreflight(command, h.io).code, EXIT.ok);
+  }
+  const badRemote = harness({
+    'git remote get-url origin': {
+      stdout: 'https://example.test/not-github',
+      stderr: '',
+      status: 0,
+    },
+  });
+  assert.equal(
+    runReadOnlyCommand(parseReadOnlyCommand(['issues', 'list', '--json']), badRemote.io),
+    EXIT.preflight,
+  );
+  assert.equal(JSON.parse(badRemote.stdout[0]).diagnostics.at(-1).check, 'repository-identity');
+  const branch = harness({
+    'git symbolic-ref --short HEAD': { stdout: 'feature/nope', stderr: '', status: 0 },
+  });
+  assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['doctor']), branch.io), EXIT.preflight);
+  assert.match(branch.stderr[0], /Branch feature\/nope violates/);
+});
+
+test('runtime reports missing configuration and dispatcher validation failures after discovery', () => {
+  const missing = harness();
+  missing.io.readFile = () => {
+    throw new Error('missing');
+  };
+  assert.equal(
+    runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), missing.io),
+    EXIT.preflight,
+  );
+  assert.equal(JSON.parse(missing.stdout[0]).diagnostics[0].check, 'configuration');
+  const invalid = harness({
+    'git remote get-url origin': { stdout: '', stderr: 'missing', status: 1 },
+  });
+  assert.equal(
+    runDispatcherPreflight(parseDispatcherCommand(['--status']), invalid.io).code,
+    EXIT.preflight,
+  );
 });

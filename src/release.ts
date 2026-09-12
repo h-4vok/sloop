@@ -9,6 +9,13 @@ export type ReleaseState = {
   releaseTarget: string;
 };
 
+export type ReleaseFiles = Readonly<{
+  readFile: (file: string, encoding: BufferEncoding) => string;
+  writeFile: (file: string, content: string) => void;
+}>;
+
+const productionReleaseFiles: ReleaseFiles = { readFile: readFileSync, writeFile: writeFileSync };
+
 export function parseReleaseKind(title: string): ReleaseKind {
   const match = title.match(/^\[([^\]]+)\](?:\s|$)/);
   const hasSecondPrefix = /^\[[^\]]+\]/.test(title.slice(match?.[0].length ?? 0).trimStart());
@@ -79,14 +86,19 @@ export function hasReleaseMetadata(
   return pkg.version === version && match?.[1] === version && Number(match[3]) === pr;
 }
 
-export function updateRepositoryMetadata(version: string, date: string, pr: number): void {
+export function updateRepositoryMetadata(
+  version: string,
+  date: string,
+  pr: number,
+  files: ReleaseFiles = productionReleaseFiles,
+): void {
   const result = updateMetadata(
-    readFileSync('package.json', 'utf8'),
-    readFileSync('CHANGELOG.md', 'utf8'),
+    files.readFile('package.json', 'utf8'),
+    files.readFile('CHANGELOG.md', 'utf8'),
     version,
     date,
     pr,
   );
-  writeFileSync('package.json', result.packageText);
-  writeFileSync('CHANGELOG.md', result.changelog);
+  files.writeFile('package.json', result.packageText);
+  files.writeFile('CHANGELOG.md', result.changelog);
 }

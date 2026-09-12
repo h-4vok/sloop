@@ -15,22 +15,34 @@ import { test } from 'node:test';
 import {
   acquire,
   childProcessInvocation,
+  checkoutWorkerBranch,
   CliFailure,
   command,
   dispatcherLockPath,
+  defaultProcessAlive,
   dispatch,
+  eligible,
+  linkIssueToActiveRun,
+  pullRequest,
+  pullRequestBody,
   prepareWorkerBranch,
   prepareRecovery,
   recoverStaleLock,
+  resolveReviewCap,
   resolveExecutable,
   runSyncCommand,
   redactDiagnostic,
+  readState,
+  reviewFeedback,
   workerBranchName,
   withIssueClosingReference,
   resetRunState,
   runCommand,
   hasCommit,
   runDispatcherCli,
+  updatePullRequestBody,
+  commentPullRequest,
+  writeState,
   maxRoundsForUserBudget,
 } from '../dist/dispatcher.js';
 import { parseDispatcherCommand } from '../dist/runtime.js';
@@ -40,6 +52,338 @@ test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 2, 2), 3);
   assert.equal(maxRoundsForUserBudget(3, 9, 6), 14);
   assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
+});
+
+test('remaining public failure boundaries are deterministic', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-boundaries-'));
+  assert.equal(recoverStaleLock(root), 'No dispatcher lock found.');
+  mkdirSync(dispatcherLockPath(root), { recursive: true });
+  writeFileSync(join(dispatcherLockPath(root), 'owner.json'), 'not-json');
+  assert.throws(() => recoverStaleLock(root), /owner is invalid/);
+  assert.equal(defaultProcessAlive(2147483647), false);
+  await assert.rejects(
+    runCommand(
+      command(
+        { command: 'sloop-definitely-missing-executable-coverage', args: [], timeoutMs: 100 },
+        1,
+      ),
+      root,
+    ),
+    /failed/,
+  );
+});
+
+test('review feedback includes only matching QA review bodies for the requested round', () => {
+  assert.equal(
+    reviewFeedback(
+      {
+        number: 7,
+        reviews: [
+          { body: '[QA/SDET Review] round=1 verdict=passed' },
+          { body: '[QA/SDET Review] round=2 verdict=blocked' },
+          { body: '[Staff Review] round=2 verdict=approved' },
+        ],
+      },
+      '[QA/SDET Review]',
+      2,
+    ),
+    '[QA/SDET Review] round=2 verdict=blocked',
+  );
+});
+
+function githubHost(respond) {
+  const calls = [];
+  return {
+    calls,
+    host: {
+      platform: 'linux',
+      pid: () => 123,
+      now: () => 1_700_000_000_000,
+      resolveExecutable: () => 'gh',
+      runSyncCommand: (_command, args, _input, _platform, _comSpec, cwd) => {
+        calls.push({ args, cwd });
+        return respond(args, cwd);
+      },
+    },
+  };
+}
+
+test('native dispatcher GitHub operations preserve argv, repository scoping, and response normalization', () => {
+  const fake = githubHost((args) => {
+    if (args[0] === 'issue' && args[1] === 'list')
+      return JSON.stringify([
+        { number: 9, title: 'later' },
+        { number: 2, title: 'first' },
+      ]);
+    if (args[0] === 'pr' && args[1] === 'view' && args.some((arg) => arg.includes('number,state')))
+      return JSON.stringify({
+        number: 7,
+        body: undefined,
+        merge_state_status: 'CLEAN',
+        reviews: [{ body: 'review', submitted_at: 'two', commit: { oid: 'abc' } }],
+        comments: [{ body: 'comment', created_at: 'one' }],
+        statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'https://x' }],
+      });
+    if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({});
+    return '';
+  });
+
+  // Arrange / Act / Assert: each operation receives only the adapter host.
+  assert.deepEqual(
+    eligible('/repo', 'owner/repo', 'ready', fake.host).map(({ number }) => number),
+    [2, 9],
+  );
+  const normalized = pullRequest(7, '/repo', 'owner/repo', fake.host);
+  assert.equal(normalized.number, 7);
+  assert.equal(normalized.body, '');
+  assert.equal(normalized.mergeStateStatus, 'CLEAN');
+  assert.deepEqual(normalized.reviews, [
+    { body: 'review', state: undefined, submittedAt: 'two', commitId: 'abc' },
+  ]);
+  assert.deepEqual(normalized.comments, [{ body: 'comment', createdAt: 'one' }]);
+  assert.deepEqual(normalized.statusCheckRollup, [
+    { name: 'pr-checks', status: 'SUCCESS', conclusion: 'SUCCESS', detailsUrl: 'https://x' },
+  ]);
+  assert.equal(pullRequestBody(7, '/repo', 'owner/repo', fake.host), '');
+  assert.equal(
+    fake.calls.every(({ args }) => args.slice(-2).join(' ') === '--repo owner/repo'),
+    true,
+  );
+});
+
+test('native dispatcher GitHub writes redact bodies, clean temporary files, and classify execution failures', () => {
+  let bodyFile;
+  const fake = githubHost((args) => {
+    if (args.includes('--body-file')) {
+      bodyFile = args.at(-1);
+      assert.equal(readFileSync(bodyFile, 'utf8'), 'safe body');
+    }
+    return '';
+  });
+
+  updatePullRequestBody(7, 'safe body', '/repo', undefined, fake.host);
+  commentPullRequest(7, 'safe body', '/repo', undefined, fake.host);
+  assert.equal(existsSync(bodyFile), false);
+  assert.deepEqual(
+    fake.calls.map(({ args }) => args.slice(0, 3)),
+    [
+      ['pr', 'edit', '7'],
+      ['pr', 'comment', '7'],
+    ],
+  );
+  assert.throws(
+    () => commentPullRequest(7, { invalid: true }, '/repo', undefined, fake.host),
+    TypeError,
+  );
+
+  const failing = githubHost(() => {
+    throw new Error('offline');
+  });
+  assert.throws(
+    () => eligible('/repo', undefined, 'ready', failing.host),
+    (error) => error instanceof CliFailure && error.exitCode === 5 && /offline/.test(error.message),
+  );
+  const invalidJson = githubHost(() => '{broken');
+  assert.throws(
+    () => pullRequestBody(7, '/repo', undefined, invalidJson.host),
+    /gh returned invalid JSON/,
+  );
+});
+
+test('dispatcher state persistence, PID probe, and link operations remain deterministic through injected GitHub host', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-host-'));
+  const statePath = join(root, 'state.json');
+  assert.deepEqual(readState(statePath), {});
+  writeFileSync(statePath, '{bad');
+  assert.match(readState(statePath).lastError, /state corruption/);
+  writeState({ issue: 1, status: 'claimed' }, statePath);
+  assert.equal(readState(statePath).issue, 1);
+  assert.equal(defaultProcessAlive(-1), false);
+  assert.equal(defaultProcessAlive(process.pid), true);
+
+  writeState({ issue: 1, pr: 7, status: 'claimed', linkedClosingIssues: [4] }, statePath);
+  const fake = githubHost((args) => {
+    if (args[0] === 'pr' && args[1] === 'view')
+      return JSON.stringify({ body: 'Summary', comments: [] });
+    if (args[0] === 'issue' && args[1] === 'view')
+      return JSON.stringify({ number: 2, state: 'OPEN', comments: [] });
+    return '';
+  });
+  linkIssueToActiveRun(2, statePath, root, undefined, fake.host);
+  assert.deepEqual(readState(statePath).linkedClosingIssues, [4, 2]);
+  assert.equal(
+    fake.calls.some(({ args }) => args[0] === 'pr' && args[1] === 'edit'),
+    true,
+  );
+  assert.equal(
+    fake.calls.filter(({ args }) => args[0] === 'issue' && args[1] === 'comment').length,
+    2,
+  );
+  assert.equal(
+    fake.calls.some(({ args }) => args[0] === 'pr' && args[1] === 'comment'),
+    true,
+  );
+});
+
+test('review-cap resolution uses the host for identity and publication while enforcing waiver safety', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-review-cap-host-'));
+  const statePath = join(root, 'state.json');
+  writeState(
+    {
+      issue: 1,
+      pr: 7,
+      status: 'review_cap_pending',
+      reviewRound: 2,
+      reviewCap: {
+        capRound: 2,
+        outstandingFindingIds: ['Q1'],
+        additionalRounds: 0,
+        waivedFindingIds: [],
+      },
+    },
+    statePath,
+  );
+  const fake = githubHost((args) => {
+    if (args[0] === 'api') return 'octocat';
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
+    if (args[0] === 'pr' && args[1] === 'view')
+      return JSON.stringify({
+        number: 7,
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        comments: [],
+        statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      });
+    return '';
+  });
+  const options = {
+    steer: 'ship this',
+    abandon: false,
+    waiveAllOutstanding: true,
+    waivedFindingIds: [],
+    additionalRounds: 0,
+  };
+
+  resolveReviewCap(
+    options,
+    { requiredPrChecks: ['pr-checks'] },
+    statePath,
+    root,
+    undefined,
+    fake.host,
+  );
+  const next = readState(statePath);
+  assert.equal(next.status, 'ready_for_human_merge');
+  assert.deepEqual(next.reviewCap.waivedFindingIds, ['Q1']);
+  assert.equal(next.reviewCap.resolvedBy, 'octocat');
+  assert.equal(next.reviewCap.resolvedAt, new Date(1_700_000_000_000).toISOString());
+  assert.equal(
+    fake.calls.some(({ args }) => args[0] === 'api'),
+    true,
+  );
+  assert.throws(
+    () =>
+      resolveReviewCap(
+        { ...options, abandon: true, additionalRounds: 1 },
+        {},
+        statePath,
+        root,
+        undefined,
+        fake.host,
+      ),
+    /cannot be combined/,
+  );
+});
+
+test('dispatcher CLI worktree controls and checkout retain their direct contracts', async () => {
+  const h = harness();
+  const calls = [];
+  h.deps.listAllWorktrees = () => ['one'];
+  h.deps.clearAllWorktrees = () => calls.push('clear');
+  await runDispatcherCli({ kind: 'list-all-worktrees' }, h.deps);
+  await runDispatcherCli({ kind: 'clear-all-worktrees' }, h.deps);
+  assert.deepEqual(calls, ['clear']);
+
+  const root = mkdtempSync(join(tmpdir(), 'sloop-checkout-'));
+  const git = (args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  git(['init', '--initial-branch=main']);
+  git(['config', 'user.email', 'test@example.test']);
+  git(['config', 'user.name', 'Test']);
+  writeFileSync(join(root, 'README.md'), 'one');
+  git(['add', '.']);
+  git(['commit', '-m', 'initial']);
+  git(['branch', 'worker']);
+  checkoutWorkerBranch('worker', root);
+  const current = spawnSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' });
+  assert.equal(current.stdout.trim(), 'worker');
+});
+
+test('review-cap abandonment resumes safely after partial side effects', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-abandon-host-'));
+  const statePath = join(root, 'state.json');
+  const state = {
+    issue: 1,
+    pr: 7,
+    status: 'review_cap_pending',
+    reviewRound: 2,
+    reviewCap: {
+      capRound: 2,
+      outstandingFindingIds: ['Q1'],
+      additionalRounds: 0,
+      waivedFindingIds: [],
+    },
+  };
+  writeState(state, statePath);
+  const fake = githubHost((args) => {
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
+    if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({ number: 7, comments: [] });
+    return '';
+  });
+  const abandon = {
+    steer: 'stop safely',
+    abandon: true,
+    waiveAllOutstanding: false,
+    waivedFindingIds: [],
+    additionalRounds: 0,
+  };
+
+  resolveReviewCap(abandon, {}, statePath, root, undefined, fake.host);
+  assert.equal(readState(statePath).status, 'abandoned');
+  assert.equal(
+    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'pr close'),
+    true,
+  );
+  assert.equal(
+    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'issue edit'),
+    true,
+  );
+  assert.equal(
+    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'issue close'),
+    true,
+  );
+
+  writeState(
+    {
+      ...state,
+      status: 'abandon_pending',
+      abandonment: {
+        steer: 'stop safely',
+        commentPublished: true,
+        prClosed: true,
+        labelled: true,
+        issueClosed: true,
+      },
+    },
+    statePath,
+  );
+  const resumed = githubHost(() => {
+    throw new Error('completed actions must not repeat');
+  });
+  resolveReviewCap(abandon, {}, statePath, root, undefined, resumed.host);
+  assert.equal(readState(statePath).status, 'abandoned');
 });
 
 test('Windows batch commands use cmd.exe without Node shell mode', () => {
@@ -616,7 +960,7 @@ test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async
   );
   assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '1');
   assert.match(h.runs[0].input, /exactly one \[Worker\] evidence comment/);
-  assert.match(h.runs[0].input, /complete \[Human Verification\] JSON guide/);
+  assert.match(h.runs[0].input, /exact canonical gate .*npm run pr-checks/);
   assert.equal(h.reviews[0].body.startsWith('[QA/SDET Review]'), true);
   assert.equal(h.reviews.length, 1);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';

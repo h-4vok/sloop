@@ -92,3 +92,23 @@ test('unsafe destination is rejected before filesystem effects', () => {
   const unsafe = { ...config, skills: { ...config.skills, scope: 'repository' } };
   assert.doesNotThrow(() => syncPrerequisites(root, unsafe, { runner }));
 });
+
+test('sync rejects non-GitHub remotes, skips noncanonical labels, and supports injected output', () => {
+  const { root, config } = fixture();
+  assert.throws(
+    () => syncPrerequisites(root, config, { runner: () => 'https://example.test/repo' }),
+    /not a GitHub repository/,
+  );
+  const output = [];
+  const custom = {
+    ...config,
+    github: { ...config.github, labels: { ...config.github.labels, priority: ['custom'] } },
+  };
+  syncPrerequisites(root, custom, {
+    runner: (file, args) =>
+      file === 'git' ? 'git@github.com:owner/repo.git' : args[1] === 'list' ? '[]' : '',
+    output: (message) => output.push(message),
+  });
+  assert.ok(output.some((message) => message.includes('Synchronized 4 labels')));
+  assert.ok(!output.some((message) => message.includes("Label 'custom' installed")));
+});

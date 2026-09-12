@@ -7,6 +7,7 @@ import {
   updateMetadata,
   hasReleaseMetadata,
   verifyReleaseState,
+  updateRepositoryMetadata,
 } from '../dist/release.js';
 
 test('parses exact release prefixes and rejects ambiguous titles', () => {
@@ -22,6 +23,7 @@ test('calculates all SemVer bumps including 0.x major', () => {
   assert.equal(nextVersion('0.9.9', 'major'), '1.0.0');
   assert.equal(nextVersion('1.2.3', 'major'), '2.0.0');
   assert.equal(nextVersion('1.2.3', 'none'), '1.2.3');
+  assert.throws(() => nextVersion('not-a-version', 'patch'), /not SemVer/);
 });
 
 test('updates package metadata and changelog with PR reference', () => {
@@ -61,6 +63,10 @@ test('recognizes metadata already committed after a partial publication push', (
     hasReleaseMetadata('{"version":"0.1.1"}', result.changelog, '0.1.2', '2026-09-10', 72),
     false,
   );
+  assert.equal(
+    hasReleaseMetadata('{"version":"0.1.2"}', '# Changelog\n', '0.1.2', '2026-09-10', 72),
+    false,
+  );
 });
 
 test('verifies an existing tag and release are idempotently consistent', () => {
@@ -71,6 +77,9 @@ test('verifies an existing tag and release are idempotently consistent', () => {
     releaseTarget: 'abc123',
   };
   assert.doesNotThrow(() => verifyReleaseState(state, 'v0.1.2', 'abc123'));
+  assert.doesNotThrow(() =>
+    verifyReleaseState({ ...state, releaseTarget: 'main' }, 'v0.1.2', 'abc123'),
+  );
   for (const changed of [
     { ...state, tagTarget: 'different' },
     { ...state, releaseTagName: 'v0.1.3' },
@@ -84,4 +93,17 @@ test('workflow verifies completed release state before changing metadata', () =>
   const publish = workflow.slice(workflow.indexOf('name: Publish release metadata'));
   assert.ok(publish.indexOf('gh release view') < publish.indexOf('updateRepositoryMetadata'));
   assert.match(publish, /without metadata mutation/);
+});
+
+test('repository metadata writer reads and updates only the release files through its file seam', () => {
+  const writes = new Map();
+  updateRepositoryMetadata('0.1.2', '2026-09-11', 95, {
+    readFile: (file) =>
+      file === 'package.json'
+        ? '{"name":"sloop","version":"0.1.1"}\n'
+        : '# Changelog\n\nprevious\n',
+    writeFile: (file, content) => writes.set(file, content),
+  });
+  assert.equal(JSON.parse(writes.get('package.json')).version, '0.1.2');
+  assert.match(writes.get('CHANGELOG.md'), /Merged pull request #95/);
 });

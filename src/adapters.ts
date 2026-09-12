@@ -9,12 +9,9 @@ import {
   checkoutWorkerBranch,
   defaultProcessAlive,
   dispatcherLockPath,
-  eligible,
   linkIssueToActiveRun,
   prepareWorkerBranch,
   prepareRecovery,
-  pullRequest,
-  pullRequestBody,
   readState,
   recoverStaleLock,
   resetRunState,
@@ -48,7 +45,10 @@ type AdapterExec = (
   options: AdapterExecOptions,
 ) => string | Buffer | void;
 
-const nativeAdapterExec: AdapterExec = (file, args, options) => execFileSync(file, args, options);
+// Keep the native implementation as an alias instead of a wrapper. Apart from
+// avoiding an unnecessary call frame, this makes the injected executor the only
+// observable seam: production still calls Node's execFileSync unchanged.
+const nativeAdapterExec: AdapterExec = execFileSync;
 
 export type ProductionAdapterOptions = Readonly<{
   execFileSync?: AdapterExec;
@@ -69,6 +69,89 @@ function adapterGh(
   } catch (error) {
     throw new CliFailure(5, error instanceof Error ? error.message : String(error));
   }
+}
+
+function adapterJson<T>(execute: AdapterExec, args: string[], root: string, repository: string): T {
+  try {
+    return JSON.parse(adapterGh(execute, args, root, repository)) as T;
+  } catch (error) {
+    if (error instanceof CliFailure) throw error;
+    throw new CliFailure(
+      5,
+      `gh returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function adapterIssues(
+  execute: AdapterExec,
+  root: string,
+  repository: string,
+  label: string,
+): import('./dispatcher.js').Issue[] {
+  return adapterJson<import('./dispatcher.js').Issue[]>(
+    execute,
+    [
+      'issue',
+      'list',
+      '--state',
+      'open',
+      '--label',
+      label,
+      '--json',
+      'number,title,body',
+      '--limit',
+      '100',
+    ],
+    root,
+    repository,
+  ).sort((a, b) => a.number - b.number);
+}
+
+function adapterPullRequest(
+  execute: AdapterExec,
+  pr: number,
+  root: string,
+  repository: string,
+): import('./dispatcher.js').PullRequest {
+  const raw = adapterJson<any>(
+    execute,
+    [
+      'pr',
+      'view',
+      String(pr),
+      '--json',
+      'number,state,baseRefName,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
+    ],
+    root,
+    repository,
+  );
+  return {
+    number: raw.number,
+    state: raw.state,
+    baseRefName: raw.baseRefName,
+    headRefName: raw.headRefName,
+    headRefOid: raw.headRefOid,
+    body: raw.body ?? '',
+    mergeStateStatus: raw.mergeStateStatus ?? raw.merge_state_status,
+    mergeable: raw.mergeable,
+    reviews: (raw.reviews ?? []).map((review: any) => ({
+      body: review.body,
+      state: review.state,
+      submittedAt: review.submittedAt ?? review.submitted_at,
+      commitId: review.commit?.oid ?? review.commitId ?? review.commit_id,
+    })),
+    comments: (raw.comments ?? []).map((comment: any) => ({
+      body: comment.body,
+      createdAt: comment.createdAt ?? comment.created_at,
+    })),
+    statusCheckRollup: (raw.statusCheckRollup ?? []).map((check: any) => ({
+      name: check.name ?? check.context ?? check.workflowName ?? '',
+      status: check.status ?? check.state,
+      conclusion: check.conclusion ?? check.state,
+      detailsUrl: check.detailsUrl ?? check.details_url,
+    })),
+  };
 }
 
 function publishGhBody(
@@ -108,7 +191,10 @@ function publishPullRequestBody(
  * requested external operation completed. The wizard invokes this only after
  * validation, confirmation, and atomic replacement of the YAML document.
  */
-export function productionConfigReconciler(_root: string): ConfigReconciler {
+export function productionConfigReconciler(
+  _root: string,
+  synchronize: typeof syncPrerequisites = syncPrerequisites,
+): ConfigReconciler {
   const reconciler = (async (
     _rootPath: string,
     kind: NonNullable<Parameters<ConfigReconciler>[1]>,
@@ -116,7 +202,7 @@ export function productionConfigReconciler(_root: string): ConfigReconciler {
     if (!kind || kind === 'none') return;
     if (kind === 'github' || kind === 'skills') {
       try {
-        syncPrerequisites(
+        synchronize(
           _rootPath,
           loadConfigText(readFileSync(join(_rootPath, 'sloop.config.yaml'), 'utf8')),
         );
@@ -243,7 +329,7 @@ export function productionDependencies(
     },
     list: () => {
       try {
-        return eligible(root, repository, validatedConfig.github.labels.eligible).map(
+        return adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible).map(
           ({ number, title }) => ({ number, title }),
         );
       } catch (error) {
@@ -269,7 +355,12 @@ export function productionDependencies(
     },
     eligible: () => {
       try {
-        const result = eligible(root, repository, validatedConfig.github.labels.eligible);
+        const result = adapterIssues(
+          execute,
+          root,
+          repository,
+          validatedConfig.github.labels.eligible,
+        );
         logGithub('response', 'eligible', result);
         return result;
       } catch (error) {
@@ -290,7 +381,7 @@ export function productionDependencies(
     pullRequest: (pr) => {
       logGithub('request', 'pullRequest', { pr });
       try {
-        const result = pullRequest(pr, root, repository);
+        const result = adapterPullRequest(execute, pr, root, repository);
         logGithub('response', 'pullRequest', result);
         return result;
       } catch (error) {
@@ -315,7 +406,13 @@ export function productionDependencies(
     pullRequestBody: (pr) => {
       logGithub('request', 'pullRequestBody', { pr });
       try {
-        const result = pullRequestBody(pr, root, repository);
+        const result =
+          adapterJson<{ body?: string }>(
+            execute,
+            ['pr', 'view', String(pr), '--json', 'body'],
+            root,
+            repository,
+          ).body ?? '';
         logGithub('response', 'pullRequestBody', result);
         return result;
       } catch (error) {
