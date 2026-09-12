@@ -215,7 +215,6 @@ export function readState(file = stateFile): State {
   }
 }
 
-/* c8 ignore start -- retry exhaustion depends on an OS-level rename race. */
 export function writeState(s: State, file = stateFile): void {
   mkdirSync(join(file, '..'), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
@@ -225,14 +224,12 @@ export function writeState(s: State, file = stateFile): void {
     try {
       renameSync(tmp, file);
       return;
-      /* c8 ignore next 3 -- rename retry failures require an OS-level race. */
     } catch (error) {
       lastError = error;
     }
   }
   throw lastError;
 }
-/* c8 ignore stop */
 
 export function dispatcherLockPath(rootPath: string): string {
   const key = createHash('sha256').update(rootPath).digest('hex').slice(0, 16);
@@ -529,7 +526,6 @@ export function runCommand(spec: Spec | undefined, cwd = defaultRoot): Promise<s
         process.stderr.write(s);
       });
       const timer = setTimeout(() => child.kill(), spec.timeoutMs);
-      /* c8 ignore next 4 -- launch errors are covered through the injected runner boundary. */
       child.on('error', (e) => {
         clearTimeout(timer);
         reject(new Error(`${spec.command} failed: ${e.message}`));
@@ -565,7 +561,6 @@ export function defaultProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-    /* c8 ignore next 2 -- process probes fail by platform-specific errno. */
   } catch {
     return false;
   }
@@ -776,7 +771,6 @@ function assertRemoteLeaseAvailable(projection: WorkflowProjection): void {
 }
 
 /** Claim/reconcile under the local mutex; remote markers are the authority. */
-/* c8 ignore start -- ambiguous remote outcomes are covered through adapter reconciliation tests. */
 function ensureRemoteClaim(
   cfg: Config,
   d: Deps,
@@ -818,7 +812,6 @@ function ensureRemoteClaim(
       );
       try {
         d.remote.publish(issue, refreshed);
-        /* c8 ignore next 3 -- ambiguous remote publish recovery is a network race seam. */
       } catch (error) {
         if (!d.remote.reconcile(issue, key)) throw error;
       }
@@ -828,7 +821,6 @@ function ensureRemoteClaim(
   }
   try {
     d.remote.claim(issue, key, manifest);
-    /* c8 ignore next 3 -- ambiguous remote claim recovery is a network race seam. */
   } catch (error) {
     if (!d.remote.reconcile(issue, key)) throw error;
   }
@@ -837,9 +829,7 @@ function ensureRemoteClaim(
   hydrateFromRemote(d, manifest);
   return manifest;
 }
-/* c8 ignore stop */
 
-/* c8 ignore start -- ambiguous remote outcomes are covered through adapter reconciliation tests. */
 function publishRemoteManifest(
   cfg: Config,
   d: Deps,
@@ -861,12 +851,10 @@ function publishRemoteManifest(
   );
   try {
     d.remote.publish(issue, manifest);
-    /* c8 ignore next 3 -- ambiguous remote publication is a network race seam. */
   } catch (error) {
     if (!d.remote.reconcile(issue, key)) throw error;
   }
 }
-/* c8 ignore stop */
 
 function publishCurrentRemoteManifest(
   cfg: Config,
@@ -922,15 +910,12 @@ function roleCommand(value: Command | undefined, issue: number, cfg: Config): Sp
   return { ...spec, logInvocation: cfg.logRoleInvocation !== false };
 }
 
-/* c8 ignore start -- compatibility parsing is exercised through complete Worker flows. */
 function workerMetadata(output: string, knownPr?: number): { pr?: number; base?: string } {
   const match = output.match(/^\s*WORKER_RESULT\s+pr=(\d+)\s+base=([^\s]+)\s*$/im);
   if (match) return { pr: Number(match[1]), base: match[2] };
-  /* c8 ignore next -- compatibility fallback for legacy Worker output. */
   if (knownPr) return { pr: knownPr, base: 'main' };
   throw new Error('Worker must exit 0 and print WORKER_RESULT pr=<number> base=main');
 }
-/* c8 ignore stop */
 
 function roundFromBody(body: string | undefined): number | undefined {
   const match = body?.match(/\bround=(\d+)\b/i);
@@ -969,7 +954,6 @@ type HumanReviewGuide = {
 
 const humanReviewGuideMarker = '<!-- sloop-dispatcher-human-review-guide -->';
 
-/* c8 ignore start -- malformed optional guide data is deliberately treated as absent. */
 function humanReviewGuide(comment: { body?: string } | undefined): HumanReviewGuide | undefined {
   const match = comment?.body?.match(/\[Human Verification\]\s*```json\s*([\s\S]*?)```/i);
   if (!match) return undefined;
@@ -998,12 +982,10 @@ function humanReviewGuide(comment: { body?: string } | undefined): HumanReviewGu
       limitations: typeof guide.limitations === 'string' ? [guide.limitations] : guide.limitations,
       checklist: typeof guide.checklist === 'string' ? [guide.checklist] : guide.checklist,
     } as HumanReviewGuide;
-    /* c8 ignore next 2 -- malformed human guide JSON is treated as absent. */
   } catch {
     return undefined;
   }
 }
-/* c8 ignore stop */
 
 function renderedHumanReviewGuide(guide: HumanReviewGuide, round: number, commit: string): string {
   return (
@@ -1112,7 +1094,6 @@ function checkFeedback(checks: Check[], required: string[]): string {
     .join('\n');
 }
 
-/* c8 ignore start -- polling timing is covered through deterministic dependency seams. */
 async function waitForCi(
   d: Deps,
   cfg: Config,
@@ -1161,7 +1142,6 @@ async function waitForCi(
     latest = await d.pullRequest(prNumber);
   }
 }
-/* c8 ignore stop */
 
 export function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: number): string {
   return (pr.reviews ?? [])
@@ -1359,7 +1339,6 @@ async function runReview(
   return { verdict: reviewVerdict(review.body), body: review.body, evidence: latest };
 }
 
-/* c8 ignore start -- stream and failure behavior is covered by the runner/logging boundaries. */
 async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string> {
   const context = d.runContext?.() ?? { originalRepository: d.root, executionRoot: d.root };
   let stdout = '',
@@ -1416,7 +1395,6 @@ async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string
     throw error;
   }
 }
-/* c8 ignore stop */
 
 function effectiveMaxRounds(cfg: Config, state: State): number {
   return (cfg.maxReviewRounds ?? 10) + (state.reviewCap?.additionalRounds ?? 0);
@@ -1467,7 +1445,6 @@ async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: numb
   if (current.pr) await d.prComment(current.pr, notice);
 }
 
-/* c8 ignore start -- orchestration branches are asserted through dispatch state transitions. */
 async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
   let current = d.load();
   let round = current.reviewRound ?? 1;
@@ -1553,7 +1530,6 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
     return;
   }
 }
-/* c8 ignore stop */
 
 export function prepareRecovery(
   state: State,
@@ -1836,7 +1812,6 @@ export function linkIssueToActiveRun(
   commentPullRequestOnce(current.pr, note, cwd, repository, host);
 }
 
-/* c8 ignore start -- reclaim races require mutually exclusive filesystem owners. */
 export function acquire(d: Deps, ttl: number): string {
   const token = randomUUID();
   const lockOwner = { pid: d.pid(), createdAt: d.now(), token };
@@ -1875,7 +1850,6 @@ export function acquire(d: Deps, ttl: number): string {
     }
   throw new CliFailure(3, 'another dispatcher is already running');
 }
-/* c8 ignore stop */
 
 export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   if (d.remoteRequired && !d.remote)
@@ -1989,7 +1963,6 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
             if (claimed) publishRemoteManifest(cfg, d, issue.number, 'working', claimed);
           } else {
             let persisted = d.load().branch ?? remoteManifest?.branch;
-            /* c8 ignore start -- pending-branch crash recovery is covered by remote integration tests. */
             if (!persisted || persisted === 'pending' || remoteManifest?.branch === 'pending') {
               const existingPr = d.load().pr ?? remoteManifest?.pr;
               if (existingPr) {
@@ -2005,7 +1978,6 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
                 }
               }
             }
-            /* c8 ignore stop */
             const recovered = d.workspaceAdapter?.recover(
               issue.number,
               d.load().workerRunId ?? remoteManifest?.runId ?? '',
@@ -2146,7 +2118,6 @@ export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Pro
       );
       return 0;
     }
-    /* c8 ignore next 4 -- runtime wiring delegates directly to the separately covered dispatcher. */
     case 'workflow': {
       const cfg = d.loadConfig();
       return dispatch(cfg, d);

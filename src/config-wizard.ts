@@ -130,11 +130,9 @@ async function directInit(
         loadConfigText(migrated);
         atomicWrite(file, migrated);
         console.log(`Migrated legacy skill names in ${file}.`);
-        /* c8 ignore start -- the fixed legacy-name migration can only produce valid YAML. */
       } catch (e) {
         return fail(String(e instanceof Error ? e.message : e));
       }
-      /* c8 ignore stop */
     } else console.log(`${file} already exists; leaving it unchanged.`);
     return 0;
   }
@@ -142,7 +140,6 @@ async function directInit(
   try {
     atomicWrite(file, canonicalConfigYaml());
     console.log(`Created ${file} with default configuration.`);
-    /* c8 ignore start -- this branch requires the process-owned interactive stdio. */
     if (
       forceSync ||
       (io.input.isTTY &&
@@ -160,13 +157,10 @@ async function directInit(
       console.log(
         'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
       );
-    /* c8 ignore stop */
     return 0;
-    /* c8 ignore start -- atomic writer failures are platform/filesystem faults. */
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
   } finally {
-    /* c8 ignore stop */
     rl.close();
   }
 }
@@ -186,11 +180,9 @@ function show(file: string, path?: string): number {
       console.log(JSON.stringify(configValue(cfg, path)));
     }
     return 0;
-    /* c8 ignore start -- show only reads the already validated local YAML. */
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
   }
-  /* c8 ignore stop */
 }
 async function setter(
   root: string,
@@ -263,12 +255,10 @@ async function wizard(
   try {
     for (const path of configPaths(scope)) {
       const field = getConfigField(path)!;
-      /* c8 ignore next 4 -- canonical fields are rejected before interactive mutation. */
       if (CANONICAL.has(path)) {
         console.log(`${path}: canonical read-only (see #55)`);
         continue;
       }
-      /* c8 ignore start -- inactive dependent prompts are an explanatory UI-only path. */
       if (field.dependencies.length && !dependenciesSatisfied(current, field)) {
         const previouslyAskedDependency = field.dependencies.some((dependency) =>
           asked.has(dependency.split('=', 1)[0]),
@@ -294,7 +284,6 @@ async function wizard(
                   throw new Error(`${path} requires companion path ${dependencyPath}=${expected}`);
                 value = parseWizardValue(dependencyField, answer.trim());
                 break;
-                /* c8 ignore next 4 -- dependency parsing shares the separately tested parser. */
               } catch (error) {
                 console.error(String(error instanceof Error ? error.message : error));
                 answer = await askField(rl, dependencyField, current, dependencyContext, useColor);
@@ -310,7 +299,6 @@ async function wizard(
         if (!dependenciesSatisfied(current, field))
           throw new Error(`${path} requires companion path ${field.dependencies.join(', ')}`);
       }
-      /* c8 ignore stop */
       const old = configValue(current, path);
       let answer = await askField(rl, field, current, undefined, useColor);
       asked.add(path);
@@ -320,7 +308,6 @@ async function wizard(
         try {
           value = parseWizardValue(field, answer.trim());
           break;
-          /* c8 ignore next 4 -- field parsing shares the separately tested parser. */
         } catch (error) {
           console.error(String(error instanceof Error ? error.message : error));
           answer = await askField(rl, field, current, undefined, useColor);
@@ -330,15 +317,12 @@ async function wizard(
       changed.push(`${path}: ${display(old)} -> ${display(value)}`);
     }
     loadConfigText(next);
-    /* c8 ignore start -- reconciler dispatch is covered through scalar setter contracts. */
     if (sync === '--sync') {
       const kinds = new Set(
         changed.map((line) => getConfigField(line.split(':', 1)[0]!)?.requiredReconciler),
       );
-      /* c8 ignore next -- duplicate preflight dispatch is covered through scalar setters. */
       for (const kind of kinds) if (kind && kind !== 'none') reconciler.preflight?.(root, kind);
     }
-    /* c8 ignore stop */
     console.log(
       changed.length
         ? `Preview\n${changed.join('\n')}\nConfirm changes? [y/N]`
@@ -353,13 +337,11 @@ async function wizard(
     atomicWrite(file, next);
     try {
       if (gitignore) atomicWrite(gitignore.file, gitignore.content);
-      /* c8 ignore start -- rollback requires an OS-level failure between two atomic writes. */
     } catch (error) {
       if (before === undefined) rmSync(file, { force: true });
       else atomicWrite(file, before);
       throw error;
     }
-    /* c8 ignore stop */
     if (sync === '--sync') {
       const kinds = new Set(
         changed.map((line) => getConfigField(line.split(':', 1)[0]!)?.requiredReconciler),
@@ -367,7 +349,6 @@ async function wizard(
       for (const kind of kinds) if (kind && kind !== 'none') await reconciler(root, kind);
       console.log('Synchronization completed after atomic configuration write.');
     }
-    /* c8 ignore start -- optional follow-up is exclusive to process-owned interactive stdio. */
     if (init && sync !== '--sync' && io.input === input) {
       const answer = (await rl.question('Synchronize GitHub labels and Sloop skills now? [Y/n] '))
         .trim()
@@ -380,14 +361,11 @@ async function wizard(
           'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
         );
     }
-    /* c8 ignore stop */
     console.log('Configuration written atomically.');
     return 0;
-    /* c8 ignore start -- wizard failures are asserted at their validation sites. */
   } catch (e) {
     return fail(String(e instanceof Error ? e.message : e));
   } finally {
-    /* c8 ignore stop */
     rl.close();
   }
 }
@@ -414,7 +392,6 @@ function paint(
   enabled: boolean,
 ): string {
   if (!enabled) return text;
-  /* c8 ignore next 2 -- ANSI output requires the process-owned TTY. */
   const codes = { cyan: 36, yellow: 33, green: 32, red: 31, dim: 2 } as const;
   return `\u001b[${codes[color]}m${text}\u001b[0m`;
 }
