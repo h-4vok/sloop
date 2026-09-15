@@ -11,6 +11,14 @@ Before reporting `ready_for_review`, inspect the PR mergeability against `main`.
 
 Review routing: recognize only exact leading markers `[Staff Review]` and `[QA/SDET Review]` as review feedback. Worker status/evidence comments begin `[Worker]` and are never feedback. Reply in the same thread, preserving IDs (`S<n>`/`Q<n>`): `- [Worker] round=<N> ref=<S<n>|Q<n>> status=<fixed|answered|not_fixed> — <response> (file:<line> if applicable)`. State changed files/commit and verification when fixed. Resolve only fixed or answered findings; never resolve approvals or evidence. Finish with `[Worker] round=<N> status=<ready_for_review|blocked>` plus tests and residual risk. Ignore unmarked comments unless a human explicitly directs otherwise.
 
+## Mandatory plan-first iteration
+
+At the start of every Worker iteration, create a new executable plan before implementation. Use the Dispatcher-provided logical round number (never HEAD) and write `.sloop/worker-plans/issue-<issue>-round-<round>--yyyymmdd-hhmmss.md` with 24-hour time and second precision. Never overwrite an earlier plan; if the exact filename exists, append a deterministic collision-safe suffix (for example `--2`, then the next available integer). The plan contains only executable actions and verification, not the full historical context.
+
+The plan must identify the issue and iteration, existing commits/PR/work, and the current steer plus all applicable QA/Staff feedback. Save it, immediately read that exact file, and execute it in the same Worker cycle. Do not return to the Dispatcher or wait for user/human approval between planning and implementation. Routine clarification questions are not allowed; report only material blockers.
+
+At completion, append (never overwrite) the round context to `.sloop/worker-rounds/issue-<issue>--worker-rounds.md`. The entry must have a `#` heading naming the exact plan file and include issue/round, prior work, current steer and QA/Staff feedback, result, and deviations. If implementation facts require deviation from the plan, record the deviation and rationale there. Plans and round logs are local debugging artifacts: do not commit or publish them. This behavior requires no Dispatcher prompt, CLI, or runtime code change.
+
 ## Required response shape
 
 Make the final Worker response auditable point by point. If QA or Staff findings exist, answer each finding in order. If no review findings exist, answer each issue acceptance criterion in order instead. Do not compress unrelated work into one paragraph. Always include a `HITL steer` entry: explain what changed because of a `resolve-review-cap` steer, or write `HITL steer: none supplied`.
