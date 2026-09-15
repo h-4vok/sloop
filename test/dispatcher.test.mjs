@@ -54,6 +54,30 @@ test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
 });
 
+test('public command and commit helpers cover optional and invalid inputs', async () => {
+  assert.equal(command(undefined, 1), undefined);
+  assert.deepEqual(command(['node', '-e', ''], 1), {
+    command: 'node', args: ['-e', ''], timeoutMs: 120000, retries: 0, logInvocation: undefined,
+  });
+  assert.deepEqual(command({ command: 'node', args: [] }, 1), {
+    command: 'node', args: [], timeoutMs: 120000, retries: 0, logInvocation: undefined,
+  });
+  assert.throws(() => command({ command: 'node && bad', args: [] }, 1), /shell operators/);
+  assert.throws(() => command({ command: 'node', args: ['ok', 1] }, 1), /string array/);
+  assert.equal(await runCommand(undefined), '');
+  assert.equal(hasCommit(undefined, undefined), true);
+  assert.equal(hasCommit(undefined, 'abc'), false);
+  assert.equal(hasCommit('not evidence', 'abc'), false);
+  assert.equal(hasCommit('commit=abc\n', 'abcdef'), true);
+  assert.equal(hasCommit('commit=abcdef', 'abc'), false);
+  assert.equal(withIssueClosingReference('Closes #2\nBody', 2, [2, 4]), 'Body\n\nCloses #2\nCloses #4');
+  assert.equal(withIssueClosingReference('Body', 2), 'Body\n\nCloses #2');
+  assert.equal(withIssueClosingReference('', 7), 'Closes #7');
+  assert.throws(() => maxRoundsForUserBudget(-1, 1, 0), /base review-round/);
+  assert.throws(() => maxRoundsForUserBudget(1, 0, 0), /current review round/);
+  assert.throws(() => maxRoundsForUserBudget(1, 1, -1), /additional review rounds/);
+});
+
 test('remaining public failure boundaries are deterministic', async () => {
   const root = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-boundaries-'));
   assert.equal(recoverStaleLock(root), 'No dispatcher lock found.');

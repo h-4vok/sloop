@@ -41,6 +41,25 @@ function scriptedIO(answers, end = true) {
   return { input, output, text: () => captured };
 }
 
+test('config command rejects invalid flag combinations and unknown paths without TTY', async () => {
+  const { root } = fixture();
+  const io = { input: new PassThrough(), output: new Writable({ write(_c, _e, cb) { cb(); } }) };
+  assert.equal(await runConfigCommand(root, ['--sync', '--no-sync'], undefined, io), 2);
+  assert.equal(await runConfigCommand(root, ['schedule.cron'], undefined, io), 2);
+  assert.equal(await runConfigCommand(root, ['--wizard'], undefined, io), 2);
+});
+
+test('non-interactive init supports forced synchronization success and failure', async () => {
+  const first = mkdtempSync(join(tmpdir(), 'sloop-init-sync-'));
+  const calls = [];
+  const io = { input: new PassThrough(), output: new Writable({ write(_c, _e, cb) { cb(); } }) };
+  assert.equal(await runConfigCommand(first, ['--init', '--force'], async (_root, kind) => calls.push(kind), io), 0);
+  assert.deepEqual(calls, ['github']);
+  const second = mkdtempSync(join(tmpdir(), 'sloop-init-sync-fail-'));
+  assert.equal(await runConfigCommand(second, ['--init', '--force'], async () => { throw new Error('adapter down'); }, io), 2);
+  assert.equal(existsSync(join(second, 'sloop.config.yaml')), true);
+});
+
 test('default reconciler fails visibly for mutation-capable integrations', async () => {
   await assert.rejects(() => reconcileConfig('.', 'github'), /No production reconciler/);
   assert.throws(() => reconcileConfig.preflight('.', 'skills'), /No production reconciler/);
