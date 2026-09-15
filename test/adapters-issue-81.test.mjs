@@ -4,10 +4,10 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { canonicalConfigYaml, loadConfigText } from '../dist/config.js';
-import { productionConfigReconciler, productionDependencies } from '../dist/adapters.js';
-import { CliFailure } from '../dist/dispatcher.js';
-import { runManifestMarker } from '../dist/remote-state.js';
+import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
+import { productionConfigReconciler, productionDependencies } from '../src/adapters.js';
+import { CliFailure } from '../src/dispatcher.js';
+import { runManifestMarker } from '../src/remote-state.js';
 
 function setup(execute) {
   const root = mkdtempSync(join(tmpdir(), 'sloop-81-adapters-'));

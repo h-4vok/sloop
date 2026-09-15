@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AgentContractError, validateAgentEnvelope } from '../dist/agent-runner.js';
+import { AgentContractError, validateAgentEnvelope } from '../src/agent-runner.js';
 import {
   REMOTE_PROTOCOL,
   artifactKey,
@@ -10,7 +10,7 @@ import {
   reconcileArtifact,
   runManifestMarker,
   validateRunManifest,
-} from '../dist/remote-state.js';
+} from '../src/remote-state.js';
 
 const context = { run: 'r', issue: 7, pr: 8, round: 1, sha: 'abcdef1', cursor: 'c' };
 const guide = {

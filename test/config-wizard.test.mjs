@@ -4,12 +4,12 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PassThrough, Writable } from 'node:stream';
-import { canonicalConfigYaml } from '../dist/config.js';
-import { configPaths } from '../dist/config.js';
-import { reconcileConfig, runConfigCommand } from '../dist/config-wizard.js';
-import { getConfigField } from '../dist/config.js';
-import { productionConfigReconciler } from '../dist/adapters.js';
-import { parseCliCommand } from '../dist/runtime.js';
+import { canonicalConfigYaml } from '../src/config.js';
+import { configPaths } from '../src/config.js';
+import { reconcileConfig, runConfigCommand } from '../src/config-wizard.js';
+import { getConfigField } from '../src/config.js';
+import { productionConfigReconciler } from '../src/adapters.js';
+import { parseCliCommand } from '../src/runtime.js';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'sloop-wizard-'));

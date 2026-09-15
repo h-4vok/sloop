@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const processModule = () => import('../dist/process.js');
+const processModule = () => import('../src/process.ts');
 
 test('resolveExecutable keeps explicit paths and extensions unchanged', async () => {
   const { resolveExecutable } = await processModule();

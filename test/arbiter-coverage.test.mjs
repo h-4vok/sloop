@@ -15,7 +15,7 @@ import {
   isReviewCurrent,
   restoreSession,
   runLoggedProcess,
-} from '../dist/arbiter.js';
+} from '../src/arbiter.js';
 
 const tempFile = () => join(mkdtempSync(join(tmpdir(), 'sloop-arbiter-')), 'events.jsonl');
 

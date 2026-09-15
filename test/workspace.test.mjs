@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const workspace = () => import('../dist/workspace.js');
+const workspace = () => import('../src/workspace.ts');
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 const repo = () => {
   const root = mkdtempSync(join(tmpdir(), 'sloop-workspace-'));
@@ -163,12 +163,31 @@ test('worktree parser ignores incomplete records and clear preserves unsafe regi
   const stateFile = join(root, '.sloop', 'state.json');
   const outside = join(tmpdir(), 'sloop-outside-target');
   mkdirSync(join(root, '.sloop'), { recursive: true });
-  writeFileSync(stateFile, JSON.stringify({
-    workspaces: [
-      { repositoryRoot: root, executionRoot: outside, branch: 'other', headSha: 'x', baseSha: 'x', worktreeRoot: root, ownership: { runId: 'x', issue: 1, protocol: 'wrong' } },
-      { repositoryRoot: root, executionRoot: join(root, 'missing'), branch: 'other', headSha: 'x', baseSha: 'x', worktreeRoot: root, ownership: { runId: 'x', issue: 2, protocol: 'sloop-workspace-v1' } },
-    ],
-  }));
+  writeFileSync(
+    stateFile,
+    JSON.stringify({
+      workspaces: [
+        {
+          repositoryRoot: root,
+          executionRoot: outside,
+          branch: 'other',
+          headSha: 'x',
+          baseSha: 'x',
+          worktreeRoot: root,
+          ownership: { runId: 'x', issue: 1, protocol: 'wrong' },
+        },
+        {
+          repositoryRoot: root,
+          executionRoot: join(root, 'missing'),
+          branch: 'other',
+          headSha: 'x',
+          baseSha: 'x',
+          worktreeRoot: root,
+          ownership: { runId: 'x', issue: 2, protocol: 'sloop-workspace-v1' },
+        },
+      ],
+    }),
+  );
   clearWorkspaces(root, stateFile);
   assert.equal(listWorkspaces(root, stateFile).length, 2);
 });

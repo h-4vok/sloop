@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { CliFailure } from '../dist/dispatcher.js';
-import { emitDispatcherFailure, HELP, requireSupportedNode, runCli } from '../dist/cli.js';
+import { CliFailure } from '../src/dispatcher.js';
+import { emitDispatcherFailure, HELP, requireSupportedNode, runCli } from '../src/cli.js';
 
 const cli = resolve('dist/cli.js');
 
@@ -66,6 +66,28 @@ test('unknown argv fails before dispatcher loading or preflight', async () => {
   }
   assert.deepEqual(output.stdout, []);
   assert.deepEqual(output.stderr, []);
+});
+
+test('runCli emits the public node-version failure through injected runtime seams', async () => {
+  let received;
+  process.exitCode = undefined;
+  await runCli(['--help'], 'v20.0.0', {
+    runtime: {
+      emitNodeVersionFailure: (args, version) => {
+        received = [args, version];
+        return 7;
+      },
+      emitUsageFailure: assert.fail,
+      parseCliCommand: assert.fail,
+      runDispatcherPreflight: assert.fail,
+      runReadOnlyCommand: assert.fail,
+    },
+    dispatcher: { runDispatcherCli: assert.fail },
+    adapters: { productionDependencies: assert.fail },
+  });
+  assert.deepEqual(received, [['--help'], 'v20.0.0']);
+  assert.equal(process.exitCode, 7);
+  process.exitCode = undefined;
 });
 
 test('CLI reports non-Error usage failures and fallback help', async () => {

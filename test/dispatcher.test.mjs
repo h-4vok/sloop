@@ -44,8 +44,8 @@ import {
   commentPullRequest,
   writeState,
   maxRoundsForUserBudget,
-} from '../dist/dispatcher.js';
-import { parseDispatcherCommand } from '../dist/runtime.js';
+} from '../src/dispatcher.js';
+import { parseDispatcherCommand } from '../src/runtime.js';
 
 test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);

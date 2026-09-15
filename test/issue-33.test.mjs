@@ -12,11 +12,11 @@ import {
   reconcileArtifact,
   leaseIsActive,
 } from '../dist/remote-state.js';
-import { dispatch, CliFailure } from '../dist/dispatcher.js';
-import { RunLogger, runDirectory, applyRunRetention } from '../dist/run-log.js';
-import { allowlistedPublication, publicationBody } from '../dist/publication.js';
-import { withEphemeralMutex, withEphemeralMutexAsync } from '../dist/mutex.js';
-import { command, runCommand } from '../dist/dispatcher.js';
+import { dispatch, CliFailure } from '../src/dispatcher.js';
+import { RunLogger, runDirectory, applyRunRetention } from '../src/run-log.js';
+import { allowlistedPublication, publicationBody } from '../src/publication.js';
+import { withEphemeralMutex, withEphemeralMutexAsync } from '../src/mutex.js';
+import { command, runCommand } from '../src/dispatcher.js';
 
 test('remote projection is deterministic and ignores unrelated markers', () => {
   const s = { issue: 33, markers: ['other/In Progress'], labels: ['In Progress'] };

@@ -8,7 +8,7 @@ import {
   hasReleaseMetadata,
   verifyReleaseState,
   updateRepositoryMetadata,
-} from '../dist/release.js';
+} from '../src/release.js';
 
 test('parses exact release prefixes and rejects ambiguous titles', () => {
   assert.equal(parseReleaseKind('[patch] fix'), 'patch');

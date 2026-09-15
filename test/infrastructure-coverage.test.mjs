@@ -4,12 +4,12 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { productionConfigReconciler, productionDependencies } from '../dist/adapters.js';
-import { canonicalConfigYaml, loadConfigText } from '../dist/config.js';
-import { CliFailure } from '../dist/dispatcher.js';
-import { withEphemeralMutex, withEphemeralMutexAsync } from '../dist/mutex.js';
-import { RunLogger, applyRunRetention, runDirectory } from '../dist/run-log.js';
-import { runManifestMarker } from '../dist/remote-state.js';
+import { productionConfigReconciler, productionDependencies } from '../src/adapters.js';
+import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
+import { CliFailure } from '../src/dispatcher.js';
+import { withEphemeralMutex, withEphemeralMutexAsync } from '../src/mutex.js';
+import { RunLogger, applyRunRetention, runDirectory } from '../src/run-log.js';
+import { runManifestMarker } from '../src/remote-state.js';
 
 const root = (prefix) => mkdtempSync(join(tmpdir(), prefix));
 const manifest = (overrides = {}) => ({

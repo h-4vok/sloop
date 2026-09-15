@@ -5,13 +5,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
-import {
-  canonicalConfigYaml,
-  configPaths,
-  getConfigField,
-  loadConfigText,
-} from '../dist/config.js';
-import { runConfigCommand } from '../dist/config-wizard.js';
+import { canonicalConfigYaml, configPaths, getConfigField, loadConfigText } from '../src/config.js';
+import { runConfigCommand } from '../src/config-wizard.js';
 
 const repoRoot = join(import.meta.dirname, '..');
 const cli = join(repoRoot, 'dist', 'cli.js');

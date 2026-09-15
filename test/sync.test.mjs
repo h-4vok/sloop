@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { canonicalConfigYaml, loadConfigText } from '../dist/config.js';
-import { syncPrerequisites, migrateSkillNames } from '../dist/sync.js';
+import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
+import { syncPrerequisites, migrateSkillNames } from '../src/sync.js';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'sloop-sync-'));
@@ -130,9 +130,11 @@ test('sync preserves existing labels and reports malformed label payloads', () =
   assert.ok(output.some((message) => message.includes('already exists')));
 
   assert.throws(
-    () => syncPrerequisites(root, config, {
-      runner: (file, args) => (file === 'git' ? 'https://github.com/example/repo' : args[1] === 'list' ? '{' : ''),
-    }),
+    () =>
+      syncPrerequisites(root, config, {
+        runner: (file, args) =>
+          file === 'git' ? 'https://github.com/example/repo' : args[1] === 'list' ? '{' : '',
+      }),
     /Unexpected end|JSON/,
   );
 });

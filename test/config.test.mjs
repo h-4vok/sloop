@@ -18,7 +18,7 @@ import {
   getConfigField,
   parseConfig,
   parseConfigValue,
-} from '../dist/config.js';
+} from '../src/config.js';
 
 const canonical = canonicalConfigYaml();
 
@@ -550,12 +550,26 @@ test('public config helpers validate every scalar family and structural invarian
   }
 });
 
+test('secret-shaped unknown keys and malformed YAML produce precise diagnostics', () => {
+  assert.throws(
+    () => parseConfig({ schemaVersion: 1, token: 'secret' }),
+    /secrets are not accepted/,
+  );
+  assert.throws(
+    () => updateConfigText('workflow: [', 'workflow.humanMergeWait', false),
+    /invalid YAML/,
+  );
+});
+
 test('boolean registry fields round-trip through canonical text updates', () => {
   const source = canonicalConfigYaml();
   const updated = updateConfigText(source, 'workflow.humanMergeWait', false);
   const config = loadConfigText(updated);
   assert.equal(config.workflow.humanMergeWait, false);
-  assert.equal(getConfigField('workflow.humanMergeWait').explanation, 'Wait for a human to merge an approved PR.');
+  assert.equal(
+    getConfigField('workflow.humanMergeWait').explanation,
+    'Wait for a human to merge an approved PR.',
+  );
 });
 
 test('config file existence is a direct filesystem contract', () => {

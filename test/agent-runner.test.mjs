@@ -9,7 +9,7 @@ import {
   ArbitraryCommandRunner,
   CodexAgentRunner,
   validateAgentEnvelope,
-} from '../dist/agent-runner.js';
+} from '../src/agent-runner.js';
 
 const context = { run: 'run-36', issue: 36, pr: 77, round: 2, sha: 'abc123', cursor: 'cursor' };
 const guide = {
