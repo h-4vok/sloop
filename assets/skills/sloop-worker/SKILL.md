@@ -17,7 +17,7 @@ At the start of every Worker iteration, create a new executable plan before impl
 
 The plan must identify the issue and iteration, existing commits/PR/work, and the current steer plus all applicable QA/Staff feedback. Save it, immediately read that exact file, and execute it in the same Worker cycle. Do not return to the Dispatcher or wait for user/human approval between planning and implementation. Routine clarification questions are not allowed; report only material blockers.
 
-At completion, append (never overwrite) the round context to `.sloop/worker-rounds/issue-<issue>--worker-rounds.md`. The entry must have a `#` heading naming the exact plan file and include issue/round, prior work, current steer and QA/Staff feedback, result, and deviations. If implementation facts require deviation from the plan, record the deviation and rationale there. Plans and round logs are local debugging artifacts: do not commit or publish them. This behavior requires no Dispatcher prompt, CLI, or runtime code change.
+The Dispatcher creates and appends the round context to `.sloop/worker-rounds/issue-<issue>--worker-rounds.md` before invoking the Worker, because it owns the complete round context. The Worker must not create or overwrite that file. Plans and round logs are local debugging artifacts: do not commit or publish them.
 
 ## Required response shape
 

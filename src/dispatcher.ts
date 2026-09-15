@@ -1,6 +1,14 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RunLogger, applyRunRetention, runDirectory } from './run-log.js';
@@ -885,6 +893,32 @@ function rolePrompt(
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
 }
 
+function appendWorkerRoundContext(
+  root: string,
+  issue: number,
+  round: number,
+  pr: number | undefined,
+  context: string,
+  feedback: string,
+  steer: string | undefined,
+): void {
+  const directory = join(root, '.sloop', 'worker-rounds');
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, `issue-${issue}--worker-rounds.md`);
+  const entry = [
+    `# Dispatcher context for issue-${issue}-round-${round}`,
+    '',
+    `- Issue: #${issue}; round: ${round}; PR: ${pr ? `#${pr}` : 'none'}`,
+    `- Prior work/context: ${context || '(none)'}`,
+    `- HITL steer: ${steer || 'none supplied'}`,
+    `- QA/Staff/CI feedback: ${feedback || '(none)'}`,
+    '- Result: Worker execution started; completion evidence is in the run log.',
+    '- Deviations: none recorded at dispatch time.',
+    '',
+  ].join('\n');
+  appendFileSync(file, `${entry}\n`, 'utf8');
+}
+
 function roleCommand(value: Command | undefined, issue: number, cfg: Config): Spec | undefined {
   const spec = command(value, issue);
   if (!spec) return undefined;
@@ -1208,6 +1242,15 @@ async function runWorker(
     '',
     issue.number,
     d.load().linkedClosingIssues ?? [],
+  );
+  appendWorkerRoundContext(
+    d.root,
+    issue.number,
+    round,
+    pr,
+    context,
+    feedback,
+    d.load().reviewCap?.steer,
   );
   logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
   const output = await runLogged(
@@ -1634,9 +1677,18 @@ export function resetRunState(state: State, processAlive = defaultProcessAlive):
 }
 
 function activeRunForHitl(state: State): Required<Pick<State, 'issue' | 'pr'>> & State {
-  if (state.status !== 'review_cap_pending' || !state.issue || !state.pr)
+  const staleWorker =
+    isWorkerStatus(state.status) &&
+    typeof state.workerPid === 'number' &&
+    !defaultProcessAlive(state.workerPid);
+  if (
+    (!['review_cap_pending', 'worker_recovery_pending'].includes(state.status ?? '') &&
+      !staleWorker) ||
+    !state.issue ||
+    !state.pr
+  )
     throw new Error(
-      'HITL resolution requires one active run in review_cap_pending with an existing PR',
+      'HITL resolution requires one active review-cap/recovery run, or a stale Worker, with an existing PR',
     );
   return state as Required<Pick<State, 'issue' | 'pr'>> & State;
 }
@@ -1770,6 +1822,7 @@ export function resolveReviewCap(
     ...current,
     reviewCap: cap,
     status: additionalRounds > 0 ? 'worker_recovery_pending' : 'ready_for_human_merge',
+    workerPid: additionalRounds > 0 ? undefined : current.workerPid,
     lastError: undefined,
     lastErrorVerbose: undefined,
     updatedAt: Date.now(),
