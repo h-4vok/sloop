@@ -11,7 +11,7 @@ import {
   validateRunManifest,
   reconcileArtifact,
   leaseIsActive,
-} from '../dist/remote-state.js';
+} from '../src/remote-state.js';
 import { dispatch, CliFailure } from '../src/dispatcher.js';
 import { RunLogger, runDirectory, applyRunRetention } from '../src/run-log.js';
 import { allowlistedPublication, publicationBody } from '../src/publication.js';
