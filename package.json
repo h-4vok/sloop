@@ -18,7 +18,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "npm run build && tsx --test \"test/*.test.mjs\"",
+    "test": "npm run build && tsx --test --test-concurrency=1 \"test/*.test.mjs\"",
     "coverage": "c8 --all --include=src --exclude=src/core/boundaries.ts --check-coverage --statements 98 --functions 100 --lines 98 --branches 80 --reporter=text --reporter=text-summary --reporter=lcovonly npm run test",
     "pr-checks": "npm run format:check && npm run typecheck && npm test && npm run coverage && npm run build",
     "check": "npm test",
