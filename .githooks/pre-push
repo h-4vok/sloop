@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+echo "[sloop] running npm run pr-checks before push"
+npm run pr-checks

@@ -29,7 +29,8 @@
     "help": "node dist/cli.js --help",
     "version": "node dist/cli.js --version",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "node scripts/install-git-hooks.mjs"
   },
   "dependencies": {
     "@openai/codex": "^0.154.0",

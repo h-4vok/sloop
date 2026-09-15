@@ -12,6 +12,15 @@ Treat `.codex/skills/` as a deployed working copy; do not edit those files direc
 
 ## Unit-test standards
 
+Before finishing any code task, run the complete repository gate:
+
+```text
+npm run pr-checks
+```
+
+Do not report a code task as complete while this gate is failing. If it fails,
+fix the issue or report the exact blocker and command output.
+
 All unit tests must be:
 
 1. Fast: run without unnecessary I/O, sleeps, or network calls.
