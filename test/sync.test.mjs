@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { canonicalConfigYaml, loadConfigText } from '../dist/config.js';
-import { syncPrerequisites, migrateSkillNames } from '../dist/sync.js';
+import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
+import { syncPrerequisites, migrateSkillNames } from '../src/sync.js';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'sloop-sync-'));
@@ -91,4 +91,50 @@ test('unsafe destination is rejected before filesystem effects', () => {
   const { root, config, runner } = fixture();
   const unsafe = { ...config, skills: { ...config.skills, scope: 'repository' } };
   assert.doesNotThrow(() => syncPrerequisites(root, unsafe, { runner }));
+});
+
+test('sync rejects non-GitHub remotes, skips noncanonical labels, and supports injected output', () => {
+  const { root, config } = fixture();
+  assert.throws(
+    () => syncPrerequisites(root, config, { runner: () => 'https://example.test/repo' }),
+    /not a GitHub repository/,
+  );
+  const output = [];
+  const custom = {
+    ...config,
+    github: { ...config.github, labels: { ...config.github.labels, priority: ['custom'] } },
+  };
+  syncPrerequisites(root, custom, {
+    runner: (file, args) =>
+      file === 'git' ? 'git@github.com:owner/repo.git' : args[1] === 'list' ? '[]' : '',
+    output: (message) => output.push(message),
+  });
+  assert.ok(output.some((message) => message.includes('Synchronized 4 labels')));
+  assert.ok(!output.some((message) => message.includes("Label 'custom' installed")));
+});
+
+test('sync preserves existing labels and reports malformed label payloads', () => {
+  const { root, config } = fixture();
+  const output = [];
+  syncPrerequisites(root, config, {
+    runner: (file, args) => {
+      if (file === 'git') return 'https://github.com/example/repo';
+      if (args[1] === 'list') {
+        const name = args[args.indexOf('--search') + 1];
+        return name === 'Automation Ready' ? JSON.stringify([{ name }]) : '[]';
+      }
+      return '';
+    },
+    output: (message) => output.push(message),
+  });
+  assert.ok(output.some((message) => message.includes('already exists')));
+
+  assert.throws(
+    () =>
+      syncPrerequisites(root, config, {
+        runner: (file, args) =>
+          file === 'git' ? 'https://github.com/example/repo' : args[1] === 'list' ? '{' : '',
+      }),
+    /Unexpected end|JSON/,
+  );
 });

@@ -18,11 +18,11 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "npm run build && node --test \"test/*.test.mjs\"",
-    "coverage": "npm run build && c8 --all --include=dist --exclude=dist/core/boundaries.js --reporter=text --reporter=text-summary --reporter=lcovonly --check-coverage --lines=80 --statements=80 --functions=75 --branches=75 npm run test",
+    "test": "npm run build && tsx --test --test-concurrency=1 \"test/*.test.mjs\"",
+    "coverage": "npm run build && c8 --all --include=src --exclude=src/core/boundaries.ts --check-coverage --statements 97.5 --functions 100 --lines 97.5 --branches 80 --reporter=text --reporter=text-summary --reporter=lcovonly tsx --test --test-concurrency=1 \"test/*.test.mjs\"",
+    "pr-checks": "npm run format:check && npm run typecheck && npm test && npm run coverage && npm run build",
     "check": "npm test",
-    "test:integration": "npm run build && node --test \"integration/*.test.mjs\"",
-    "loop": "node dist/cli.js",
+    "test:integration": "npm run build && tsx --test \"integration/*.test.mjs\"",
     "sloop": "node dist/cli.js",
     "link:local": "npm unlink --global sloop && npm run build && npm link",
     "unlink:local": "npm unlink --global sloop",
@@ -30,16 +30,17 @@
     "version": "node dist/cli.js --version",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "allchecks": "npm run build && npm run typecheck && npm run link:local && npm run test && npm run format:check"
+    "prepare": "node scripts/install-git-hooks.mjs"
   },
   "dependencies": {
-    "@openai/codex": "^0.149.1",
+    "@openai/codex": "^0.154.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "prettier": "^3.6.2",
     "c8": "^12.0.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.23.13",
     "typescript": "^5.7.0"
   }
 }

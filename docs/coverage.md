@@ -1,13 +1,15 @@
 # Production coverage scope
 
-The intermediate coverage issues use `npm run coverage` as a provisional,
-non-regression gate. The final issue in the epic, #84, raises it to 100% for
-lines, statements, functions, and branches after all assigned slices land.
+`npm run coverage` is the complete unit-test witness. Tests execute the
+TypeScript modules under `src/` through `tsx`, and c8 instruments those source
+files directly. It reports lines, statements, functions, and branches with the
+repository thresholds enforced. Build and CLI smoke tests separately validate
+the compiled production artifact under `dist/`.
 
-`core/boundaries.ts` contains only TypeScript type declarations. TypeScript
-emits its module as `dist/core/boundaries.js` containing only `export {}`; it
-has no executable statements, functions, branches, or runtime contract to
-exercise. It is therefore documented here as a narrow type-only exclusion.
+`core/boundaries.ts` contains only TypeScript type declarations. Its emitted
+`dist/core/boundaries.js` shell is intentionally still present in the report so
+the witness includes every compiled module, even modules with no executable
+runtime contract.
 
-Issues #80-#83 add focused tests for their assigned production areas; they do not
-move the final 100% gate early.
+Issues #80-#84 add focused tests for the production areas. No production module
+or source range is excluded from the report.

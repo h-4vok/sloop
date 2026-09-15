@@ -229,6 +229,8 @@ export type RunnerOptions = Readonly<{
   log?: (source: 'stdout' | 'stderr', chunk: string) => void;
   /** Durable boundary owned by the dispatcher; enables recovery reconciliation. */
   reconciliationDir?: string;
+  /** Test seam for the final compare-and-create durable result write. */
+  writeReconciliation?: typeof writeFile;
 }>;
 
 export interface AgentRunner {
@@ -352,11 +354,13 @@ export class ArbitraryCommandRunner implements AgentRunner {
           const result = validateAgentEnvelope(raw, context);
           this.reconciled.set(invocationKey, result);
           if (persistedPath)
-            await writeFile(persistedPath, JSON.stringify(result), { flag: 'wx' }).catch(
-              async (error: NodeJS.ErrnoException) => {
-                if (error.code !== 'EEXIST') throw error;
-              },
-            );
+            await (this.options.writeReconciliation ?? writeFile)(
+              persistedPath,
+              JSON.stringify(result),
+              { flag: 'wx' },
+            ).catch(async (error: NodeJS.ErrnoException) => {
+              if (error.code !== 'EEXIST') throw error;
+            });
           return result;
         } catch (error) {
           last =

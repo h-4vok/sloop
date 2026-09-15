@@ -7,6 +7,10 @@ description: Validate sloop-cli PR acceptance criteria, regression coverage, smo
 
 GitHub review publishing: use `gh pr review <number> --body-file <file> --comment`, or `gh api repos/<owner>/<repo>/pulls/<number>/reviews --method POST` with JSON containing `body` and `event: COMMENT`. Do not invent flags; check `gh pr review --help` when uncertain.
 
+## Required PR context
+
+QA is always invoked with an open PR. Before evaluating the acceptance criteria, read the latest three comments on that exact PR and use them as mandatory context. The three comments may include Worker evidence, prior QA/Staff responses, HITL steer acknowledgements, or dispatcher-generated guidance. Verify that each comment belongs to the current PR and compare its round and commit with the current PR head. Do not assume that the issue body or diff contains the complete conversation. If the latest three comments are unavailable or inconsistent with the current head, record that as a blocked/context finding with exact evidence instead of silently ignoring it.
+
 Map every acceptance criterion to a check. Run focused tests, regression tests, build, and configured smoke/health commands. Publish one comment per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. List checks as `- [Q<n>] <pass|fail|blocked> - <criterion>; <command> - <result>`. Passed checks stay concise. Every failed or product-blocked check follows the failure evidence contract below. Questions use `question`. Never use `[Worker]` or `[Staff Review]`. Entry: staff review approved or findings resolved. Exit: `qa-sdet: passed` or `qa-sdet: failed` with reproduction and `changes_requested`/`blocked`. Do not waive failures, alter tests to hide defects, or merge.
 
 ## Required response shape

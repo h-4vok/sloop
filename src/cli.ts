@@ -55,6 +55,7 @@ export function emitDispatcherFailure(error: unknown): number {
 type RuntimeModule = typeof import('./runtime.js');
 type DispatcherModule = typeof import('./dispatcher.js');
 type AdaptersModule = typeof import('./adapters.js');
+type ConfigWizardModule = typeof import('./config-wizard.js');
 
 export interface RunCliModules {
   runtime: Pick<
@@ -68,6 +69,8 @@ export interface RunCliModules {
   >;
   dispatcher: Pick<DispatcherModule, 'runDispatcherCli'>;
   adapters: Pick<AdaptersModule, 'productionDependencies'>;
+  config?: Pick<ConfigWizardModule, 'runConfigCommand'> &
+    Pick<AdaptersModule, 'productionConfigReconciler'>;
 }
 
 export async function runCli(
@@ -135,14 +138,16 @@ export async function runCli(
         stdout: console.log,
         stderr: console.error,
       });
-      const [{ runConfigCommand }, { productionConfigReconciler }] = await Promise.all([
-        import('./config-wizard.js'),
-        import('./adapters.js'),
-      ]);
-      process.exitCode = await runConfigCommand(
+      const config = modules?.config
+        ? modules.config
+        : {
+            ...(await import('./config-wizard.js')),
+            ...(await import('./adapters.js')),
+          };
+      process.exitCode = await config.runConfigCommand(
         root,
         command.args,
-        productionConfigReconciler(root),
+        config.productionConfigReconciler(root),
       );
       return;
     }

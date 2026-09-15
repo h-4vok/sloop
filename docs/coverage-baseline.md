@@ -1,14 +1,12 @@
 # Coverage baseline
 
-Coverage is collected with `c8` on the compiled production modules in `dist/`.
-Tests import compiled modules, and TypeScript currently does not emit source
-maps, so collecting against `src/` would incorrectly report zero execution.
-The CLI bootstrap (`dist/cli.js`) is included. `dist/core/boundaries.js` is
-excluded narrowly because it is the TypeScript-emitted runtime shell for
-interfaces and type aliases only; it contains no executable production logic.
+Coverage is collected with `c8` while unit tests import TypeScript modules from
+`src/` through `tsx`. The compiled `dist/` artifact is validated separately by
+the build and CLI smoke tests.
 
-Baseline from Node 22 on 2026-09-10 (the report is intentionally below the
-enforced acceptance gate until the missing production paths are covered):
+The historical baseline from Node 22 on 2026-09-10 is retained below for
+comparison. Coverage is evidence rather than a blocking gate; maintainers can
+decide what action to take from each complete report.
 
 | Metric     |           Baseline |
 | ---------- | -----------------: |

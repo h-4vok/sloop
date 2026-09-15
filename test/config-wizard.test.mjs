@@ -4,12 +4,12 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PassThrough, Writable } from 'node:stream';
-import { canonicalConfigYaml } from '../dist/config.js';
-import { configPaths } from '../dist/config.js';
-import { runConfigCommand } from '../dist/config-wizard.js';
-import { getConfigField } from '../dist/config.js';
-import { productionConfigReconciler } from '../dist/adapters.js';
-import { parseCliCommand } from '../dist/runtime.js';
+import { canonicalConfigYaml } from '../src/config.js';
+import { configPaths } from '../src/config.js';
+import { reconcileConfig, runConfigCommand } from '../src/config-wizard.js';
+import { getConfigField } from '../src/config.js';
+import { productionConfigReconciler } from '../src/adapters.js';
+import { parseCliCommand } from '../src/runtime.js';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'sloop-wizard-'));
@@ -40,6 +40,63 @@ function scriptedIO(answers, end = true) {
   });
   return { input, output, text: () => captured };
 }
+
+test('config command rejects invalid flag combinations and unknown paths without TTY', async () => {
+  const { root } = fixture();
+  const io = {
+    input: new PassThrough(),
+    output: new Writable({
+      write(_c, _e, cb) {
+        cb();
+      },
+    }),
+  };
+  assert.equal(await runConfigCommand(root, ['--sync', '--no-sync'], undefined, io), 2);
+  assert.equal(await runConfigCommand(root, ['schedule.cron'], undefined, io), 2);
+  assert.equal(await runConfigCommand(root, ['--wizard'], undefined, io), 2);
+});
+
+test('non-interactive init supports forced synchronization success and failure', async () => {
+  const first = mkdtempSync(join(tmpdir(), 'sloop-init-sync-'));
+  const calls = [];
+  const io = {
+    input: new PassThrough(),
+    output: new Writable({
+      write(_c, _e, cb) {
+        cb();
+      },
+    }),
+  };
+  assert.equal(
+    await runConfigCommand(
+      first,
+      ['--init', '--force'],
+      async (_root, kind) => calls.push(kind),
+      io,
+    ),
+    0,
+  );
+  assert.deepEqual(calls, ['github']);
+  const second = mkdtempSync(join(tmpdir(), 'sloop-init-sync-fail-'));
+  assert.equal(
+    await runConfigCommand(
+      second,
+      ['--init', '--force'],
+      async () => {
+        throw new Error('adapter down');
+      },
+      io,
+    ),
+    2,
+  );
+  assert.equal(existsSync(join(second, 'sloop.config.yaml')), true);
+});
+
+test('default reconciler fails visibly for mutation-capable integrations', async () => {
+  await assert.rejects(() => reconcileConfig('.', 'github'), /No production reconciler/);
+  assert.throws(() => reconcileConfig.preflight('.', 'skills'), /No production reconciler/);
+  assert.doesNotThrow(() => reconcileConfig.preflight('.', 'none'));
+});
 
 function blankAnswers(scope, tail) {
   return configPaths(scope)
@@ -356,4 +413,50 @@ test('init cancellation does not create YAML', async () => {
     io.text(),
   );
   assert.equal(existsSync(join(root, 'sloop.config.yaml')), false);
+});
+
+test('config command rejects conflicting flags and exercises direct-init migration and reconciliation failures', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-config-branches-'));
+  const file = join(root, 'sloop.config.yaml');
+  writeFileSync(file, canonicalConfigYaml().replaceAll('sloop-worker', 'worker'));
+  assert.equal(await runConfigCommand(root, ['--init']), 0);
+  assert.match(readFileSync(file, 'utf8'), /sloop-worker/);
+  assert.equal(await runConfigCommand(root, ['--sync', '--no-sync']), 2);
+  assert.equal(await runConfigCommand(root, ['--wizard']), 2);
+  assert.equal(await runConfigCommand(root, ['workspace.path', 'subdir']), 2);
+  assert.equal(
+    await runConfigCommand(root, ['--install', '--force'], async () => {
+      throw new Error('no access');
+    }),
+    2,
+  );
+  const blank = mkdtempSync(join(tmpdir(), 'sloop-config-direct-'));
+  const events = [];
+  assert.equal(
+    await runConfigCommand(blank, ['--init', '--force'], async (_root, kind) => events.push(kind)),
+    0,
+  );
+  assert.deepEqual(events, ['github']);
+});
+
+test('interactive init writes gitignore, list and argv wizard values, and synchronizes explicit kinds', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-config-interactive-'));
+  writeFileSync(join(root, '.gitignore'), 'node_modules');
+  const events = [];
+  const io = scriptedIO(['["git","status"]', 'y', 'y']);
+  assert.equal(
+    await runConfigCommand(
+      root,
+      ['--init', '--wizard', 'health.command', '--sync'],
+      async (_root, kind) => events.push(kind),
+      io,
+    ),
+    0,
+  );
+  assert.match(
+    readFileSync(join(root, 'sloop.config.yaml'), 'utf8'),
+    /command:\n    - git\n    - status/,
+  );
+  assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /\.sloop\//);
+  assert.deepEqual(events, []);
 });

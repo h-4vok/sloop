@@ -170,6 +170,20 @@ export type Spec = {
   onStderr?: (chunk: string) => void;
 };
 
+/**
+ * Optional host operations for the small set of dispatcher commands that run
+ * outside the injected lifecycle dependencies.  Production deliberately omits
+ * this value and therefore retains the native Node/GitHub behaviour.
+ */
+export type DispatcherHost = {
+  resolveExecutable?: typeof resolveExecutable;
+  runSyncCommand?: typeof runSyncCommand;
+  platform?: NodeJS.Platform;
+  comSpec?: string | undefined;
+  now?: () => number;
+  pid?: () => number;
+};
+
 export class CliFailure extends Error {
   constructor(
     public readonly exitCode: 2 | 3 | 5,
@@ -245,15 +259,20 @@ export function recoverStaleLock(
   return `Recovered stale dispatcher lock owned by PID ${pid}.`;
 }
 
-function gh(args: string[], cwd = defaultRoot, repository?: string): string {
+function gh(
+  args: string[],
+  cwd = defaultRoot,
+  repository?: string,
+  host: DispatcherHost = {},
+): string {
   const scoped = repository && !args.includes('--repo') ? [...args, '--repo', repository] : args;
   try {
-    return runSyncCommand(
-      resolveExecutable('gh'),
+    return (host.runSyncCommand ?? runSyncCommand)(
+      (host.resolveExecutable ?? resolveExecutable)('gh', host.platform ?? process.platform),
       scoped,
       undefined,
-      process.platform,
-      process.env.ComSpec,
+      host.platform ?? process.platform,
+      host.comSpec ?? process.env.ComSpec,
       cwd,
     );
   } catch (error) {
@@ -261,8 +280,13 @@ function gh(args: string[], cwd = defaultRoot, repository?: string): string {
   }
 }
 
-function ghJson<T>(args: string[], cwd = defaultRoot, repository?: string): T {
-  const output = gh(args, cwd, repository);
+function ghJson<T>(
+  args: string[],
+  cwd = defaultRoot,
+  repository?: string,
+  host: DispatcherHost = {},
+): T {
+  const output = gh(args, cwd, repository, host);
   try {
     return JSON.parse(output) as T;
   } catch (error) {
@@ -277,6 +301,7 @@ export function eligible(
   cwd = defaultRoot,
   repository?: string,
   label = 'Automation Ready',
+  host?: DispatcherHost,
 ): Issue[] {
   return ghJson<Issue[]>(
     [
@@ -293,10 +318,16 @@ export function eligible(
     ],
     cwd,
     repository,
+    host,
   ).sort((a, b) => a.number - b.number);
 }
 
-export function pullRequest(pr: number, cwd = defaultRoot, repository?: string): PullRequest {
+export function pullRequest(
+  pr: number,
+  cwd = defaultRoot,
+  repository?: string,
+  host?: DispatcherHost,
+): PullRequest {
   const raw = ghJson<any>(
     [
       'pr',
@@ -307,6 +338,7 @@ export function pullRequest(pr: number, cwd = defaultRoot, repository?: string):
     ],
     cwd,
     repository,
+    host,
   );
   return {
     number: raw.number,
@@ -341,11 +373,15 @@ export function updatePullRequestBody(
   body: string,
   cwd = defaultRoot,
   repository?: string,
+  host: DispatcherHost = {},
 ): void {
-  const temp = join(tmpdir(), `sloop-pr-${process.pid}-${Date.now()}.md`);
+  const temp = join(
+    tmpdir(),
+    `sloop-pr-${host.pid?.() ?? process.pid}-${host.now?.() ?? Date.now()}.md`,
+  );
   try {
     writeFileSync(temp, publicationBody(body), 'utf8');
-    gh(['pr', 'edit', String(pr), '--body-file', temp], cwd, repository);
+    gh(['pr', 'edit', String(pr), '--body-file', temp], cwd, repository, host);
   } finally {
     rmSync(temp, { force: true });
   }
@@ -356,8 +392,9 @@ export function commentPullRequest(
   body: string,
   cwd = defaultRoot,
   repository?: string,
+  host?: DispatcherHost,
 ): void {
-  gh(['pr', 'comment', String(pr), '--body', publicationBody(body)], cwd, repository);
+  gh(['pr', 'comment', String(pr), '--body', publicationBody(body)], cwd, repository, host);
 }
 
 function commentIssueOnce(
@@ -365,15 +402,17 @@ function commentIssueOnce(
   body: string,
   cwd = defaultRoot,
   repository?: string,
+  host?: DispatcherHost,
 ): void {
   const safeBody = publicationBody(body);
   const existing = ghJson<{ comments?: Array<{ body?: string }> }>(
     ['issue', 'view', String(issue), '--json', 'comments'],
     cwd,
     repository,
+    host,
   );
   if (!existing.comments?.some((comment) => comment.body === safeBody))
-    gh(['issue', 'comment', String(issue), '--body', safeBody], cwd, repository);
+    gh(['issue', 'comment', String(issue), '--body', safeBody], cwd, repository, host);
 }
 
 function commentPullRequestOnce(
@@ -381,15 +420,25 @@ function commentPullRequestOnce(
   body: string,
   cwd = defaultRoot,
   repository?: string,
+  host?: DispatcherHost,
 ): void {
-  if (!(pullRequest(pr, cwd, repository).comments ?? []).some((comment) => comment.body === body))
-    commentPullRequest(pr, body, cwd, repository);
+  if (
+    !(pullRequest(pr, cwd, repository, host).comments ?? []).some(
+      (comment) => comment.body === body,
+    )
+  )
+    commentPullRequest(pr, body, cwd, repository, host);
 }
 
-export function pullRequestBody(pr: number, cwd = defaultRoot, repository?: string): string {
+export function pullRequestBody(
+  pr: number,
+  cwd = defaultRoot,
+  repository?: string,
+  host?: DispatcherHost,
+): string {
   return (
-    ghJson<{ body?: string }>(['pr', 'view', String(pr), '--json', 'body'], cwd, repository).body ??
-    ''
+    ghJson<{ body?: string }>(['pr', 'view', String(pr), '--json', 'body'], cwd, repository, host)
+      .body ?? ''
   );
 }
 
@@ -830,7 +879,7 @@ function rolePrompt(
 ): string {
   const issueContext = issue.body?.trim() || '(issue body unavailable; inspect it with gh)';
   if (role === 'worker')
-    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. That same evidence comment must include a complete [Human Verification] JSON guide in a fenced block with non-empty summary, steps, expected, isolation, limitations, and checklist fields; make the steps reproducible for a human and keep the guide specific to the implemented change. The dispatcher will validate this guide only after CI and QA pass. Never modify dispatcher runtime state. Exit 0 only after the work and comment are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve:\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
+    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Before publishing ready_for_review, run the exact canonical gate 'npm run pr-checks'; it must pass locally. If CI feedback is supplied, explicitly resolve the failing PR check in code and rerun 'npm run pr-checks'. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and green gate are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
     return `Use the qa-sdet skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish directly to the PR exactly one review beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
@@ -1094,7 +1143,7 @@ async function waitForCi(
   }
 }
 
-function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: number): string {
+export function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: number): string {
   return (pr.reviews ?? [])
     .filter(
       (review) => review.body?.trim().startsWith(marker) && roundFromBody(review.body) === round,
@@ -1602,10 +1651,11 @@ function publishHitlDecision(
   action: string,
   cwd = defaultRoot,
   repository?: string,
+  host?: DispatcherHost,
 ): void {
   const body = hitlComment(state, action);
-  commentIssueOnce(state.issue!, body, cwd, repository);
-  commentPullRequestOnce(state.pr!, body, cwd, repository);
+  commentIssueOnce(state.issue!, body, cwd, repository, host);
+  commentPullRequestOnce(state.pr!, body, cwd, repository, host);
 }
 
 function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
@@ -1626,6 +1676,7 @@ export function resolveReviewCap(
   statePath = stateFile,
   cwd = defaultRoot,
   repository?: string,
+  host: DispatcherHost = {},
 ): void {
   const stored = readState(statePath);
   const steer = options.steer.trim();
@@ -1652,22 +1703,22 @@ export function resolveReviewCap(
     };
     writeState(state, statePath);
     if (!state.abandonment?.commentPublished) {
-      publishHitlDecision(state, 'abandon', cwd, repository);
+      publishHitlDecision(state, 'abandon', cwd, repository, host);
       state = { ...state, abandonment: { ...state.abandonment!, commentPublished: true } };
       writeState(state, statePath);
     }
     if (!state.abandonment?.prClosed) {
-      gh(['pr', 'close', String(state.pr)], cwd, repository);
+      gh(['pr', 'close', String(state.pr)], cwd, repository, host);
       state = { ...state, abandonment: { ...state.abandonment!, prClosed: true } };
       writeState(state, statePath);
     }
     if (!state.abandonment?.labelled) {
-      gh(['issue', 'edit', String(state.issue), '--add-label', 'wontfix'], cwd, repository);
+      gh(['issue', 'edit', String(state.issue), '--add-label', 'wontfix'], cwd, repository, host);
       state = { ...state, abandonment: { ...state.abandonment!, labelled: true } };
       writeState(state, statePath);
     }
     if (!state.abandonment?.issueClosed) {
-      gh(['issue', 'close', String(state.issue)], cwd, repository);
+      gh(['issue', 'close', String(state.issue)], cwd, repository, host);
       state = { ...state, abandonment: { ...state.abandonment!, issueClosed: true } };
       writeState(state, statePath);
     }
@@ -1704,13 +1755,13 @@ export function resolveReviewCap(
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...normalizedWaivers]),
     ],
     steer,
-    resolvedBy: gh(['api', 'user', '--jq', '.login'], cwd),
-    resolvedAt: new Date().toISOString(),
+    resolvedBy: gh(['api', 'user', '--jq', '.login'], cwd, repository, host),
+    resolvedAt: new Date(host.now?.() ?? Date.now()).toISOString(),
   };
   const allWaived = cap.outstandingFindingIds.every((id) => cap.waivedFindingIds.includes(id));
   if (additionalRounds === 0 && !allWaived)
     throw new Error('findings remain; waive them explicitly or grant additional rounds');
-  const pr = pullRequest(current.pr, cwd, repository);
+  const pr = pullRequest(current.pr, cwd, repository, host);
   if (additionalRounds === 0 && !prHealthyForHumanMerge(pr, cfg))
     throw new Error(
       'PR must have green required checks and be clean/mergeable before a no-round waiver',
@@ -1729,6 +1780,7 @@ export function resolveReviewCap(
     additionalRounds > 0 ? 'resume' : 'waive_ready_for_human_merge',
     cwd,
     repository,
+    host,
   );
 }
 
@@ -1737,25 +1789,27 @@ export function linkIssueToActiveRun(
   statePath = stateFile,
   cwd = defaultRoot,
   repository?: string,
+  host?: DispatcherHost,
 ): void {
   if (!Number.isInteger(issue) || issue <= 0)
     throw new Error('--link-issue requires a positive issue number');
   const current = readState(statePath);
   if (!current.issue || !current.pr)
     throw new Error('--link-issue requires one active run with an existing PR');
-  gh(['issue', 'view', String(issue), '--json', 'number,state'], cwd, repository);
+  gh(['issue', 'view', String(issue), '--json', 'number,state'], cwd, repository, host);
   const linkedClosingIssues = [...new Set([...(current.linkedClosingIssues ?? []), issue])].filter(
     (number) => number !== current.issue,
   );
   const next = { ...current, linkedClosingIssues, updatedAt: Date.now() };
   writeState(next, statePath);
-  const body = pullRequestBody(current.pr, cwd, repository);
+  const body = pullRequestBody(current.pr, cwd, repository, host);
   const normalized = withIssueClosingReference(body, current.issue, linkedClosingIssues);
-  if (normalized !== body.trim()) updatePullRequestBody(current.pr, normalized, cwd, repository);
+  if (normalized !== body.trim())
+    updatePullRequestBody(current.pr, normalized, cwd, repository, host);
   const note = `[Sloop linked issue] PR #${current.pr} closes #${current.issue} and #${issue} when a human merges to main.`;
-  commentIssueOnce(current.issue, note, cwd, repository);
-  commentIssueOnce(issue, note, cwd, repository);
-  commentPullRequestOnce(current.pr, note, cwd, repository);
+  commentIssueOnce(current.issue, note, cwd, repository, host);
+  commentIssueOnce(issue, note, cwd, repository, host);
+  commentPullRequestOnce(current.pr, note, cwd, repository, host);
 }
 
 export function acquire(d: Deps, ttl: number): string {

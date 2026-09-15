@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { productionDependencies } from '../dist/adapters.js';
-import { loadConfigText, canonicalConfigYaml } from '../dist/config.js';
-import { CliFailure } from '../dist/dispatcher.js';
-import { runManifestMarker } from '../dist/remote-state.js';
+import { productionDependencies } from '../src/adapters.js';
+import { loadConfigText, canonicalConfigYaml } from '../src/config.js';
+import { CliFailure } from '../src/dispatcher.js';
+import { runManifestMarker } from '../src/remote-state.js';
 
 test('production assembly supplies every typed external-concern boundary', () => {
   const dependencies = productionDependencies(
