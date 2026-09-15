@@ -1,8 +1,8 @@
 # Coverage baseline
 
-Coverage is collected with `c8` on the compiled production modules in `dist/`.
-Tests import compiled modules, and TypeScript currently does not emit source
-maps, so collecting against `src/` would incorrectly report zero execution.
+Coverage is collected with `c8` while tests import compiled modules from `dist/`.
+TypeScript source maps remap the executed JavaScript counters to the production
+TypeScript files under `src/`, so uncovered lines are actionable against source.
 The CLI bootstrap (`dist/cli.js`) and the type-only emitted shell
 `dist/core/boundaries.js` are both included so the report inventories the full
 compiled project.

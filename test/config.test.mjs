@@ -550,6 +550,14 @@ test('public config helpers validate every scalar family and structural invarian
   }
 });
 
+test('boolean registry fields round-trip through canonical text updates', () => {
+  const source = canonicalConfigYaml();
+  const updated = updateConfigText(source, 'workflow.humanMergeWait', false);
+  const config = loadConfigText(updated);
+  assert.equal(config.workflow.humanMergeWait, false);
+  assert.equal(getConfigField('workflow.humanMergeWait').explanation, 'Wait for a human to merge an approved PR.');
+});
+
 test('config file existence is a direct filesystem contract', () => {
   const root = mkdtempSync(join(tmpdir(), 'sloop-config-exists-'));
   const file = join(root, 'sloop.config.yaml');

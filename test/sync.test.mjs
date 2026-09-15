@@ -112,3 +112,27 @@ test('sync rejects non-GitHub remotes, skips noncanonical labels, and supports i
   assert.ok(output.some((message) => message.includes('Synchronized 4 labels')));
   assert.ok(!output.some((message) => message.includes("Label 'custom' installed")));
 });
+
+test('sync preserves existing labels and reports malformed label payloads', () => {
+  const { root, config } = fixture();
+  const output = [];
+  syncPrerequisites(root, config, {
+    runner: (file, args) => {
+      if (file === 'git') return 'https://github.com/example/repo';
+      if (args[1] === 'list') {
+        const name = args[args.indexOf('--search') + 1];
+        return name === 'Automation Ready' ? JSON.stringify([{ name }]) : '[]';
+      }
+      return '';
+    },
+    output: (message) => output.push(message),
+  });
+  assert.ok(output.some((message) => message.includes('already exists')));
+
+  assert.throws(
+    () => syncPrerequisites(root, config, {
+      runner: (file, args) => (file === 'git' ? 'https://github.com/example/repo' : args[1] === 'list' ? '{' : ''),
+    }),
+    /Unexpected end|JSON/,
+  );
+});

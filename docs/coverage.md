@@ -1,8 +1,9 @@
 # Production coverage scope
 
-`npm run coverage` is the complete production-code witness. It instruments every
-compiled module under `dist/` (`--all`) and reports lines, statements, functions,
-and branches without enforcing a percentage threshold.
+`npm run coverage` is the complete production-code witness. Tests execute the
+compiled modules under `dist/`, while TypeScript source maps remap the c8 report
+to the corresponding production files under `src/`. It reports lines,
+statements, functions, and branches with the repository thresholds enforced.
 
 `core/boundaries.ts` contains only TypeScript type declarations. Its emitted
 `dist/core/boundaries.js` shell is intentionally still present in the report so

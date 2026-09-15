@@ -156,3 +156,19 @@ test('clear retains registrations whose Git ancestry cannot be verified', async 
   assert.equal(listWorkspaces(root).length, 1);
   assert.equal(existsSync(facts.executionRoot), true);
 });
+
+test('worktree parser ignores incomplete records and clear preserves unsafe registrations', async () => {
+  const { clearWorkspaces, listWorkspaces } = await workspace();
+  const root = repo();
+  const stateFile = join(root, '.sloop', 'state.json');
+  const outside = join(tmpdir(), 'sloop-outside-target');
+  mkdirSync(join(root, '.sloop'), { recursive: true });
+  writeFileSync(stateFile, JSON.stringify({
+    workspaces: [
+      { repositoryRoot: root, executionRoot: outside, branch: 'other', headSha: 'x', baseSha: 'x', worktreeRoot: root, ownership: { runId: 'x', issue: 1, protocol: 'wrong' } },
+      { repositoryRoot: root, executionRoot: join(root, 'missing'), branch: 'other', headSha: 'x', baseSha: 'x', worktreeRoot: root, ownership: { runId: 'x', issue: 2, protocol: 'sloop-workspace-v1' } },
+    ],
+  }));
+  clearWorkspaces(root, stateFile);
+  assert.equal(listWorkspaces(root, stateFile).length, 2);
+});

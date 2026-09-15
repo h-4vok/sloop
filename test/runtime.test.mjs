@@ -645,3 +645,17 @@ test('runtime reports missing configuration and dispatcher validation failures a
     EXIT.preflight,
   );
 });
+
+test('runtime reports malformed repository identity and label payloads', () => {
+  const identity = harness({
+    'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+      stdout: '{', stderr: '', status: 0,
+    },
+    'gh label list --repo o/r --limit 1000 --json name': {
+      stdout: '{', stderr: '', status: 0,
+    },
+  });
+  assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['issues', 'list']), identity.io), EXIT.preflight);
+  assert.ok(identity.calls.some(({ file, args }) => file === 'gh' && args[0] === 'repo'));
+  assert.ok(identity.calls.some(({ file, args }) => file === 'gh' && args[0] === 'label'));
+});
