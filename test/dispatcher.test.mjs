@@ -44,6 +44,7 @@ import {
   commentPullRequest,
   writeState,
   maxRoundsForUserBudget,
+  selectIssues,
 } from '../src/dispatcher.js';
 import { parseDispatcherCommand } from '../src/runtime.js';
 
@@ -52,6 +53,19 @@ test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 2, 2), 3);
   assert.equal(maxRoundsForUserBudget(3, 9, 6), 14);
   assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
+});
+
+test('shared issue selector orders configured priorities then numeric ties', () => {
+  const issues = [
+    { number: 20, title: 'unprioritized' },
+    { number: 12, title: 'p1', labels: ['Priority: P1'] },
+    { number: 8, title: 'p0 later', labels: ['Priority: P0'] },
+    { number: 3, title: 'p0 first', labels: ['Priority: P0'] },
+  ];
+  assert.deepEqual(
+    selectIssues(issues, ['Priority: P0', 'Priority: P1']).map(({ number }) => number),
+    [3, 8, 12, 20],
+  );
 });
 
 test('public command and commit helpers cover optional and invalid inputs', async () => {

@@ -19,6 +19,7 @@ import {
   runCommand,
   writeState,
 } from './dispatcher.js';
+import { selectIssues } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
 import {
   clearWorkspaces,
@@ -99,13 +100,13 @@ function adapterIssues(
       '--label',
       label,
       '--json',
-      'number,title,body',
+      'number,title,body,labels',
       '--limit',
       '100',
     ],
     root,
     repository,
-  ).sort((a, b) => a.number - b.number);
+  );
 }
 
 function adapterPullRequest(
@@ -241,6 +242,7 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     logRoleInvocation: config.logging.roleInvocation,
     loggingRetentionMs: config.logging.retention,
     lockTtlMs: config.agents.worker.timeout,
+    priorityLabels: config.github.labels.priority,
   };
 }
 
@@ -328,9 +330,10 @@ export function productionDependencies(
     },
     list: () => {
       try {
-        return adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible).map(
-          ({ number, title }) => ({ number, title }),
-        );
+        return selectIssues(
+          adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible),
+          validatedConfig.github.labels.priority,
+        ).map(({ number, title }) => ({ number, title }));
       } catch (error) {
         throw new CliFailure(5, error instanceof Error ? error.message : String(error));
       }
@@ -354,11 +357,9 @@ export function productionDependencies(
     },
     eligible: () => {
       try {
-        const result = adapterIssues(
-          execute,
-          root,
-          repository,
-          validatedConfig.github.labels.eligible,
+        const result = selectIssues(
+          adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible),
+          validatedConfig.github.labels.priority,
         );
         logGithub('response', 'eligible', result);
         return result;
