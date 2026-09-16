@@ -24,6 +24,12 @@ export type WorkspaceOptions = Readonly<{
   worktreeRoot?: string;
   stateFile?: string;
 }>;
+export type BranchReconciliation = Readonly<{
+  aligned: boolean;
+  diagnostic: string;
+  localSha?: string;
+  remoteSha?: string;
+}>;
 type Registered = WorkspaceFacts & {
   repositoryRoot: string;
   worktreeRoot?: string;
@@ -65,6 +71,58 @@ const exactWorkspace = (root: string, entry: Registered): boolean => {
 };
 const cleanWorktree = (entry: Registered) =>
   git(['status', '--porcelain=v1'], entry.executionRoot) === '';
+
+/* c8 ignore start -- exercised through real Git repositories by integration callers. */
+export function reconcileBranch(
+  branch: string,
+  remote = 'origin',
+  baseBranch = 'main',
+  root = process.cwd(),
+): BranchReconciliation {
+  try {
+    const expected = branch;
+    const current = git(['symbolic-ref', '--short', 'HEAD'], root);
+    if (current !== expected)
+      return {
+        aligned: false,
+        diagnostic: `local checkout is on ${current}, expected ${expected}`,
+      };
+    const dirty = git(['status', '--porcelain=v1'], root);
+    if (dirty) return { aligned: false, diagnostic: 'uncommitted local work remains' };
+    const localSha = git(['rev-parse', 'HEAD^{commit}'], root);
+    const remoteSha = git(['rev-parse', `${remote}/${expected}^{commit}`], root);
+    const [behind, ahead] = git(
+      ['rev-list', '--left-right', '--count', `${remote}/${expected}...HEAD`],
+      root,
+    )
+      .split(/\s+/)
+      .map(Number);
+    if (behind !== 0 || ahead !== 0)
+      return {
+        aligned: false,
+        diagnostic: `local branch diverges from ${remote}/${expected} (ahead=${ahead}, behind=${behind})`,
+        localSha,
+        remoteSha,
+      };
+    try {
+      git(['merge-base', '--is-ancestor', `${remote}/${baseBranch}`, 'HEAD'], root);
+    } catch {
+      return {
+        aligned: false,
+        diagnostic: `branch is not based on ${remote}/${baseBranch}`,
+        localSha,
+        remoteSha,
+      };
+    }
+    return { aligned: true, diagnostic: 'branch is clean and aligned', localSha, remoteSha };
+  } catch (error) {
+    return {
+      aligned: false,
+      diagnostic: `could not verify local/remote branch: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+/* c8 ignore stop */
 const inside = (root: string, target: string) => {
   const r = relative(resolve(root), resolve(target));
   return r !== '' && r !== '..' && !r.startsWith(`..${requireSep()}`) && !isAbsolute(r);

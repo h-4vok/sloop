@@ -827,6 +827,78 @@ test('post-preflight external adapter failures preserve exit 5', async () => {
   assert.equal(h.state().status, 'claimed');
 });
 
+test('reconciles a terminal persisted run before selecting another issue', async () => {
+  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
+    initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+  });
+  h.deps.reconcileActiveRun = () => ({
+    outcome: 'terminal',
+    reason: 'PR merged; branch aligned',
+    localSha: 'abc1',
+    remoteSha: 'abc1',
+  });
+
+  await dispatch(h.cfg, h.deps);
+
+  assert.equal(h.state().completedIssues.includes(1), true);
+  assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '2');
+  assert.equal(
+    h.saves.filter((state) => state.issue === 1 && state.status === 'done').length >= 1,
+    true,
+  );
+});
+
+test('blocks before selection when terminal reconciliation cannot verify local work', async () => {
+  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
+    initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+  });
+  h.deps.reconcileActiveRun = () => ({
+    outcome: 'blocked',
+    reason: 'uncommitted local work remains',
+  });
+
+  await assert.rejects(() => dispatch(h.cfg, h.deps), /uncommitted local work remains/);
+
+  assert.equal(h.runs.length, 0);
+  assert.equal(h.state().status, 'blocked');
+  assert.equal(h.state().issue, 1);
+});
+
+test('repeated terminal reconciliation does not duplicate completed issues', async () => {
+  const h = harness([], {
+    initialState: {
+      issue: 1,
+      pr: 14,
+      branch: 'codex/issue-1',
+      status: 'in_progress',
+      completedIssues: [1],
+    },
+  });
+  h.deps.reconcileActiveRun = () => ({
+    outcome: 'terminal',
+    reason: 'issue closed; branch aligned',
+  });
+
+  await dispatch(h.cfg, h.deps);
+
+  assert.deepEqual(h.state().completedIssues, [1]);
+  assert.equal(
+    h.saves.filter((state) => state.issue === 1 && state.status === 'done').length >= 1,
+    true,
+  );
+});
+
+test('open persisted runs keep the existing active-run guard', async () => {
+  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
+    initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+  });
+  h.deps.reconcileActiveRun = () => ({ outcome: 'open', reason: 'PR remains open' });
+
+  await assert.rejects(() => dispatch(h.cfg, h.deps), /active run exists for issue #1/);
+
+  assert.equal(h.runs.length, 0);
+});
+
 test('public CLI commands invoke only the injected control seams', async () => {
   const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });
   const calls = [];

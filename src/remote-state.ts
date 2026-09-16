@@ -4,7 +4,11 @@ export const REMOTE_PROTOCOL = 1;
 export type RemoteSnapshot = Readonly<{
   protocol?: number;
   issue: number;
+  issueState?: string;
   pr?: number;
+  prState?: string;
+  prMergedAt?: string;
+  prBaseBranch?: string;
   labels?: readonly string[];
   markers?: readonly string[];
   comments?: readonly { marker?: string; body?: string }[];

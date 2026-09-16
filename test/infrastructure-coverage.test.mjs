@@ -44,7 +44,7 @@ test('adapter covers successful remote snapshot, claim forms, and GitHub error r
   const marker = runManifestMarker(manifest({ artifacts: ['saved-key'] }));
   const deps = dependencies((_file, args) => {
     calls.push(args);
-    if (args[0] === 'issue' && args[1] === 'view' && args.includes('labels,comments'))
+    if (args[0] === 'issue' && args[1] === 'view' && args.includes('state,labels,comments'))
       return JSON.stringify({
         labels: [{ name: 'eligible' }],
         comments: [{ body: `old sloop/v1/x ${marker}` }],
