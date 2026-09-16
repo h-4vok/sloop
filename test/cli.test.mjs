@@ -12,7 +12,7 @@ const cli = resolve('dist/cli.js');
 test('help documents the linked CLI contract', () => {
   const result = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^Sloop 0\.1\.2/m);
+  assert.match(result.stdout, /^Sloop 0\.2\.0/m);
   assert.match(result.stdout, /Usage: sloop <command> \[option\]/);
   assert.match(result.stdout, /--prepare-recovery N \[--pr PR\]/);
   assert.match(result.stdout, /--resolve-review-cap --steer TEXT/);
@@ -26,7 +26,7 @@ test('help documents the linked CLI contract', () => {
 test('version reports the package version', () => {
   const result = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), '0.1.2');
+  assert.equal(result.stdout.trim(), '0.2.0');
 });
 
 test('help and version cannot mask unsupported or mixed command arguments', () => {
@@ -423,6 +423,6 @@ test('runCli handles injected help and version commands without preflight', asyn
     output.restore();
   }
   assert.equal(output.stdout[0], 'Usage: sloop status [--verbose] [--json]');
-  assert.equal(output.stdout[1], '0.1.2');
+  assert.equal(output.stdout[1], '0.2.0');
   assert.deepEqual(output.stderr, []);
 });

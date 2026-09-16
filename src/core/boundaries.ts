@@ -46,6 +46,13 @@ export interface GitProvider {
   checkoutWorkerBranch(branch: string): void;
 }
 
+export type ActiveRunReconciliation = Readonly<{
+  outcome: 'terminal' | 'open' | 'blocked';
+  reason: string;
+  localSha?: string;
+  remoteSha?: string;
+}>;
+
 export interface RemoteAuthority {
   snapshot(issue: number): RemoteSnapshot;
   reconcile(issue: number, key: string): boolean;

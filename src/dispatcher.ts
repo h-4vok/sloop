@@ -32,6 +32,7 @@ import type {
   ReviewCapOptions,
   RunContext,
   RunEventLogger,
+  ActiveRunReconciliation,
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
@@ -162,6 +163,7 @@ export type Deps = Workspace<State> &
     runContext?: () => RunContext;
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
+    reconcileActiveRun?: (state: State) => ActiveRunReconciliation;
   };
 export type Spec = {
   command: string;
@@ -1903,14 +1905,41 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   if (cfg.baseBranch !== undefined && cfg.baseBranch !== 'main')
     throw new Error(`Worker PR baseBranch must be main; found ${cfg.baseBranch}`);
   const initial = d.load();
+  if (isActiveStatus(initial.status) && initial.issue && d.reconcileActiveRun) {
+    const reconciliation = d.reconcileActiveRun(initial);
+    if (reconciliation.outcome === 'blocked') {
+      const message = `Active run reconciliation blocked: ${reconciliation.reason}`;
+      d.save({
+        ...initial,
+        status: 'blocked',
+        lastError: message,
+        lastErrorVerbose: message,
+        updatedAt: d.now(),
+      });
+      throw new CliFailure(3, message);
+    }
+    if (reconciliation.outcome === 'terminal') {
+      if (d.remote) publishCurrentRemoteManifest(cfg, d, initial.issue, 'complete');
+      d.save({
+        ...initial,
+        status: 'done',
+        drainStatus: 'running',
+        lastError: undefined,
+        lastErrorVerbose: undefined,
+        updatedAt: d.now(),
+      });
+      d.runLogger?.write('reconciliation', reconciliation);
+    }
+  }
+  const reconciled = d.load();
   const remoteAuthority = Boolean(d.remote);
   let recovery =
     !remoteAuthority &&
-    (initial.status === 'worker_recovery_pending' ||
-      isStaleWorker(initial, cfg, d) ||
-      (initial.status === 'blocked' && hasPersistedRecoveryContext(initial)));
-  if (isActiveStatus(initial.status) && !recovery && !remoteAuthority)
-    throw new CliFailure(3, `active run exists for issue #${initial.issue}`);
+    (reconciled.status === 'worker_recovery_pending' ||
+      isStaleWorker(reconciled, cfg, d) ||
+      (reconciled.status === 'blocked' && hasPersistedRecoveryContext(reconciled)));
+  if (isActiveStatus(reconciled.status) && !recovery && !remoteAuthority)
+    throw new CliFailure(3, `active run exists for issue #${reconciled.issue}`);
   const lockToken = acquire(d, cfg.lockTtlMs ?? 900000);
   try {
     if (!cfg.workerCommand || !cfg.qaCommand)

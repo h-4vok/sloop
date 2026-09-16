@@ -307,6 +307,93 @@ export function productionDependencies(
     writeFileSync(file, JSON.stringify(owner, null, 2) + '\n');
   return {
     root,
+    /* c8 ignore start -- exercised through the live GitHub/Git adapter contract. */
+    reconcileActiveRun: (current) => {
+      const runGit = (args: string[], cwd = executionRoot) =>
+        execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+      try {
+        const issueInfo = JSON.parse(
+          adapterGh(
+            execute,
+            ['issue', 'view', String(current.issue), '--json', 'state'],
+            root,
+            repository,
+          ),
+        ) as { state?: string };
+        const pr = current.pr
+          ? (JSON.parse(
+              adapterGh(
+                execute,
+                [
+                  'pr',
+                  'view',
+                  String(current.pr),
+                  '--json',
+                  'state,mergedAt,baseRefName,headRefName',
+                ],
+                root,
+                repository,
+              ),
+            ) as { state?: string; mergedAt?: string; baseRefName?: string; headRefName?: string })
+          : undefined;
+        const terminal = issueInfo.state?.toUpperCase() === 'CLOSED' || Boolean(pr?.mergedAt);
+        if (!terminal)
+          return { outcome: 'open', reason: 'issue and associated PR are not terminal' } as const;
+        if (!current.pr || !pr || !current.branch || current.branch === 'pending')
+          return { outcome: 'blocked', reason: 'issue/PR/branch identity is incomplete' } as const;
+        if (
+          pr.baseRefName !== validatedConfig.repository.baseBranch ||
+          pr.headRefName !== current.branch
+        )
+          return {
+            outcome: 'blocked',
+            reason: 'verified PR base or head branch does not match persisted identity',
+          } as const;
+        if (runGit(['symbolic-ref', '--short', 'HEAD']) !== current.branch)
+          return {
+            outcome: 'blocked',
+            reason: 'local checkout is not on the verified worker branch',
+          } as const;
+        if (runGit(['status', '--porcelain=v1']))
+          return {
+            outcome: 'blocked',
+            reason: 'uncommitted local work remains for human review',
+          } as const;
+        const localSha = runGit(['rev-parse', 'HEAD']);
+        const remoteRef = `${validatedConfig.repository.remote}/${current.branch}`;
+        const remoteSha = runGit(['rev-parse', `${remoteRef}^{commit}`]);
+        const [behind, ahead] = runGit([
+          'rev-list',
+          '--left-right',
+          '--count',
+          `${remoteRef}...HEAD`,
+        ])
+          .split(/\s+/)
+          .map(Number);
+        if (ahead !== 0 || behind !== 0)
+          return {
+            outcome: 'blocked',
+            reason: 'local worker branch diverges from its tracked remote branch',
+            localSha,
+            remoteSha,
+          } as const;
+        return {
+          outcome: 'terminal',
+          reason:
+            issueInfo.state?.toUpperCase() === 'CLOSED'
+              ? 'issue closed; branch aligned'
+              : 'PR merged; branch aligned',
+          localSha,
+          remoteSha,
+        } as const;
+      } catch (error) {
+        return {
+          outcome: 'blocked',
+          reason: `reconciliation could not verify local or remote state: ${error instanceof Error ? error.message : String(error)}`,
+        } as const;
+      }
+    },
+    /* c8 ignore stop */
     remoteRequired: true,
     setRunLogger: (logger) => {
       runLogger = logger;
@@ -457,6 +544,7 @@ export function productionDependencies(
             repository,
           );
           const value = JSON.parse(raw) as {
+            state?: string;
             labels?: { name: string }[];
             comments?: { body: string }[];
           };
@@ -467,6 +555,9 @@ export function productionDependencies(
           const manifest = issueManifests.at(-1);
           let prData: {
             number?: number;
+            state?: string;
+            mergedAt?: string;
+            baseRefName?: string;
             headRefName?: string;
             headRefOid?: string;
             comments?: { body: string }[];
@@ -482,7 +573,7 @@ export function productionDependencies(
                 'view',
                 String(manifest.pr),
                 '--json',
-                'number,headRefName,headRefOid,comments,reviews,statusCheckRollup',
+                'number,state,mergedAt,baseRefName,headRefName,headRefOid,comments,reviews,statusCheckRollup',
               ],
               root,
               repository,
@@ -524,8 +615,12 @@ export function productionDependencies(
           );
           const result = {
             issue,
+            issueState: value.state,
             labels: (value.labels ?? []).map((label) => label.name),
             pr: prData.number ?? selected?.pr,
+            prState: prData.state,
+            prMergedAt: prData.mergedAt,
+            prBaseBranch: prData.baseRefName,
             comments: allComments.map((comment) => ({ body: comment.body })),
             markers,
             manifest: selected,
