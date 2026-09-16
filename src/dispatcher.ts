@@ -275,7 +275,10 @@ function gh(
   repository?: string,
   host: DispatcherHost = {},
 ): string {
-  const scoped = repository && !args.includes('--repo') ? [...args, '--repo', repository] : args;
+  const scoped =
+    repository && args[0] !== 'api' && !args.includes('--repo')
+      ? [...args, '--repo', repository]
+      : args;
   try {
     return (host.runSyncCommand ?? runSyncCommand)(
       (host.resolveExecutable ?? resolveExecutable)('gh', host.platform ?? process.platform),
