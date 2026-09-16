@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadConfigText, type SloopConfig } from './config.js';
 import type { ReviewCapOptions } from './core/boundaries.js';
 import { resolveExecutable, runSyncCommand } from './process.js';
+import { selectIssues } from './dispatcher.js';
 
 export const EXIT = Object.freeze({ ok: 0, preflight: 2, busy: 3, blocked: 4, external: 5 });
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
@@ -758,7 +759,18 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
         io,
       );
     try {
-      const issues = JSON.parse(response.stdout) as { number: number; title: string }[];
+      const rawIssues = JSON.parse(response.stdout) as {
+        number: number;
+        title: string;
+        labels?: { name: string }[];
+      }[];
+      const issues = selectIssues(
+        rawIssues.map((issue) => ({
+          ...issue,
+          labels: issue.labels?.map(({ name }) => name),
+        })),
+        config.github.labels.priority,
+      );
       const value = envelope(
         parsed.command,
         issues.length ? 'completed' : 'idle',
@@ -787,7 +799,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
   let workflow: Record<string, unknown> = {};
   if (parsed.command === 'status' && existsSync(stateFile)) {
     try {
-      const parsedState: unknown = JSON.parse(readFileSync(stateFile, 'utf8'));
+      const parsedState: unknown = JSON.parse(io.readFile(stateFile));
       if (!parsedState || typeof parsedState !== 'object' || Array.isArray(parsedState))
         throw new Error('state must be a JSON object');
       workflow = parsedState as Record<string, unknown>;

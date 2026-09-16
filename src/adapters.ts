@@ -19,6 +19,8 @@ import {
   runCommand,
   writeState,
 } from './dispatcher.js';
+import { issueLabelNames } from './issue-selection.js';
+import { selectIssues } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
 import {
   clearWorkspaces,
@@ -89,7 +91,11 @@ function adapterIssues(
   repository: string,
   label: string,
 ): import('./dispatcher.js').Issue[] {
-  return adapterJson<import('./dispatcher.js').Issue[]>(
+  const issues = adapterJson<
+    (Omit<import('./dispatcher.js').Issue, 'labels'> & {
+      labels?: readonly (string | { name?: string })[];
+    })[]
+  >(
     execute,
     [
       'issue',
@@ -99,13 +105,14 @@ function adapterIssues(
       '--label',
       label,
       '--json',
-      'number,title,body',
+      'number,title,body,labels',
       '--limit',
       '100',
     ],
     root,
     repository,
-  ).sort((a, b) => a.number - b.number);
+  );
+  return issues.map((issue) => ({ ...issue, labels: issueLabelNames(issue.labels) }));
 }
 
 function adapterPullRequest(
@@ -121,7 +128,7 @@ function adapterPullRequest(
       'view',
       String(pr),
       '--json',
-      'number,state,baseRefName,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
+      'number,state,baseRefName,baseRefOid,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
     ],
     root,
     repository,
@@ -129,6 +136,7 @@ function adapterPullRequest(
   return {
     number: raw.number,
     state: raw.state,
+    baseRefOid: raw.baseRefOid,
     baseRefName: raw.baseRefName,
     headRefName: raw.headRefName,
     headRefOid: raw.headRefOid,
@@ -241,6 +249,7 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     logRoleInvocation: config.logging.roleInvocation,
     loggingRetentionMs: config.logging.retention,
     lockTtlMs: config.agents.worker.timeout,
+    priorityLabels: config.github.labels.priority,
   };
 }
 
@@ -328,9 +337,10 @@ export function productionDependencies(
     },
     list: () => {
       try {
-        return adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible).map(
-          ({ number, title }) => ({ number, title }),
-        );
+        return selectIssues(
+          adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible),
+          validatedConfig.github.labels.priority,
+        ).map(({ number, title }) => ({ number, title }));
       } catch (error) {
         throw new CliFailure(5, error instanceof Error ? error.message : String(error));
       }
@@ -346,19 +356,22 @@ export function productionDependencies(
         throw new Error('--prepare-recovery requires an issue number');
       if (!pr || !Number.isInteger(pr))
         throw new Error('--prepare-recovery requires --pr or an existing state.pr');
+      const remote = adapterPullRequest(execute, pr, root, repository);
       writeState(
-        prepareRecovery(current, issue, pr, Date.now(), config.workerLeaseMs ?? 900000),
+        prepareRecovery(current, issue, pr, Date.now(), config.workerLeaseMs ?? 900000, {
+          baseRefOid: remote.baseRefOid,
+          headRefName: remote.headRefName,
+          headRefOid: remote.headRefOid,
+        }),
         state,
       );
       return pr;
     },
     eligible: () => {
       try {
-        const result = adapterIssues(
-          execute,
-          root,
-          repository,
-          validatedConfig.github.labels.eligible,
+        const result = selectIssues(
+          adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible),
+          validatedConfig.github.labels.priority,
         );
         logGithub('response', 'eligible', result);
         return result;

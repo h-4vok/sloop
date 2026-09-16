@@ -44,14 +44,36 @@ import {
   commentPullRequest,
   writeState,
   maxRoundsForUserBudget,
+  selectIssues,
 } from '../src/dispatcher.js';
 import { parseDispatcherCommand } from '../src/runtime.js';
+import { issueLabelNames } from '../src/issue-selection.js';
 
 test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);
   assert.equal(maxRoundsForUserBudget(3, 2, 2), 3);
   assert.equal(maxRoundsForUserBudget(3, 9, 6), 14);
   assert.equal(maxRoundsForUserBudget(3, 9, 0), 3);
+});
+
+test('shared issue selector orders configured priorities then numeric ties', () => {
+  const issues = [
+    { number: 20, title: 'unprioritized' },
+    { number: 12, title: 'p1', labels: ['Priority: P1'] },
+    { number: 8, title: 'p0 later', labels: ['Priority: P0'] },
+    { number: 3, title: 'p0 first', labels: ['Priority: P0'] },
+  ];
+  assert.deepEqual(
+    selectIssues(issues, ['Priority: P0', 'Priority: P1']).map(({ number }) => number),
+    [3, 8, 12, 20],
+  );
+});
+
+test('issue label normalization accepts GitHub label objects', () => {
+  assert.deepEqual(issueLabelNames([{ name: 'Priority: P0' }, 'Automation Ready']), [
+    'Priority: P0',
+    'Automation Ready',
+  ]);
 });
 
 test('public command and commit helpers cover optional and invalid inputs', async () => {
@@ -299,14 +321,7 @@ test('review-cap resolution uses the host for identity and publication while enf
     additionalRounds: 0,
   };
 
-  resolveReviewCap(
-    options,
-    { requiredPrChecks: ['pr-checks'] },
-    statePath,
-    root,
-    undefined,
-    fake.host,
-  );
+  resolveReviewCap(options, { requiredPrChecks: ['pr-checks'] }, statePath, root, 'o/r', fake.host);
   const next = readState(statePath);
   assert.equal(next.status, 'ready_for_human_merge');
   assert.deepEqual(next.reviewCap.waivedFindingIds, ['Q1']);
@@ -316,6 +331,7 @@ test('review-cap resolution uses the host for identity and publication while enf
     fake.calls.some(({ args }) => args[0] === 'api'),
     true,
   );
+  assert.equal(fake.calls.find(({ args }) => args[0] === 'api').args.includes('--repo'), false);
   assert.throws(
     () =>
       resolveReviewCap(
@@ -328,6 +344,54 @@ test('review-cap resolution uses the host for identity and publication while enf
       ),
     /cannot be combined/,
   );
+});
+
+test('review-cap resolution creates an empty cap when resuming a ready PR recovery', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-review-cap-recovery-'));
+  const statePath = join(root, 'state.json');
+  const recovered = prepareRecovery(
+    { issue: 1, pr: 7, status: 'ready_for_human_merge', reviewRound: 1, completedIssues: [1] },
+    1,
+    7,
+    1000,
+    100,
+  );
+  writeState(recovered, statePath);
+  const fake = githubHost((args) => {
+    if (args[0] === 'api') return 'octocat';
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
+    if (args[0] === 'pr' && args[1] === 'view')
+      return JSON.stringify({
+        number: 7,
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        comments: [],
+        statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      });
+    return '';
+  });
+
+  resolveReviewCap(
+    {
+      steer: 'resume with the local listing reproduction',
+      abandon: false,
+      waiveAllOutstanding: false,
+      waivedFindingIds: [],
+      additionalRounds: 2,
+    },
+    { requiredPrChecks: ['pr-checks'] },
+    statePath,
+    root,
+    'o/r',
+    fake.host,
+  );
+
+  const next = readState(statePath);
+  assert.equal(next.status, 'worker_recovery_pending');
+  assert.equal(next.reviewCap.capRound, 1);
+  assert.deepEqual(next.reviewCap.outstandingFindingIds, []);
+  assert.equal(next.reviewCap.additionalRounds, 0);
+  assert.equal(next.reviewCap.steer, 'resume with the local listing reproduction');
 });
 
 test('dispatcher CLI worktree controls and checkout retain their direct contracts', async () => {
@@ -595,7 +659,9 @@ function harness(
   for (let guide = 0; guide < (overrides.existingHumanGuides ?? 0); guide += 1)
     pr.comments.push({ body: existingHumanReviewGuide() });
   if (overrides.malformedHumanGuide)
-    pr.comments.push({ body: '[Human Review Guide] round=1 commit=abc1\n\nSummary\nInjected.' });
+    pr.comments.push({
+      body: '[Human Review Guide] round=1 commit=abc1\n<!-- sloop-dispatcher-human-review-guide -->',
+    });
   const checkSequences = overrides.checkSequences ?? [pr.statusCheckRollup];
   let checkIndex = 0;
 
@@ -655,7 +721,7 @@ function harness(
         spec.onHeartbeat?.();
         if (publishEvidence.worker) {
           const verification = humanVerification
-            ? `\n\n[Human Verification]\n\`\`\`json\n${JSON.stringify({ summary: 'Exercise the CLI change.', steps: ['Run the focused command in a temporary directory.'], expected: ['The documented output appears.'], isolation: 'Use a temporary checkout and no credentials.', limitations: ['A failed command indicates the change is not ready.'], checklist: ['Behavior matches the acceptance criteria.'] })}\n\`\`\``
+            ? '\n\n[Human Verification]\n1. Run the focused command in a temporary directory.\n2. Confirm the documented output appears.'
             : '';
           pr.comments.push({
             body: `[Worker] round=${round} status=ready_for_review pr=${pr.number} base=main commit=${pr.headRefOid}${verification}`,
@@ -977,7 +1043,7 @@ test('Worker commit evidence accepts escaped newline delimiters from Windows com
   assert.equal(hasCommit('[Worker] round=2 commit=abc123', 'def456789'), false);
 });
 
-test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async () => {
+test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => {
   const h = harness();
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'ready_for_human_merge');
@@ -1001,8 +1067,8 @@ test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async
   assert.equal(h.reviews.length, 1);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';
   assert.match(guide, /commit=abc1/);
-  assert.match(guide, /Isolation/);
-  assert.match(guide, /Approval checklist/);
+  assert.match(guide, /Run the focused command/);
+  assert.match(guide, /documented output appears/);
   assert.equal(h.state().branch, 'codex/issue-1');
   assert.equal(h.state().mainBaseSha, 'main-sha-1');
   const runDirectories = readdirSync(join(h.root, '.sloop', 'runs'));

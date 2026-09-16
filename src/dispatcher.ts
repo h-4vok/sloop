@@ -35,6 +35,7 @@ import type {
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
+import { issueLabelNames } from './issue-selection.js';
 
 export type Status =
   | 'queued'
@@ -117,6 +118,7 @@ export type Review = {
 export type PullRequest = {
   number: number;
   state?: string;
+  baseRefOid?: string;
   baseRefName?: string;
   headRefName?: string;
   headRefOid?: string;
@@ -142,8 +144,9 @@ export type Config = {
   logRoleInvocation?: boolean;
   loggingRetentionMs?: number;
   lockTtlMs?: number;
+  priorityLabels?: readonly string[];
 };
-export type Issue = { number: number; title: string; body?: string };
+export type Issue = { number: number; title: string; body?: string; labels?: readonly string[] };
 export type Deps = Workspace<State> &
   CliControl<Config> &
   GitHubProvider<Issue, PullRequest> &
@@ -272,7 +275,12 @@ function gh(
   repository?: string,
   host: DispatcherHost = {},
 ): string {
-  const scoped = repository && !args.includes('--repo') ? [...args, '--repo', repository] : args;
+  // `gh api` has no `--repo` flag. API requests must scope themselves through
+  // their endpoint or request fields; regular gh commands use `--repo`.
+  const scoped =
+    repository && args[0] !== 'api' && !args.includes('--repo')
+      ? [...args, '--repo', repository]
+      : args;
   try {
     return (host.runSyncCommand ?? runSyncCommand)(
       (host.resolveExecutable ?? resolveExecutable)('gh', host.platform ?? process.platform),
@@ -310,7 +318,9 @@ export function eligible(
   label = 'Automation Ready',
   host?: DispatcherHost,
 ): Issue[] {
-  return ghJson<Issue[]>(
+  const issues = ghJson<
+    (Omit<Issue, 'labels'> & { labels?: readonly (string | { name?: string })[] })[]
+  >(
     [
       'issue',
       'list',
@@ -319,14 +329,28 @@ export function eligible(
       '--label',
       label,
       '--json',
-      'number,title,body',
+      'number,title,body,labels',
       '--limit',
       '100',
     ],
     cwd,
     repository,
     host,
-  ).sort((a, b) => a.number - b.number);
+  ).map((issue) => ({ ...issue, labels: issueLabelNames(issue.labels) }));
+  return selectIssues(issues, []);
+}
+
+/** Shared deterministic selector used by listing and dispatch. */
+export function selectIssues(
+  issues: readonly Issue[],
+  priorityLabels: readonly string[] = [],
+): Issue[] {
+  const priorities = new Map(priorityLabels.map((label, index) => [label, index]));
+  return [...issues].sort((a, b) => {
+    const priority = (issue: Issue) =>
+      Math.min(...issueLabelNames(issue.labels).map((label) => priorities.get(label) ?? Infinity));
+    return priority(a) - priority(b) || a.number - b.number;
+  });
 }
 
 export function pullRequest(
@@ -975,75 +999,29 @@ function latestWorkerComment(pr: PullRequest, round: number, headSha?: string) {
     .at(-1);
 }
 
-type HumanReviewGuide = {
-  summary: string;
-  steps: string[];
-  expected: string[];
-  isolation: string;
-  limitations: string[];
-  checklist: string[];
-};
+type HumanReviewGuide = string;
 
 const humanReviewGuideMarker = '<!-- sloop-dispatcher-human-review-guide -->';
 
 function humanReviewGuide(comment: { body?: string } | undefined): HumanReviewGuide | undefined {
-  const match = comment?.body?.match(/\[Human Verification\]\s*```json\s*([\s\S]*?)```/i);
-  if (!match) return undefined;
-  try {
-    const guide = JSON.parse(match[1]) as Partial<HumanReviewGuide>;
-    const strings = (value: unknown) =>
-      (typeof value === 'string' && value.trim()) ||
-      (Array.isArray(value) &&
-        value.length > 0 &&
-        value.every((item) => typeof item === 'string' && item.trim()));
-    if (
-      typeof guide.summary !== 'string' ||
-      !guide.summary.trim() ||
-      !strings(guide.steps) ||
-      !strings(guide.expected) ||
-      typeof guide.isolation !== 'string' ||
-      !guide.isolation.trim() ||
-      !strings(guide.limitations) ||
-      !strings(guide.checklist)
-    )
-      return undefined;
-    return {
-      ...guide,
-      steps: typeof guide.steps === 'string' ? [guide.steps] : guide.steps,
-      expected: typeof guide.expected === 'string' ? [guide.expected] : guide.expected,
-      limitations: typeof guide.limitations === 'string' ? [guide.limitations] : guide.limitations,
-      checklist: typeof guide.checklist === 'string' ? [guide.checklist] : guide.checklist,
-    } as HumanReviewGuide;
-  } catch {
-    return undefined;
-  }
+  const match = comment?.body?.match(/\[Human Verification\]([\s\S]*)/i);
+  const guide = match?.[1]?.trim();
+  return guide || undefined;
 }
 
 function renderedHumanReviewGuide(guide: HumanReviewGuide, round: number, commit: string): string {
   return (
-    `[Human Review Guide] round=${round} commit=${commit}\n${humanReviewGuideMarker}\n\n` +
-    `Summary\n${guide.summary}\n\n` +
-    `Steps\n${guide.steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}\n\n` +
-    `Expected results\n${guide.expected.map((item) => `- ${item}`).join('\n')}\n\n` +
-    `Isolation\n${guide.isolation}\n\n` +
-    `Limitations / diagnostics\n${guide.limitations.map((item) => `- ${item}`).join('\n')}\n\n` +
-    `Approval checklist\n${guide.checklist.map((item) => `- [ ] ${item}`).join('\n')}`
+    `[Human Review Guide] round=${round} commit=${commit}\n${humanReviewGuideMarker}\n\n` + guide
   );
 }
 
 function isRenderedHumanReviewGuide(body: string | undefined, commit: string): boolean {
   if (!body?.trim().startsWith(`[Human Review Guide]`) || !body.includes(`commit=${commit}`))
     return false;
-  const requiredSections = [
-    /\n\nSummary\n\S/,
-    /\n\nSteps\n1\.\s+\S/,
-    /\n\nExpected results\n-\s+\S/,
-    /\n\nIsolation\n\S/,
-    /\n\nLimitations \/ diagnostics\n-\s+\S/,
-    /\n\nApproval checklist\n- \[ \]\s+\S/,
-  ];
   return (
-    body.includes(humanReviewGuideMarker) && requiredSections.every((section) => section.test(body))
+    body.includes(humanReviewGuideMarker) &&
+    body.slice(body.indexOf(humanReviewGuideMarker) + humanReviewGuideMarker.length).trim().length >
+      0
   );
 }
 
@@ -1572,13 +1550,16 @@ export function prepareRecovery(
   pr: number,
   now: number,
   leaseMs: number,
+  metadata?: Pick<PullRequest, 'baseRefOid' | 'headRefName' | 'headRefOid'>,
 ): State {
   const staleAt = now - leaseMs - 1;
   return {
     ...state,
     issue,
     pr,
-    branch: state.branch ?? workerBranchName(issue),
+    branch: metadata?.headRefName ?? state.branch ?? workerBranchName(issue),
+    mainBaseSha: metadata?.baseRefOid ?? state.mainBaseSha,
+    headSha: metadata?.headRefOid ?? state.headSha,
     status: 'worker_running',
     workerRunId: randomUUID(),
     workerPid: -1,
@@ -1775,7 +1756,13 @@ export function resolveReviewCap(
 
   const current = activeRunForHitl(stored);
 
-  const outstanding = new Set(current.reviewCap?.outstandingFindingIds ?? []);
+  const reviewCap = current.reviewCap ?? {
+    capRound: current.reviewRound ?? 1,
+    outstandingFindingIds: [],
+    additionalRounds: 0,
+    waivedFindingIds: [],
+  };
+  const outstanding = new Set(reviewCap.outstandingFindingIds);
   const normalizedWaivers = waiveAll
     ? [...outstanding]
     : [...new Set(waived.map((id) => id.toUpperCase()))];
@@ -1790,7 +1777,7 @@ export function resolveReviewCap(
     additionalRounds,
   );
   const cap = {
-    ...current.reviewCap!,
+    ...reviewCap,
     additionalRounds: Math.max(0, requestedMaxRounds - baseMaxRounds),
     waivedFindingIds: [
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...normalizedWaivers]),
@@ -1925,9 +1912,10 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         : undefined;
     d.save({ ...d.load(), drainStatus: 'running' });
     while (true) {
+      const ordered = selectIssues(d.eligible(), cfg.priorityLabels);
       const issue = existingIssue
-        ? d.eligible().find((candidate) => candidate.number === existingIssue)
-        : d.eligible().find((candidate) => !processed.has(candidate.number));
+        ? ordered.find((candidate) => candidate.number === existingIssue)
+        : ordered.find((candidate) => !processed.has(candidate.number));
       if (!issue) {
         if (existingIssue) throw recoveryEligibilityError(d.load(), existingIssue);
         d.save({
