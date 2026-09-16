@@ -495,13 +495,25 @@ test('runtime parser and preflight exercise all dispatcher variants and user-fac
   assert.equal(emitUsageFailure(['--json'], 'bad input'), EXIT.preflight);
 });
 
-test('runtime covers production IO, doctor policy, dispatcher command names, and state presentations', () => {
+test('runtime covers injected IO, doctor policy, dispatcher command names, and state presentations', () => {
   const original = process.cwd();
   const outside = mkdtempSync(join(tmpdir(), 'sloop-production-io-'));
   try {
-    assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json'])), EXIT.ok);
     process.chdir(outside);
     assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json'])), EXIT.preflight);
+    const inside = harness();
+    assert.equal(
+      runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), inside.io),
+      EXIT.ok,
+    );
+    const outsideHarness = harness({
+      'git rev-parse --show-toplevel': { stdout: '', stderr: 'not a repository', status: 1 },
+    });
+    outsideHarness.io.cwd = outside;
+    assert.equal(
+      runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), outsideHarness.io),
+      EXIT.preflight,
+    );
   } finally {
     process.chdir(original);
     rmSync(outside, { recursive: true, force: true });

@@ -28,6 +28,8 @@ Write or update the issue in this structure, omitting a section only when it tru
 ```markdown
 ## Problem
 
+## How it works today
+
 ## Outcome
 
 ## Scope
@@ -72,3 +74,9 @@ If a gate fails, keep the issue unpromoted, ask the shortest remaining question,
 Report the issue URL or number, contract changes, label/result, and remaining blockers. Update the issue with `product-lead: ready` or `product-lead: blocked` as appropriate.
 
 Do not edit implementation code, claim work, open a worker PR, or merge as part of the product-lead workflow.
+
+## Language
+
+Use simple, concise, limited language. Do not be extra technical or use a lot of jargon. Ensure the description of the issue can be understood by junior software engineers and not require a high level of sophistication and education.
+
+Prefer explanations with examples where applicable, over technical jargon heavy sentences.
