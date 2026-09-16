@@ -8,7 +8,14 @@ import { fileURLToPath } from 'node:url';
 export const AGENT_OUTPUT_VERSION = 'sloop.agent-output/v1' as const;
 export type Role = 'worker' | 'qa' | 'staff' | 'arbiter';
 export type RunStatus =
-  'ready' | 'blocked' | 'accepted' | 'changes-requested' | 'uphold' | 'overrule' | 'defer';
+  | 'ready'
+  | 'blocked'
+  | 'accepted'
+  | 'changes-requested'
+  | 'uphold'
+  | 'overrule'
+  | 'defer'
+  | 'escalate';
 export type RunContext = Readonly<{
   run: string;
   issue: number;
@@ -184,11 +191,12 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
         throw new AgentContractError('malformed', 'disposition must reference a finding');
     }
   } else {
-    if (!['uphold', 'overrule', 'defer'].includes(e.status as string))
+    if (!['uphold', 'overrule', 'defer', 'escalate'].includes(e.status as string))
       throw new AgentContractError('contradictory');
-    exactKeys(payload, ['rationale', 'references'], 'payload');
+    exactKeys(payload, ['rationale', 'references', 'decisions'], 'payload', ['decisions']);
     nonEmpty(payload.rationale, 'rationale');
     strings(payload.references, 'references');
+    if (payload.decisions !== undefined) records(payload.decisions, 'decisions');
   }
   return {
     schema: AGENT_OUTPUT_VERSION,
