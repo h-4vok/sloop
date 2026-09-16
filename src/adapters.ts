@@ -19,6 +19,7 @@ import {
   runCommand,
   writeState,
 } from './dispatcher.js';
+import { selectIssues } from './issue-selection.js';
 import type { ConfigReconciler } from './config-wizard.js';
 import {
   clearWorkspaces,
@@ -89,7 +90,14 @@ function adapterIssues(
   repository: string,
   label: string,
 ): import('./dispatcher.js').Issue[] {
-  return adapterJson<import('./dispatcher.js').Issue[]>(
+  const issues = adapterJson<
+    {
+      number: number;
+      title: string;
+      body?: string;
+      labels?: readonly (string | { name?: string })[];
+    }[]
+  >(
     execute,
     [
       'issue',
@@ -99,13 +107,19 @@ function adapterIssues(
       '--label',
       label,
       '--json',
-      'number,title,body',
+      'number,title,body,labels',
       '--limit',
       '100',
     ],
     root,
     repository,
-  ).sort((a, b) => a.number - b.number);
+  );
+  return issues.map((issue) => ({
+    ...issue,
+    labels: (issue.labels ?? [])
+      .map((label) => (typeof label === 'string' ? label : label.name))
+      .filter((label): label is string => Boolean(label)),
+  }));
 }
 
 function adapterPullRequest(
@@ -241,6 +255,7 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     logRoleInvocation: config.logging.roleInvocation,
     loggingRetentionMs: config.logging.retention,
     lockTtlMs: config.agents.worker.timeout,
+    priorityLabels: config.github.labels.priority,
   };
 }
 
@@ -328,9 +343,10 @@ export function productionDependencies(
     },
     list: () => {
       try {
-        return adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible).map(
-          ({ number, title }) => ({ number, title }),
-        );
+        return selectIssues(
+          adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible),
+          validatedConfig.github.labels.priority,
+        ).map(({ number, title }) => ({ number, title }));
       } catch (error) {
         throw new CliFailure(5, error instanceof Error ? error.message : String(error));
       }
@@ -354,11 +370,9 @@ export function productionDependencies(
     },
     eligible: () => {
       try {
-        const result = adapterIssues(
-          execute,
-          root,
-          repository,
-          validatedConfig.github.labels.eligible,
+        const result = selectIssues(
+          adapterIssues(execute, root, repository, validatedConfig.github.labels.eligible),
+          validatedConfig.github.labels.priority,
         );
         logGithub('response', 'eligible', result);
         return result;

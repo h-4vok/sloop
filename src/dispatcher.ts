@@ -33,6 +33,8 @@ import type {
   RunContext,
   RunEventLogger,
 } from './core/boundaries.js';
+import { selectIssues } from './issue-selection.js';
+export { selectIssues } from './issue-selection.js';
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
 
@@ -142,8 +144,9 @@ export type Config = {
   logRoleInvocation?: boolean;
   loggingRetentionMs?: number;
   lockTtlMs?: number;
+  priorityLabels?: readonly string[];
 };
-export type Issue = { number: number; title: string; body?: string };
+export type Issue = { number: number; title: string; body?: string; labels?: readonly string[] };
 export type Deps = Workspace<State> &
   CliControl<Config> &
   GitHubProvider<Issue, PullRequest> &
@@ -310,23 +313,26 @@ export function eligible(
   label = 'Automation Ready',
   host?: DispatcherHost,
 ): Issue[] {
-  return ghJson<Issue[]>(
-    [
-      'issue',
-      'list',
-      '--state',
-      'open',
-      '--label',
-      label,
-      '--json',
-      'number,title,body',
-      '--limit',
-      '100',
-    ],
-    cwd,
-    repository,
-    host,
-  ).sort((a, b) => a.number - b.number);
+  return selectIssues(
+    ghJson<Issue[]>(
+      [
+        'issue',
+        'list',
+        '--state',
+        'open',
+        '--label',
+        label,
+        '--json',
+        'number,title,body,labels',
+        '--limit',
+        '100',
+      ],
+      cwd,
+      repository,
+      host,
+    ),
+    [],
+  );
 }
 
 export function pullRequest(
@@ -1925,9 +1931,10 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
         : undefined;
     d.save({ ...d.load(), drainStatus: 'running' });
     while (true) {
+      const ordered = selectIssues(d.eligible(), cfg.priorityLabels ?? []);
       const issue = existingIssue
-        ? d.eligible().find((candidate) => candidate.number === existingIssue)
-        : d.eligible().find((candidate) => !processed.has(candidate.number));
+        ? ordered.find((candidate) => candidate.number === existingIssue)
+        : ordered.find((candidate) => !processed.has(candidate.number));
       if (!issue) {
         if (existingIssue) throw recoveryEligibilityError(d.load(), existingIssue);
         d.save({
