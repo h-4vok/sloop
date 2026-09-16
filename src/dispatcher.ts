@@ -992,75 +992,29 @@ function latestWorkerComment(pr: PullRequest, round: number, headSha?: string) {
     .at(-1);
 }
 
-type HumanReviewGuide = {
-  summary: string;
-  steps: string[];
-  expected: string[];
-  isolation: string;
-  limitations: string[];
-  checklist: string[];
-};
+type HumanReviewGuide = string;
 
 const humanReviewGuideMarker = '<!-- sloop-dispatcher-human-review-guide -->';
 
 function humanReviewGuide(comment: { body?: string } | undefined): HumanReviewGuide | undefined {
-  const match = comment?.body?.match(/\[Human Verification\]\s*```json\s*([\s\S]*?)```/i);
-  if (!match) return undefined;
-  try {
-    const guide = JSON.parse(match[1]) as Partial<HumanReviewGuide>;
-    const strings = (value: unknown) =>
-      (typeof value === 'string' && value.trim()) ||
-      (Array.isArray(value) &&
-        value.length > 0 &&
-        value.every((item) => typeof item === 'string' && item.trim()));
-    if (
-      typeof guide.summary !== 'string' ||
-      !guide.summary.trim() ||
-      !strings(guide.steps) ||
-      !strings(guide.expected) ||
-      typeof guide.isolation !== 'string' ||
-      !guide.isolation.trim() ||
-      !strings(guide.limitations) ||
-      !strings(guide.checklist)
-    )
-      return undefined;
-    return {
-      ...guide,
-      steps: typeof guide.steps === 'string' ? [guide.steps] : guide.steps,
-      expected: typeof guide.expected === 'string' ? [guide.expected] : guide.expected,
-      limitations: typeof guide.limitations === 'string' ? [guide.limitations] : guide.limitations,
-      checklist: typeof guide.checklist === 'string' ? [guide.checklist] : guide.checklist,
-    } as HumanReviewGuide;
-  } catch {
-    return undefined;
-  }
+  const match = comment?.body?.match(/\[Human Verification\]([\s\S]*)/i);
+  const guide = match?.[1]?.trim();
+  return guide || undefined;
 }
 
 function renderedHumanReviewGuide(guide: HumanReviewGuide, round: number, commit: string): string {
   return (
-    `[Human Review Guide] round=${round} commit=${commit}\n${humanReviewGuideMarker}\n\n` +
-    `Summary\n${guide.summary}\n\n` +
-    `Steps\n${guide.steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}\n\n` +
-    `Expected results\n${guide.expected.map((item) => `- ${item}`).join('\n')}\n\n` +
-    `Isolation\n${guide.isolation}\n\n` +
-    `Limitations / diagnostics\n${guide.limitations.map((item) => `- ${item}`).join('\n')}\n\n` +
-    `Approval checklist\n${guide.checklist.map((item) => `- [ ] ${item}`).join('\n')}`
+    `[Human Review Guide] round=${round} commit=${commit}\n${humanReviewGuideMarker}\n\n` + guide
   );
 }
 
 function isRenderedHumanReviewGuide(body: string | undefined, commit: string): boolean {
   if (!body?.trim().startsWith(`[Human Review Guide]`) || !body.includes(`commit=${commit}`))
     return false;
-  const requiredSections = [
-    /\n\nSummary\n\S/,
-    /\n\nSteps\n1\.\s+\S/,
-    /\n\nExpected results\n-\s+\S/,
-    /\n\nIsolation\n\S/,
-    /\n\nLimitations \/ diagnostics\n-\s+\S/,
-    /\n\nApproval checklist\n- \[ \]\s+\S/,
-  ];
   return (
-    body.includes(humanReviewGuideMarker) && requiredSections.every((section) => section.test(body))
+    body.includes(humanReviewGuideMarker) &&
+    body.slice(body.indexOf(humanReviewGuideMarker) + humanReviewGuideMarker.length).trim().length >
+      0
   );
 }
 

@@ -609,7 +609,9 @@ function harness(
   for (let guide = 0; guide < (overrides.existingHumanGuides ?? 0); guide += 1)
     pr.comments.push({ body: existingHumanReviewGuide() });
   if (overrides.malformedHumanGuide)
-    pr.comments.push({ body: '[Human Review Guide] round=1 commit=abc1\n\nSummary\nInjected.' });
+    pr.comments.push({
+      body: '[Human Review Guide] round=1 commit=abc1\n<!-- sloop-dispatcher-human-review-guide -->',
+    });
   const checkSequences = overrides.checkSequences ?? [pr.statusCheckRollup];
   let checkIndex = 0;
 
@@ -669,7 +671,7 @@ function harness(
         spec.onHeartbeat?.();
         if (publishEvidence.worker) {
           const verification = humanVerification
-            ? `\n\n[Human Verification]\n\`\`\`json\n${JSON.stringify({ summary: 'Exercise the CLI change.', steps: ['Run the focused command in a temporary directory.'], expected: ['The documented output appears.'], isolation: 'Use a temporary checkout and no credentials.', limitations: ['A failed command indicates the change is not ready.'], checklist: ['Behavior matches the acceptance criteria.'] })}\n\`\`\``
+            ? '\n\n[Human Verification]\n1. Run the focused command in a temporary directory.\n2. Confirm the documented output appears.'
             : '';
           pr.comments.push({
             body: `[Worker] round=${round} status=ready_for_review pr=${pr.number} base=main commit=${pr.headRefOid}${verification}`,
@@ -991,7 +993,7 @@ test('Worker commit evidence accepts escaped newline delimiters from Windows com
   assert.equal(hasCommit('[Worker] round=2 commit=abc123', 'def456789'), false);
 });
 
-test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async () => {
+test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => {
   const h = harness();
   await dispatch(h.cfg, h.deps);
   assert.equal(h.state().status, 'ready_for_human_merge');
@@ -1015,8 +1017,8 @@ test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async
   assert.equal(h.reviews.length, 1);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';
   assert.match(guide, /commit=abc1/);
-  assert.match(guide, /Isolation/);
-  assert.match(guide, /Approval checklist/);
+  assert.match(guide, /Run the focused command/);
+  assert.match(guide, /documented output appears/);
   assert.equal(h.state().branch, 'codex/issue-1');
   assert.equal(h.state().mainBaseSha, 'main-sha-1');
   const runDirectories = readdirSync(join(h.root, '.sloop', 'runs'));
