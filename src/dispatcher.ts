@@ -117,6 +117,7 @@ export type Review = {
 export type PullRequest = {
   number: number;
   state?: string;
+  baseRefOid?: string;
   baseRefName?: string;
   headRefName?: string;
   headRefOid?: string;
@@ -1548,13 +1549,16 @@ export function prepareRecovery(
   pr: number,
   now: number,
   leaseMs: number,
+  metadata?: Pick<PullRequest, 'baseRefOid' | 'headRefName' | 'headRefOid'>,
 ): State {
   const staleAt = now - leaseMs - 1;
   return {
     ...state,
     issue,
     pr,
-    branch: state.branch ?? workerBranchName(issue),
+    branch: metadata?.headRefName ?? state.branch ?? workerBranchName(issue),
+    mainBaseSha: metadata?.baseRefOid ?? state.mainBaseSha,
+    headSha: metadata?.headRefOid ?? state.headSha,
     status: 'worker_running',
     workerRunId: randomUUID(),
     workerPid: -1,
