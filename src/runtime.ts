@@ -799,7 +799,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
   let workflow: Record<string, unknown> = {};
   if (parsed.command === 'status' && existsSync(stateFile)) {
     try {
-      const parsedState: unknown = JSON.parse(readFileSync(stateFile, 'utf8'));
+      const parsedState: unknown = JSON.parse(io.readFile(stateFile));
       if (!parsedState || typeof parsedState !== 'object' || Array.isArray(parsedState))
         throw new Error('state must be a JSON object');
       workflow = parsedState as Record<string, unknown>;
