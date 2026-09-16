@@ -33,8 +33,8 @@ import type {
   RunContext,
   RunEventLogger,
 } from './core/boundaries.js';
-import { selectIssues } from './issue-selection.js';
-export { selectIssues } from './issue-selection.js';
+import { issueLabelNames, selectIssues } from './issue-selection.js';
+export { issueLabelNames, selectIssues } from './issue-selection.js';
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
 
@@ -316,26 +316,26 @@ export function eligible(
   label = 'Automation Ready',
   host?: DispatcherHost,
 ): Issue[] {
-  return selectIssues(
-    ghJson<Issue[]>(
-      [
-        'issue',
-        'list',
-        '--state',
-        'open',
-        '--label',
-        label,
-        '--json',
-        'number,title,body,labels',
-        '--limit',
-        '100',
-      ],
-      cwd,
-      repository,
-      host,
-    ),
-    [],
-  );
+  const issues = ghJson<
+    (Omit<Issue, 'labels'> & { labels?: readonly (string | { name?: string })[] })[]
+  >(
+    [
+      'issue',
+      'list',
+      '--state',
+      'open',
+      '--label',
+      label,
+      '--json',
+      'number,title,body,labels',
+      '--limit',
+      '100',
+    ],
+    cwd,
+    repository,
+    host,
+  ).map((issue) => ({ ...issue, labels: issueLabelNames(issue.labels) }));
+  return selectIssues(issues, []);
 }
 
 export function pullRequest(

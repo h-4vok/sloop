@@ -58,9 +58,9 @@ test('additional rounds mean future rounds from the current round', () => {
 test('shared selector honors configured priorities, unlabeled issues, and numeric ties', () => {
   const issues = [
     { number: 20, title: 'unprioritized' },
-    { number: 12, title: 'p1', labels: ['Priority: P1'] },
-    { number: 8, title: 'p0 later', labels: ['Priority: P0'] },
-    { number: 3, title: 'p0 first', labels: ['Priority: P0'] },
+    { number: 12, title: 'p1', labels: [{ name: 'Priority: P1' }] },
+    { number: 8, title: 'p0 later', labels: [{ name: 'Priority: P0' }] },
+    { number: 3, title: 'p0 first', labels: [{ name: 'Priority: P0' }] },
   ];
   assert.deepEqual(
     selectIssues(issues, ['Priority: P0', 'Priority: P1']).map(({ number }) => number),

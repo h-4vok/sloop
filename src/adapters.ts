@@ -19,7 +19,7 @@ import {
   runCommand,
   writeState,
 } from './dispatcher.js';
-import { selectIssues } from './issue-selection.js';
+import { issueLabelNames, selectIssues } from './issue-selection.js';
 import type { ConfigReconciler } from './config-wizard.js';
 import {
   clearWorkspaces,
@@ -116,9 +116,7 @@ function adapterIssues(
   );
   return issues.map((issue) => ({
     ...issue,
-    labels: (issue.labels ?? [])
-      .map((label) => (typeof label === 'string' ? label : label.name))
-      .filter((label): label is string => Boolean(label)),
+    labels: issueLabelNames(issue.labels),
   }));
 }
 
