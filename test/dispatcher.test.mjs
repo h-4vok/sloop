@@ -47,6 +47,7 @@ import {
   selectIssues,
 } from '../src/dispatcher.js';
 import { parseDispatcherCommand } from '../src/runtime.js';
+import { issueLabelNames } from '../src/issue-selection.js';
 
 test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);
@@ -66,6 +67,13 @@ test('shared issue selector orders configured priorities then numeric ties', () 
     selectIssues(issues, ['Priority: P0', 'Priority: P1']).map(({ number }) => number),
     [3, 8, 12, 20],
   );
+});
+
+test('issue label normalization accepts GitHub label objects', () => {
+  assert.deepEqual(issueLabelNames([{ name: 'Priority: P0' }, 'Automation Ready']), [
+    'Priority: P0',
+    'Automation Ready',
+  ]);
 });
 
 test('public command and commit helpers cover optional and invalid inputs', async () => {
