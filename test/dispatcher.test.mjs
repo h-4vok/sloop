@@ -2077,3 +2077,39 @@ test('lock reclaim uses injected storage and process liveness seams', () => {
     'finishReclaim',
   ]);
 });
+
+test('active terminal reconciliation completes before selecting the next issue', async () => {
+  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
+    initialState: { issue: 1, status: 'in_progress', pr: 14, branch: 'codex/issue-1' },
+  });
+  h.deps.reconcileActiveRun = () => ({
+    outcome: 'terminal',
+    reason: 'PR merged; branch aligned',
+    localSha: 'abc1',
+    remoteSha: 'abc1',
+  });
+
+  await dispatch(h.cfg, h.deps);
+
+  assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '2');
+  assert.equal(
+    h.saves.some((state) => state.issue === 1 && state.status === 'done'),
+    true,
+  );
+});
+
+test('blocked terminal reconciliation preserves the run and prevents issue selection', async () => {
+  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
+    initialState: { issue: 1, status: 'in_progress', pr: 14, branch: 'codex/issue-1' },
+  });
+  h.deps.reconcileActiveRun = () => ({
+    outcome: 'blocked',
+    reason: 'uncommitted local work remains for human review',
+  });
+
+  await assert.rejects(() => dispatch(h.cfg, h.deps), /uncommitted local work remains/);
+
+  assert.equal(h.runs.length, 0);
+  assert.equal(h.state().status, 'blocked');
+  assert.equal(h.state().issue, 1);
+});
