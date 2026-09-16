@@ -1751,7 +1751,13 @@ export function resolveReviewCap(
 
   const current = activeRunForHitl(stored);
 
-  const outstanding = new Set(current.reviewCap?.outstandingFindingIds ?? []);
+  const reviewCap = current.reviewCap ?? {
+    capRound: current.reviewRound ?? 1,
+    outstandingFindingIds: [],
+    additionalRounds: 0,
+    waivedFindingIds: [],
+  };
+  const outstanding = new Set(reviewCap.outstandingFindingIds);
   const normalizedWaivers = waiveAll
     ? [...outstanding]
     : [...new Set(waived.map((id) => id.toUpperCase()))];
@@ -1766,7 +1772,7 @@ export function resolveReviewCap(
     additionalRounds,
   );
   const cap = {
-    ...current.reviewCap!,
+    ...reviewCap,
     additionalRounds: Math.max(0, requestedMaxRounds - baseMaxRounds),
     waivedFindingIds: [
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...normalizedWaivers]),

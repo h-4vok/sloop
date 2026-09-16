@@ -338,6 +338,54 @@ test('review-cap resolution uses the host for identity and publication while enf
   );
 });
 
+test('review-cap resolution creates an empty cap when resuming a ready PR recovery', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-review-cap-recovery-'));
+  const statePath = join(root, 'state.json');
+  const recovered = prepareRecovery(
+    { issue: 1, pr: 7, status: 'ready_for_human_merge', reviewRound: 1, completedIssues: [1] },
+    1,
+    7,
+    1000,
+    100,
+  );
+  writeState(recovered, statePath);
+  const fake = githubHost((args) => {
+    if (args[0] === 'api') return 'octocat';
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
+    if (args[0] === 'pr' && args[1] === 'view')
+      return JSON.stringify({
+        number: 7,
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        comments: [],
+        statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      });
+    return '';
+  });
+
+  resolveReviewCap(
+    {
+      steer: 'resume with the local listing reproduction',
+      abandon: false,
+      waiveAllOutstanding: false,
+      waivedFindingIds: [],
+      additionalRounds: 2,
+    },
+    { requiredPrChecks: ['pr-checks'] },
+    statePath,
+    root,
+    'o/r',
+    fake.host,
+  );
+
+  const next = readState(statePath);
+  assert.equal(next.status, 'worker_recovery_pending');
+  assert.equal(next.reviewCap.capRound, 1);
+  assert.deepEqual(next.reviewCap.outstandingFindingIds, []);
+  assert.equal(next.reviewCap.additionalRounds, 0);
+  assert.equal(next.reviewCap.steer, 'resume with the local listing reproduction');
+});
+
 test('dispatcher CLI worktree controls and checkout retain their direct contracts', async () => {
   const h = harness();
   const calls = [];
