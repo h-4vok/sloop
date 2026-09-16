@@ -273,7 +273,12 @@ function gh(
   repository?: string,
   host: DispatcherHost = {},
 ): string {
-  const scoped = repository && !args.includes('--repo') ? [...args, '--repo', repository] : args;
+  // `gh api` has no `--repo` flag. API requests must scope themselves through
+  // their endpoint or request fields; regular gh commands use `--repo`.
+  const scoped =
+    repository && args[0] !== 'api' && !args.includes('--repo')
+      ? [...args, '--repo', repository]
+      : args;
   try {
     return (host.runSyncCommand ?? runSyncCommand)(
       (host.resolveExecutable ?? resolveExecutable)('gh', host.platform ?? process.platform),

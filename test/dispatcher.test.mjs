@@ -313,14 +313,7 @@ test('review-cap resolution uses the host for identity and publication while enf
     additionalRounds: 0,
   };
 
-  resolveReviewCap(
-    options,
-    { requiredPrChecks: ['pr-checks'] },
-    statePath,
-    root,
-    undefined,
-    fake.host,
-  );
+  resolveReviewCap(options, { requiredPrChecks: ['pr-checks'] }, statePath, root, 'o/r', fake.host);
   const next = readState(statePath);
   assert.equal(next.status, 'ready_for_human_merge');
   assert.deepEqual(next.reviewCap.waivedFindingIds, ['Q1']);
@@ -330,6 +323,7 @@ test('review-cap resolution uses the host for identity and publication while enf
     fake.calls.some(({ args }) => args[0] === 'api'),
     true,
   );
+  assert.equal(fake.calls.find(({ args }) => args[0] === 'api').args.includes('--repo'), false);
   assert.throws(
     () =>
       resolveReviewCap(
