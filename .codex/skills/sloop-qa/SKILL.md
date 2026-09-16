@@ -9,7 +9,7 @@ Publish reviews with `gh pr review <n> --body-file <file> --comment`, or equival
 
 ## PR context and checks
 
-QA starts with open PR. 
+QA starts with open PR.
 
 Read latest **up to three** comments on that exact PR; use whatever exists as mandatory context. Zero comments is valid, not blocker. Verify PR identity, then compare each comment round/commit with current PR head. Do not assume issue body/diff contains full conversation. If available comments conflict with head, record exact evidence as blocked/context finding; do not silently ignore.
 
