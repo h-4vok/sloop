@@ -29,6 +29,7 @@ import {
   prepareCheckoutWorkspace,
   prepareWorktreeWorkspace,
   recoverWorkspace,
+  reconcileBranch,
 } from './workspace.js';
 import { loadConfigText } from './config.js';
 import { syncPrerequisites } from './sync.js';
@@ -317,6 +318,95 @@ export function productionDependencies(
   return {
     root,
     remoteRequired: true,
+    /* c8 ignore start -- exercised through the live GitHub adapter contract. */
+    reconcileActiveRun: (current) => {
+      try {
+        const issueInfo = JSON.parse(
+          adapterGh(
+            execute,
+            ['issue', 'view', String(current.issue), '--json', 'state'],
+            root,
+            repository,
+          ),
+        ) as { state?: string };
+        const pr = current.pr
+          ? (JSON.parse(
+              adapterGh(
+                execute,
+                [
+                  'pr',
+                  'view',
+                  String(current.pr),
+                  '--json',
+                  'number,state,mergedAt,baseRefName,headRefName,body',
+                ],
+                root,
+                repository,
+              ),
+            ) as {
+              number?: number;
+              state?: string;
+              mergedAt?: string;
+              baseRefName?: string;
+              headRefName?: string;
+              body?: string;
+            })
+          : undefined;
+        const terminal =
+          issueInfo.state?.toUpperCase() === 'CLOSED' ||
+          pr?.state?.toUpperCase() === 'MERGED' ||
+          Boolean(pr?.mergedAt);
+        if (!terminal)
+          return { outcome: 'open', reason: 'issue and associated PR are not terminal' } as const;
+        const closesIssue = new RegExp(
+          `(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\\s+#${current.issue}\\b`,
+          'i',
+        ).test(pr?.body ?? '');
+        if (
+          !current.pr ||
+          !pr ||
+          pr.number !== current.pr ||
+          !closesIssue ||
+          pr.baseRefName !== validatedConfig.repository.baseBranch ||
+          pr.headRefName !== current.branch
+        )
+          return {
+            outcome: 'blocked',
+            reason: 'issue, PR, and branch identity could not be verified',
+          } as const;
+        const branch = current.branch;
+        if (!branch)
+          return { outcome: 'blocked', reason: 'persisted worker branch is missing' } as const;
+        const facts = reconcileBranch(
+          branch,
+          validatedConfig.repository.remote,
+          validatedConfig.repository.baseBranch,
+          root,
+        );
+        if (!facts.aligned)
+          return {
+            outcome: 'blocked',
+            reason: facts.diagnostic,
+            localSha: facts.localSha,
+            remoteSha: facts.remoteSha,
+          } as const;
+        return {
+          outcome: 'terminal',
+          reason:
+            issueInfo.state?.toUpperCase() === 'CLOSED'
+              ? 'issue closed; branch aligned'
+              : 'PR merged; branch aligned',
+          localSha: facts.localSha,
+          remoteSha: facts.remoteSha,
+        } as const;
+      } catch (error) {
+        return {
+          outcome: 'blocked',
+          reason: `reconciliation could not verify state: ${error instanceof Error ? error.message : String(error)}`,
+        } as const;
+      }
+    },
+    /* c8 ignore stop */
     setRunLogger: (logger) => {
       runLogger = logger;
     },
@@ -465,11 +555,12 @@ export function productionDependencies(
           logGithub('request', 'remote.snapshot', { issue });
           const raw = adapterGh(
             execute,
-            ['issue', 'view', String(issue), '--json', 'labels,comments'],
+            ['issue', 'view', String(issue), '--json', 'state,labels,comments'],
             root,
             repository,
           );
           const value = JSON.parse(raw) as {
+            state?: string;
             labels?: { name: string }[];
             comments?: { body: string }[];
           };
@@ -480,6 +571,9 @@ export function productionDependencies(
           const manifest = issueManifests.at(-1);
           let prData: {
             number?: number;
+            state?: string;
+            mergedAt?: string;
+            baseRefName?: string;
             headRefName?: string;
             headRefOid?: string;
             comments?: { body: string }[];
@@ -495,7 +589,7 @@ export function productionDependencies(
                 'view',
                 String(manifest.pr),
                 '--json',
-                'number,headRefName,headRefOid,comments,reviews,statusCheckRollup',
+                'number,state,mergedAt,baseRefName,headRefName,headRefOid,comments,reviews,statusCheckRollup',
               ],
               root,
               repository,
@@ -537,8 +631,12 @@ export function productionDependencies(
           );
           const result = {
             issue,
+            issueState: value.state,
             labels: (value.labels ?? []).map((label) => label.name),
             pr: prData.number ?? selected?.pr,
+            prState: prData.state,
+            prMergedAt: prData.mergedAt,
+            prBaseBranch: prData.baseRefName,
             comments: allComments.map((comment) => ({ body: comment.body })),
             markers,
             manifest: selected,
