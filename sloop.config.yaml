@@ -61,9 +61,6 @@ workflow:
     - - npm
       - run
       - format:check
-  requiredChecks:
-    # Required GitHub check names.
-    - pr-checks
 agents:
   worker:
     argv:
@@ -105,7 +102,6 @@ skills:
     repository
   required:
     # Required Sloop skill names.
-    - sloop-dispatcher
     - sloop-worker
     - sloop-qa
 health:

@@ -12,6 +12,10 @@ Treat `.codex/skills/` as a deployed working copy; do not edit those files direc
 
 ## Unit-test standards
 
+## Repository verification
+
+Workers own repository verification. Before reporting ready for review, inspect this file, package scripts, CI workflows, and project documentation to discover applicable commands; run only commands defined or required there. Record each command, exit status, relevant output, and reviewed commit in Worker evidence. Do not assume another repository has Sloop's `npm run pr-checks`, build, smoke, or health commands. QA consumes this evidence and CI results; it does not invent repository gates.
+
 Before finishing any code task, run the complete repository gate:
 
 ```text

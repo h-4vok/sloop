@@ -1,6 +1,14 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RunLogger, applyRunRetention, runDirectory } from './run-log.js';
@@ -125,7 +133,6 @@ export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
   qaCommand?: Command;
-  requiredPrChecks?: string[];
   checkPollIntervalMs?: number;
   checkTimeoutMs?: number;
   evidencePollIntervalMs?: number;
@@ -697,7 +704,6 @@ function remoteConfigFingerprint(cfg: Config): string {
     baseBranch: cfg.baseBranch ?? 'main',
     workerCommand: cfg.workerCommand ?? null,
     qaCommand: cfg.qaCommand ?? null,
-    requiredPrChecks: cfg.requiredPrChecks ?? [],
   });
 }
 
@@ -879,10 +885,36 @@ function rolePrompt(
 ): string {
   const issueContext = issue.body?.trim() || '(issue body unavailable; inspect it with gh)';
   if (role === 'worker')
-    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Before publishing ready_for_review, run the exact canonical gate 'npm run pr-checks'; it must pass locally. If CI feedback is supplied, explicitly resolve the failing PR check in code and rerun 'npm run pr-checks'. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and green gate are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
+    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Follow the repository's own AGENTS.md, scripts, and workflow instructions for local verification. If CI feedback is supplied, resolve the reported failure in code when appropriate. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and verification are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
     return `Use the qa-sdet skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish directly to the PR exactly one review beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
+}
+
+function appendWorkerRoundContext(
+  root: string,
+  issue: number,
+  round: number,
+  pr: number | undefined,
+  context: string,
+  feedback: string,
+  steer: string | undefined,
+): void {
+  const directory = join(root, '.sloop', 'worker-rounds');
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, `issue-${issue}--worker-rounds.md`);
+  const entry = [
+    `# Dispatcher context for issue-${issue}-round-${round}`,
+    '',
+    `- Issue: #${issue}; round: ${round}; PR: ${pr ? `#${pr}` : 'none'}`,
+    `- Prior work/context: ${context || '(none)'}`,
+    `- HITL steer: ${steer || 'none supplied'}`,
+    `- QA/Staff/CI feedback: ${feedback || '(none)'}`,
+    '- Result: Worker execution started; completion evidence is in the run log.',
+    '- Deviations: none recorded at dispatch time.',
+    '',
+  ].join('\n');
+  appendFileSync(file, `${entry}\n`, 'utf8');
 }
 
 function roleCommand(value: Command | undefined, issue: number, cfg: Config): Spec | undefined {
@@ -1084,14 +1116,20 @@ function normalizeCheckStatus(check: Check): { complete: boolean; passed: boolea
   return { complete, passed };
 }
 
-function checkFeedback(checks: Check[], required: string[]): string {
-  return required
-    .map((name) => {
-      const check = checks.find((candidate) => candidate.name === name);
-      if (!check) return `[CI] missing required check: ${name}`;
-      return `[CI] ${name}: ${check.conclusion ?? check.status ?? 'unknown'}${check.detailsUrl ? ` ${check.detailsUrl}` : ''}`;
-    })
+function checkFeedback(checks: Check[]): string {
+  return checks
+    .map(
+      (check) =>
+        `[CI] ${check.name || 'unnamed'}: ${check.conclusion ?? check.status ?? 'unknown'}${check.detailsUrl ? ` ${check.detailsUrl}` : ''}`,
+    )
     .join('\n');
+}
+
+type CiState = 'running' | 'green' | 'red';
+
+function ciState(checks: Check[]): CiState {
+  if (checks.some((check) => !normalizeCheckStatus(check).complete)) return 'running';
+  return checks.every((check) => normalizeCheckStatus(check).passed) ? 'green' : 'red';
 }
 
 async function waitForCi(
@@ -1100,29 +1138,19 @@ async function waitForCi(
   issue: number,
   prNumber: number,
 ): Promise<{ passed: boolean; evidence: PullRequest; feedback?: string }> {
-  const required = cfg.requiredPrChecks ?? ['pr-checks'];
   const deadline = d.now() + (cfg.checkTimeoutMs ?? 900000);
   let latest = await d.pullRequest(prNumber);
   status(d, issue, 'ci_pending', { pr: prNumber, headSha: latest.headRefOid });
   while (true) {
     const checks = latest.statusCheckRollup ?? [];
-    const selected = required.map((name) => checks.find((check) => check.name === name));
-    const failed = selected.find(
-      (check) =>
-        check && normalizeCheckStatus(check).complete && !normalizeCheckStatus(check).passed,
-    );
-    if (failed) {
-      const feedback = checkFeedback(checks, required);
+    const state = ciState(checks);
+    if (state === 'red') {
+      const feedback = checkFeedback(checks);
       status(d, issue, 'ci_failed', { lastCiFeedback: feedback, mainGreen: false });
       return { passed: false, evidence: latest, feedback };
     }
-    if (
-      selected.every(
-        (check) =>
-          check && normalizeCheckStatus(check).complete && normalizeCheckStatus(check).passed,
-      )
-    ) {
-      const feedback = checkFeedback(checks, required);
+    if (state === 'green') {
+      const feedback = checkFeedback(checks);
       d.save({
         ...d.load(),
         mainGreen: true,
@@ -1132,11 +1160,9 @@ async function waitForCi(
       return { passed: true, evidence: latest };
     }
     if (d.now() >= deadline)
-      throw new Error(
-        `required PR checks did not finish before timeout: ${checkFeedback(checks, required)}`,
-      );
+      throw new Error(`PR checks did not finish before timeout: ${checkFeedback(checks)}`);
     console.error(
-      `[sloop] issue #${issue}: esperando checks del PR #${prNumber}: ${checkFeedback(checks, required)}`,
+      `[sloop] issue #${issue}: esperando checks del PR #${prNumber}: ${checkFeedback(checks)}`,
     );
     await d.sleep(cfg.checkPollIntervalMs ?? 5000);
     latest = await d.pullRequest(prNumber);
@@ -1208,6 +1234,15 @@ async function runWorker(
     '',
     issue.number,
     d.load().linkedClosingIssues ?? [],
+  );
+  appendWorkerRoundContext(
+    d.root,
+    issue.number,
+    round,
+    pr,
+    context,
+    feedback,
+    d.load().reviewCap?.steer,
   );
   logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
   const output = await runLogged(
@@ -1634,9 +1669,18 @@ export function resetRunState(state: State, processAlive = defaultProcessAlive):
 }
 
 function activeRunForHitl(state: State): Required<Pick<State, 'issue' | 'pr'>> & State {
-  if (state.status !== 'review_cap_pending' || !state.issue || !state.pr)
+  const staleWorker =
+    isWorkerStatus(state.status) &&
+    typeof state.workerPid === 'number' &&
+    !defaultProcessAlive(state.workerPid);
+  if (
+    (!['review_cap_pending', 'worker_recovery_pending'].includes(state.status ?? '') &&
+      !staleWorker) ||
+    !state.issue ||
+    !state.pr
+  )
     throw new Error(
-      'HITL resolution requires one active run in review_cap_pending with an existing PR',
+      'HITL resolution requires one active review-cap/recovery run, or a stale Worker, with an existing PR',
     );
   return state as Required<Pick<State, 'issue' | 'pr'>> & State;
 }
@@ -1663,10 +1707,7 @@ function prHealthyForHumanMerge(pr: PullRequest, cfg: Config): boolean {
   return (
     pr.mergeable?.toUpperCase() !== 'CONFLICTING' &&
     pr.mergeStateStatus?.toUpperCase() !== 'DIRTY' &&
-    (cfg.requiredPrChecks ?? ['pr-checks']).every((name) => {
-      const check = checks.find((candidate) => candidate.name === name);
-      return Boolean(check && normalizeCheckStatus(check).passed);
-    })
+    ciState(checks) === 'green'
   );
 }
 
@@ -1770,6 +1811,7 @@ export function resolveReviewCap(
     ...current,
     reviewCap: cap,
     status: additionalRounds > 0 ? 'worker_recovery_pending' : 'ready_for_human_merge',
+    workerPid: additionalRounds > 0 ? undefined : current.workerPid,
     lastError: undefined,
     lastErrorVerbose: undefined,
     updatedAt: Date.now(),

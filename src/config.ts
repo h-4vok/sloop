@@ -47,7 +47,6 @@ export type SloopConfig = Readonly<{
     humanMergeWait: boolean;
     reviewOrder: readonly ['qa'];
     verification: readonly (readonly string[])[];
-    requiredChecks: readonly string[];
   }>;
   agents: Readonly<{ worker: RunnerConfig; qa: RunnerConfig }>;
   skills: Readonly<{ scope: 'repository' | 'user'; required: readonly string[] }>;
@@ -382,9 +381,6 @@ export const configRegistry = deepFreeze([
     ],
     'Safe verification commands as argv arrays.',
   ),
-  f('workflow.requiredChecks', 'list', listParser, ['pr-checks'], 'Required GitHub check names.', {
-    requiredReconciler: 'github',
-  }),
   ...(['worker', 'qa'] as const).flatMap((role) => [
     f(
       `agents.${role}.argv`,
@@ -423,7 +419,7 @@ export const configRegistry = deepFreeze([
     'skills.required',
     'list',
     listParser,
-    ['sloop-dispatcher', 'sloop-worker', 'sloop-qa'],
+    ['sloop-worker', 'sloop-qa'],
     'Required Sloop skill names.',
     { requiredReconciler: 'skills' },
   ),

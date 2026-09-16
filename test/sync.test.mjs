@@ -23,7 +23,7 @@ test('sync creates canonical labels and all distributed skills', () => {
   const { root, calls, runner, config } = fixture();
   syncPrerequisites(root, config, { runner });
   assert.equal(calls.filter(([file, args]) => file === 'gh' && args[1] === 'create').length, 6);
-  for (const name of ['sloop-dispatcher', 'sloop-worker', 'sloop-qa'])
+  for (const name of ['sloop-worker', 'sloop-qa'])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
 });
 
@@ -55,10 +55,9 @@ test('sync overwrites official skills but preserves unrelated skills and is idem
 
 test('legacy names migrate and sync refuses them until init', () => {
   const text = canonicalConfigYaml()
-    .replaceAll('sloop-dispatcher', 'dispatcher')
     .replaceAll('sloop-worker', 'worker')
     .replaceAll('sloop-qa', 'qa-sdet');
-  assert.match(migrateSkillNames(text), /sloop-dispatcher/);
+  assert.match(migrateSkillNames(text), /sloop-worker/);
   const config = loadConfigText(text);
   assert.throws(
     () =>
