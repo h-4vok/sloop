@@ -24,6 +24,12 @@ export type WorkspaceOptions = Readonly<{
   worktreeRoot?: string;
   stateFile?: string;
 }>;
+export type BranchReconciliation = Readonly<{
+  aligned: boolean;
+  diagnostic: string;
+  localSha?: string;
+  remoteSha?: string;
+}>;
 type Registered = WorkspaceFacts & {
   repositoryRoot: string;
   worktreeRoot?: string;
@@ -32,6 +38,53 @@ type Registered = WorkspaceFacts & {
 };
 const git = (args: string[], cwd: string) =>
   execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+/* c8 ignore start */
+export function reconcileBranch(
+  branch: string,
+  remote: string,
+  baseBranch: string,
+  root = process.cwd(),
+): BranchReconciliation {
+  try {
+    const localSha = git(['rev-parse', `${branch}^{commit}`], root);
+    const remoteSha = git(['rev-parse', `${remote}/${branch}^{commit}`], root);
+    if (git(['status', '--porcelain=v1'], root))
+      return {
+        aligned: false,
+        diagnostic: 'uncommitted local changes remain',
+        localSha,
+        remoteSha,
+      };
+    const ahead = git(['rev-list', '--count', `${remote}/${branch}..${branch}`], root);
+    const behind = git(['rev-list', '--count', `${branch}..${remote}/${branch}`], root);
+    if (ahead !== '0' || behind !== '0')
+      return {
+        aligned: false,
+        diagnostic: `local branch diverges from tracked remote (ahead=${ahead}, behind=${behind})`,
+        localSha,
+        remoteSha,
+      };
+    if (!git(['merge-base', '--is-ancestor', `${remote}/${baseBranch}`, branch], root))
+      return {
+        aligned: false,
+        diagnostic: `branch is not based on ${remote}/${baseBranch}`,
+        localSha,
+        remoteSha,
+      };
+    return {
+      aligned: true,
+      diagnostic: `branch aligned with ${remote}/${branch}`,
+      localSha,
+      remoteSha,
+    };
+  } catch (error) {
+    return {
+      aligned: false,
+      diagnostic: `cannot verify local/remote branch safely: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+/* c8 ignore stop */
 type GitWorktree = { path: string; head: string; branch?: string };
 const worktrees = (root: string): GitWorktree[] => {
   const output = git(['worktree', 'list', '--porcelain'], root);

@@ -29,6 +29,7 @@ import {
   prepareCheckoutWorkspace,
   prepareWorktreeWorkspace,
   recoverWorkspace,
+  reconcileBranch,
 } from './workspace.js';
 import { loadConfigText } from './config.js';
 import { syncPrerequisites } from './sync.js';
@@ -457,6 +458,17 @@ export function productionDependencies(
         validatedConfig.repository.branchPrefix,
       ),
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
+    reconcileBranch: (branch, remote, baseBranch) =>
+      reconcileBranch(branch, remote, baseBranch, root),
+    issueState: (issue) => {
+      const raw = adapterGh(
+        execute,
+        ['issue', 'view', String(issue), '--json', 'state'],
+        root,
+        repository,
+      );
+      return (JSON.parse(raw) as { state?: string }).state ?? '';
+    },
     listAllWorktrees: () => listWorkspaces(root, state),
     clearAllWorktrees: () => clearWorkspaces(root, state),
     remote: {

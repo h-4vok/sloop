@@ -44,7 +44,15 @@ export interface LockStore {
 export interface GitProvider {
   prepareWorkerBranch(issue: number): { branch: string; mainBaseSha: string };
   checkoutWorkerBranch(branch: string): void;
+  reconcileBranch?(branch: string, remote: string, baseBranch: string): BranchReconciliation;
 }
+
+export type BranchReconciliation = Readonly<{
+  aligned: boolean;
+  diagnostic: string;
+  localSha?: string;
+  remoteSha?: string;
+}>;
 
 export interface RemoteAuthority {
   snapshot(issue: number): RemoteSnapshot;
@@ -86,10 +94,11 @@ export interface RunEventLogger {
 export interface GitHubProvider<Issue, PullRequest> {
   eligible(): Issue[];
   comment(issue: number, body: string): void;
-  pullRequest(pr: number): Promise<PullRequest> | PullRequest;
+  pullRequest(pr: number): PullRequest;
   updatePullRequestBody(pr: number, body: string): void | Promise<void>;
   pullRequestBody(pr: number): string | Promise<string>;
   prComment(pr: number, body: string): void | Promise<void>;
+  issueState?(issue: number): string;
 }
 
 export interface AgentRunner<Spec> {

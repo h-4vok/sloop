@@ -16,6 +16,7 @@ import { allowlistedPublication, publicationBody } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import { withEphemeralMutexAsync } from './mutex.js';
 import { artifactKey, projectRemoteState } from './remote-state.js';
+import type { BranchReconciliation } from './core/boundaries.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
   AgentRunner,
@@ -610,6 +611,52 @@ function isActiveStatus(status: Status | undefined): boolean {
 function hasPersistedRecoveryContext(state: State): boolean {
   return Boolean(state.pr || state.branch);
 }
+
+/* c8 ignore start */
+function reconcilePersistedRun(cfg: Config, d: Deps, state: State): boolean {
+  if (!state.issue || !isActiveStatus(state.status)) return false;
+  const branch = state.branch;
+  if (!branch || branch === 'pending' || !d.reconcileBranch) return false;
+  const pr = state.pr ? d.pullRequest(state.pr) : undefined;
+  if (!pr)
+    throw new CliFailure(
+      3,
+      `active run for issue #${state.issue} requires human review: associated PR identity is missing`,
+    );
+  const issueClosed = d.issueState?.(state.issue)?.toUpperCase() === 'CLOSED';
+  const prMerged = pr?.state?.toUpperCase() === 'MERGED';
+  if (!issueClosed && !prMerged) return false;
+  if (pr && (pr.headRefName !== branch || pr.number !== state.pr))
+    throw new CliFailure(
+      3,
+      `active run for issue #${state.issue} requires human review: issue, PR, and branch identity do not match`,
+    );
+  const facts: BranchReconciliation = d.reconcileBranch(branch, 'origin', cfg.baseBranch ?? 'main');
+  if (!facts.aligned)
+    throw new CliFailure(
+      3,
+      `active run for issue #${state.issue} requires human review: ${facts.diagnostic}`,
+    );
+  const reason = issueClosed ? 'issue closed' : 'PR merged';
+  d.save({
+    ...state,
+    status: 'done',
+    completedIssues: [...new Set([...(state.completedIssues ?? []), state.issue])],
+    drainStatus: 'running',
+    lastError: `Reconciled completed run: ${reason}; branch aligned at ${facts.localSha ?? 'unknown'}.`,
+    updatedAt: d.now(),
+  });
+  d.runLogger?.write('transition', {
+    issue: state.issue,
+    from: state.status,
+    to: 'done',
+    reason,
+    localSha: facts.localSha,
+    remoteSha: facts.remoteSha,
+  });
+  return true;
+}
+/* c8 ignore stop */
 
 function isStaleWorker(s: State, cfg: Config, d: Deps): boolean {
   if (!isWorkerStatus(s.status)) return false;
@@ -1896,8 +1943,11 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
     (initial.status === 'worker_recovery_pending' ||
       isStaleWorker(initial, cfg, d) ||
       (initial.status === 'blocked' && hasPersistedRecoveryContext(initial)));
-  if (isActiveStatus(initial.status) && !recovery && !remoteAuthority)
-    throw new CliFailure(3, `active run exists for issue #${initial.issue}`);
+  if (isActiveStatus(initial.status) && !recovery && !remoteAuthority) {
+    reconcilePersistedRun(cfg, d, initial);
+    if (isActiveStatus(d.load().status))
+      throw new CliFailure(3, `active run exists for issue #${initial.issue}`);
+  }
   const lockToken = acquire(d, cfg.lockTtlMs ?? 900000);
   try {
     if (!cfg.workerCommand || !cfg.qaCommand)
