@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { test } from 'node:test';
 import {
@@ -499,7 +499,11 @@ test('runtime covers production IO, doctor policy, dispatcher command names, and
   const original = process.cwd();
   const outside = mkdtempSync(join(tmpdir(), 'sloop-production-io-'));
   try {
-    assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json'])), EXIT.ok);
+    const production = harness();
+    assert.equal(
+      runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), production.io),
+      EXIT.ok,
+    );
     process.chdir(outside);
     assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json'])), EXIT.preflight);
   } finally {
@@ -573,6 +577,8 @@ test('runtime covers production IO, doctor policy, dispatcher command names, and
         'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
       });
       h.io.cwd = root;
+      h.io.readFile = (file) =>
+        file.endsWith(join('.sloop', 'state.json')) ? readFileSync(file, 'utf8') : config;
       assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io), expected);
       assert.equal(
         runReadOnlyCommand(parseReadOnlyCommand(['status', '--verbose', '--json']), h.io),

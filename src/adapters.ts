@@ -19,7 +19,7 @@ import {
   runCommand,
   writeState,
 } from './dispatcher.js';
-import { issueLabelNames, selectIssues } from './issue-selection.js';
+import { selectIssues } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
 import {
   clearWorkspaces,
@@ -90,14 +90,7 @@ function adapterIssues(
   repository: string,
   label: string,
 ): import('./dispatcher.js').Issue[] {
-  const issues = adapterJson<
-    {
-      number: number;
-      title: string;
-      body?: string;
-      labels?: readonly (string | { name?: string })[];
-    }[]
-  >(
+  return adapterJson<import('./dispatcher.js').Issue[]>(
     execute,
     [
       'issue',
@@ -114,10 +107,6 @@ function adapterIssues(
     root,
     repository,
   );
-  return issues.map((issue) => ({
-    ...issue,
-    labels: issueLabelNames(issue.labels),
-  }));
 }
 
 function adapterPullRequest(
@@ -133,7 +122,7 @@ function adapterPullRequest(
       'view',
       String(pr),
       '--json',
-      'number,state,baseRefName,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
+      'number,state,baseRefName,baseRefOid,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
     ],
     root,
     repository,
@@ -141,6 +130,7 @@ function adapterPullRequest(
   return {
     number: raw.number,
     state: raw.state,
+    baseRefOid: raw.baseRefOid,
     baseRefName: raw.baseRefName,
     headRefName: raw.headRefName,
     headRefOid: raw.headRefOid,
@@ -360,8 +350,13 @@ export function productionDependencies(
         throw new Error('--prepare-recovery requires an issue number');
       if (!pr || !Number.isInteger(pr))
         throw new Error('--prepare-recovery requires --pr or an existing state.pr');
+      const remote = adapterPullRequest(execute, pr, root, repository);
       writeState(
-        prepareRecovery(current, issue, pr, Date.now(), config.workerLeaseMs ?? 900000),
+        prepareRecovery(current, issue, pr, Date.now(), config.workerLeaseMs ?? 900000, {
+          baseRefOid: remote.baseRefOid,
+          headRefName: remote.headRefName,
+          headRefOid: remote.headRefOid,
+        }),
         state,
       );
       return pr;

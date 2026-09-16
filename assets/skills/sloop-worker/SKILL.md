@@ -5,7 +5,7 @@ description: Implement one claimed Sloop issue in the local checkout, open or up
 
 # worker
 
-Scope: claimed issue, current checkout. Entry: `claimed/in_progress` + valid checkout. Exit: one PR + evidence, or blocker. Smallest coherent change. Read issue, `main`, `AGENTS.md`, repo scripts, current PR/diff, CI, review feedback. No parallel work, unrelated edits, merge, or direct `main` target.
+Scope: claimed issue, current checkout. Entry: `claimed/in_progress` + valid checkout. Exit: one PR + evidence, or blocker. Exit 0 only after the implementation, repository-required verification, PR update, exactly one `[Worker]` evidence comment, and `WORKER_RESULT pr=<number> base=main` are complete. If any required step cannot be completed, report a blocker and do not claim `ready_for_review`. Read issue, `main`, `AGENTS.md`, repo scripts, current PR/diff, CI, review feedback. No parallel work, unrelated edits, merge, or direct `main` target.
 
 ## Plan first, then work
 
@@ -39,6 +39,8 @@ HITL steer — Applied the steer to keep the scope limited to the claimed issue;
 
 Verification: repository-defined verification passed. PR targets main and is clean/mergeable. No merge performed.
 ```
+
+The final response must begin with the machine-readable `[Worker]` evidence line, and the Worker must publish that same evidence exactly once on the PR before exiting. At the end, print `WORKER_RESULT pr=<number> base=main` exactly once.
 
 The `[Human Verification]` guide is for an end user, not a developer. Write it as readable Markdown/plain language, using normal Sloop commands and observable Sloop/GitHub behavior. Do not ask the human to run tests, inspect source, create commits, or simulate process failures. The guide is supplementary evidence; the implementation must remain auditable through the issue, PR, and verification results. This guide must be the last part of your comment, include always.
 
