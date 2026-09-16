@@ -19,6 +19,7 @@ import {
   runCommand,
   writeState,
 } from './dispatcher.js';
+import { issueLabelNames } from './issue-selection.js';
 import { selectIssues } from './dispatcher.js';
 import type { ConfigReconciler } from './config-wizard.js';
 import {
@@ -90,7 +91,11 @@ function adapterIssues(
   repository: string,
   label: string,
 ): import('./dispatcher.js').Issue[] {
-  return adapterJson<import('./dispatcher.js').Issue[]>(
+  const issues = adapterJson<
+    (Omit<import('./dispatcher.js').Issue, 'labels'> & {
+      labels?: readonly (string | { name?: string })[];
+    })[]
+  >(
     execute,
     [
       'issue',
@@ -107,6 +112,7 @@ function adapterIssues(
     root,
     repository,
   );
+  return issues.map((issue) => ({ ...issue, labels: issueLabelNames(issue.labels) }));
 }
 
 function adapterPullRequest(

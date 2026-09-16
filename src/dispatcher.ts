@@ -35,6 +35,7 @@ import type {
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
+import { issueLabelNames } from './issue-selection.js';
 
 export type Status =
   | 'queued'
@@ -317,26 +318,26 @@ export function eligible(
   label = 'Automation Ready',
   host?: DispatcherHost,
 ): Issue[] {
-  return selectIssues(
-    ghJson<Issue[]>(
-      [
-        'issue',
-        'list',
-        '--state',
-        'open',
-        '--label',
-        label,
-        '--json',
-        'number,title,body',
-        '--limit',
-        '100',
-      ],
-      cwd,
-      repository,
-      host,
-    ),
-    [],
-  );
+  const issues = ghJson<
+    (Omit<Issue, 'labels'> & { labels?: readonly (string | { name?: string })[] })[]
+  >(
+    [
+      'issue',
+      'list',
+      '--state',
+      'open',
+      '--label',
+      label,
+      '--json',
+      'number,title,body,labels',
+      '--limit',
+      '100',
+    ],
+    cwd,
+    repository,
+    host,
+  ).map((issue) => ({ ...issue, labels: issueLabelNames(issue.labels) }));
+  return selectIssues(issues, []);
 }
 
 /** Shared deterministic selector used by listing and dispatch. */
@@ -347,7 +348,7 @@ export function selectIssues(
   const priorities = new Map(priorityLabels.map((label, index) => [label, index]));
   return [...issues].sort((a, b) => {
     const priority = (issue: Issue) =>
-      Math.min(...(issue.labels ?? []).map((label) => priorities.get(label) ?? Infinity));
+      Math.min(...issueLabelNames(issue.labels).map((label) => priorities.get(label) ?? Infinity));
     return priority(a) - priority(b) || a.number - b.number;
   });
 }
