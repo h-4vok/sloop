@@ -995,7 +995,8 @@ test('dispatcher runs Worker and QA and uses PR evidence instead of JSON', async
   );
   assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '1');
   assert.match(h.runs[0].input, /exactly one \[Worker\] evidence comment/);
-  assert.match(h.runs[0].input, /exact canonical gate .*npm run pr-checks/);
+  assert.match(h.runs[0].input, /repository's own AGENTS\.md, scripts, and workflow instructions/);
+  assert.doesNotMatch(h.runs[0].input, /npm run pr-checks|canonical gate/);
   assert.equal(h.reviews[0].body.startsWith('[QA/SDET Review]'), true);
   assert.equal(h.reviews.length, 1);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';

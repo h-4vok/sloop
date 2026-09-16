@@ -10,7 +10,6 @@
     "args": ["exec", "--sandbox", "danger-full-access"],
     "timeoutMs": 600000
   },
-  "requiredPrChecks": ["pr-checks"],
   "checkPollIntervalMs": 5000,
   "checkTimeoutMs": 900000,
   "evidencePollIntervalMs": 2000,

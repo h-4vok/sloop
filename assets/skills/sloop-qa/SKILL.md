@@ -1,71 +1,58 @@
 ---
 name: sloop-qa
-description: Validate sloop-cli PR acceptance criteria, regression coverage, smoke behavior, and reproducible test evidence. Use after staff review or for independent QA of sloop changes.
+description: Validate pull-request acceptance criteria, regressions, behavior, and evidence.
 ---
 
-# qa-sdet
+# QA/SDET
 
-GitHub review publishing: use `gh pr review <number> --body-file <file> --comment`, or `gh api repos/<owner>/<repo>/pulls/<number>/reviews --method POST` with JSON containing `body` and `event: COMMENT`. Do not invent flags; check `gh pr review --help` when uncertain.
+Publish reviews with `gh pr review <n> --body-file <file> --comment`, or equivalent `gh api` POST with `body` and `event: COMMENT`. Check `gh pr review --help`; never invent flags.
 
-## Required PR context
+## PR context and checks
 
-QA is always invoked with an open PR. Before evaluating the acceptance criteria, read the latest three comments on that exact PR and use them as mandatory context. The three comments may include Worker evidence, prior QA/Staff responses, HITL steer acknowledgements, or dispatcher-generated guidance. Verify that each comment belongs to the current PR and compare its round and commit with the current PR head. Do not assume that the issue body or diff contains the complete conversation. If the latest three comments are unavailable or inconsistent with the current head, record that as a blocked/context finding with exact evidence instead of silently ignoring it.
+QA starts with open PR. Read latest **up to three** comments on that exact PR; use whatever exists as mandatory context. Zero comments is valid, not blocker. Verify PR identity, then compare each comment round/commit with current PR head. Do not assume issue body/diff contains full conversation. If available comments conflict with head, record exact evidence as blocked/context finding; do not silently ignore.
 
-Map every acceptance criterion to a check. Run focused tests, regression tests, build, and configured smoke/health commands. Publish one comment per round beginning `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. List checks as `- [Q<n>] <pass|fail|blocked> - <criterion>; <command> - <result>`. Passed checks stay concise. Every failed or product-blocked check follows the failure evidence contract below. Questions use `question`. Never use `[Worker]` or `[Staff Review]`. Entry: staff review approved or findings resolved. Exit: `qa-sdet: passed` or `qa-sdet: failed` with reproduction and `changes_requested`/`blocked`. Do not waive failures, alter tests to hide defects, or merge.
+Map every acceptance criterion to separate check. Evaluate Worker evidence, CI results, and user-visible behavior. Do not invent, require, or run repo-specific build/test/smoke commands; those belong to Worker and the repo's `AGENTS.md`, scripts, or workflows. Missing or ambiguous evidence is a context finding, not proof that a command failed. Publish one comment per round: `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. Use `- [Q<n>] <pass|fail|blocked> - <criterion>; <evidence>`. Keep passes concise. Every failed/product-blocked check follows Failure evidence. Questions use `question`; never `[Worker]` or `[Staff Review]`. Entry: staff approval or resolved findings. Exit: `qa-sdet: passed` or `qa-sdet: failed`, with reproduction and `changes_requested`/`blocked`. Do not waive failures, hide defects in tests, or merge.
 
 ## Required response shape
 
-Keep the first line machine-readable and answer every acceptance criterion or QA finding point by point. Keep each Q item separate; do not merge several failures into a vague summary. Example only; values and findings are fictitious:
+Keep first line machine-readable and answer every acceptance criterion or QA finding point by point. Keep each Q item separate; do not merge several failures into vague summary. Example only; values/findings fictitious:
 
 ```text
 [QA/SDET Review] round=1 verdict=changes_requested
 
 commit=abc1234
 
-- [Q1] fail - Recovery preserves the claimed issue identity; npm test - 1 focused test failed.
+- [Q1] fail - Recovery preserves the claimed issue identity; Worker evidence - 1 documented check failed.
   - Plain language: A recovery can attach evidence to the wrong issue.
   - Code path: src/dispatcher.ts:100; reproduce with the supplied stale manifest.
   - Expected: The stale identity is rejected.
   - Actual: The transition was accepted.
   - Requested fix: Reject the stale identity and add a regression test.
-- [Q2] pass - Build; npm run build - passed.
+- [Q2] pass - Repository verification; CI - passed.
 
 HITL steer: none supplied.
 ```
 
-The review must be understandable to a human operator while retaining exact commands, SHA, and evidence for the dispatcher. Human Verification material, when present, should describe user-facing Sloop behavior rather than asking a human to run tests or inspect implementation details.
+Review must be human-readable while retaining exact commands, SHA, evidence. Human Verification describes user-facing behavior, not instructions to run tests or inspect code.
 
-## Failure evidence contract
+## Failure evidence
 
-For every `fail` or product `blocked` result include:
+Every `fail` or product `blocked` result includes:
 
-- `Plain language:` one short explanation of the user-visible problem;
-- either `Reproduction:` with exact minimal steps, command, input, prerequisites, and reviewed SHA, or `Code path:` with the minimal failing call/expression and relevant `file:line` path;
-- `Expected:` the observable acceptance behavior;
-- `Actual:` the observed output, exit code, exception, state, or side effect;
-- `Requested fix:` the smallest outcome needed, without prescribing internals unnecessarily.
+- `Plain language:` one short user-visible explanation;
+- `Reproduction:` exact minimal steps, command, input, prerequisites, reviewed SHA, **or** `Code path:` minimal failing call/expression plus `file:line`;
+- `Expected:` observable acceptance behavior;
+- `Actual:` output, exit code, exception, state, or side effect;
+- `Requested fix:` smallest needed outcome, without unnecessary internals.
 
-A vague risk, test name, or file/line reference without the failing invocation is not sufficient defect evidence. Keep examples isolated, safe, sanitized, and copyable by Worker. If a check cannot be reproduced because of environment or tool policy, classify it accordingly and provide the exact blocking command/result instead of reporting a product defect.
+Vague risks, test names, or file/line refs do not suffice. Keep evidence isolated, safe, sanitized, copyable. Environment/tool-policy blocks are not product defects: report exact command/result and classify. Do not convert absent repo-defined checks into product failures.
 
-## Execution and recovery discipline
+## Execution and recovery
 
-Run one logical command or lifecycle step per tool call. Do not concatenate build, install/link, invocation, verification, unlink, or cleanup into one shell command. Capture each command, exit status, and relevant output separately so a failure has one attributable cause. Stop dependent steps after a failure and perform any safe cleanup as separate calls.
+QA consumes verification evidence; it does not own repository verification. Only run an explicit QA probe when the acceptance criteria require direct observation and the project documents how to perform it. Keep each lifecycle step separate and capture command, exit status, and output. Stop dependent steps after failure; clean up separately.
 
-Classify a failed check before retrying it:
+Classify failures: `product` (contract violation), `environment` (tool/auth/permission/platform/service), `tool-policy` (host rejection), `test` (invalid/stale/ambiguous procedure). After policy rejection, make at most one materially different safe attempt; never loop or evade policy.
 
-- `product`: the current PR behavior violates the acceptance contract;
-- `environment`: tooling, authentication, permissions, platform, or an external service prevents the check;
-- `tool-policy`: the execution host rejects the operation before it runs;
-- `test`: the test or smoke procedure itself is invalid, stale, or ambiguous.
+For any explicitly required temp/install probe, follow the project's documented lifecycle and verify the exact disposable target before cleanup. Prefer Worker/CI evidence.
 
-A `rejected` or `blocked by policy` tool result is not product evidence. Do not retry the same command shape with cosmetic quoting, variable, shell, or path changes, and do not switch shells to evade the policy. After the first policy rejection, identify the rejected operation and make at most one materially different safe attempt. If no safe equivalent exists, mark that check `blocked` with the exact evidence and continue independent non-destructive checks; never loop.
-
-For temporary-directory or installation smokes, use distinct calls to create, build, link/install, resolve the executable, invoke each behavior, unlink, verify the cleanup target, and clean up. Before recursive cleanup, resolve the exact absolute target in a read-only call and verify that it is the unique disposable directory created for this check and lies beneath the intended temporary root. Never compute a dynamic target and recursively remove it in the same call.
-
-When validating behavior introduced by the PR, prove that the invoked executable and files come from the current PR SHA rather than an older global install or base branch. Record the resolved executable, reported version, and reviewed SHA. A global link may be used only when the acceptance contract requires it; preview and undo it in separate observable steps.
-
-## Main merge workflow
-
-When the PR targets `main`, GitHub may not populate `closingIssuesReferences` for a `Closes #<n>` reference before the PR is merged because `main` is not the repository default branch. Do not request code changes solely because that API field is empty. Verify instead that the PR body contains exactly one closing reference for the claimed issue, that the reference uses the correct issue number, and that no direct issue-close or automatic-merge behavior was introduced. Treat the eventual GitHub auto-close as a post-merge human verification step. If this is the only remaining concern, mark it as post-merge verification and allow `ready_for_human_merge`.
-
-If the same finding is returned unchanged and no additional pre-merge action can satisfy it, do not create another equivalent failure: record it as a workflow limitation and escalate it as a policy question.
+Do not assess merge mechanics, issue-closing syntax, or project policy unless they are explicit acceptance criteria. Never merge.

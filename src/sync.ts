@@ -15,7 +15,7 @@ const canonical = [
   ['Priority: P1', 'D93F0B', 'Medium configured Sloop selection priority'],
   ['Priority: P2', 'FBCA04', 'Lowest configured Sloop selection priority'],
 ] as const;
-const names = ['sloop-dispatcher', 'sloop-worker', 'sloop-qa'] as const;
+const names = ['sloop-worker', 'sloop-qa'] as const;
 const defaultRunner: SyncRunner = (file, args, cwd) =>
   execFileSync(file, [...args], { cwd, encoding: 'utf8' });
 
@@ -55,9 +55,7 @@ export function syncPrerequisites(
   config: SloopConfig,
   options: SyncOptions = {},
 ): void {
-  const legacy = config.skills.required.filter((name) =>
-    ['dispatcher', 'worker', 'qa-sdet'].includes(name),
-  );
+  const legacy = config.skills.required.filter((name) => ['worker', 'qa-sdet'].includes(name));
   if (legacy.length)
     throw new Error(
       `Legacy skill names detected (${legacy.join(', ')}); run sloop config init before installing.`,
@@ -126,8 +124,8 @@ export function syncPrerequisites(
 
 export function migrateSkillNames(configText: string): string {
   return configText.replace(
-    /(^\s*- )(dispatcher|worker|qa-sdet)(\s*$)/gm,
+    /(^\s*- )(worker|qa-sdet)(\s*$)/gm,
     (_all, prefix, name, suffix) =>
-      `${prefix}${name === 'dispatcher' ? 'sloop-dispatcher' : name === 'worker' ? 'sloop-worker' : 'sloop-qa'}${suffix}`,
+      `${prefix}${name === 'worker' ? 'sloop-worker' : 'sloop-qa'}${suffix}`,
   );
 }

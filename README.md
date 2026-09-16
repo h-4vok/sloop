@@ -44,7 +44,3 @@ npm run format:check
 npm run build
 npm test
 ```
-
-## Skills
-
-The duplicated Codex skills are `product-lead`, `dispatcher`, `worker`, `qa-sdet`, and `triage-staging`.
