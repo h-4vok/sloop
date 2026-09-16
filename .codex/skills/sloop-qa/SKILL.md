@@ -9,11 +9,9 @@ Publish reviews with `gh pr review <n> --body-file <file> --comment`, or equival
 
 ## PR context and checks
 
-QA starts with open PR.
+QA starts with open PR. Read latest **up to three** comments on that exact PR; use whatever exists as mandatory context. Zero comments is valid, not blocker. Verify PR identity, then compare each comment round/commit with current PR head. Do not assume issue body/diff contains full conversation. If available comments conflict with head, record exact evidence as blocked/context finding; do not silently ignore.
 
-Read latest **up to three** comments on that exact PR; use whatever exists as mandatory context. Zero comments is valid, not blocker. Verify PR identity, then compare each comment round/commit with current PR head. Do not assume issue body/diff contains full conversation. If available comments conflict with head, record exact evidence as blocked/context finding; do not silently ignore.
-
-Map every acceptance criterion to separate check. Evaluate Worker evidence, CI results, and user-visible behavior. Do not invent, require, or run repo-specific build/test/smoke commands; those belong to Worker and the repo's `AGENTS.md`, scripts, or workflows. Missing or ambiguous evidence is a context finding, not proof that a command failed. Publish one comment per round: `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. Use `- [Q<n>] <pass|fail|blocked> - <criterion>; <evidence>`. Keep passes concise. Every failed/product-blocked check follows Failure evidence. Questions use `question`. Exit: `qa-sdet: passed` or `qa-sdet: failed`, with reproduction and `changes_requested`/`blocked`. Do not waive failures, hide defects in tests, or merge.
+Map every acceptance criterion to separate check. Evaluate Worker evidence, CI results, and user-visible behavior. Do not invent, require, or run repo-specific build/test/smoke commands; those belong to Worker and the repo's `AGENTS.md`, scripts, or workflows. Missing or ambiguous evidence is a context finding, not proof that a command failed. Publish one comment per round: `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>`. Use `- [Q<n>] <pass|fail|blocked> - <criterion>; <evidence>`. Keep passes concise. Every failed/product-blocked check follows Failure evidence. Questions use `question`; never `[Worker]` or `[Staff Review]`. Entry: staff approval or resolved findings. Exit: `qa-sdet: passed` or `qa-sdet: failed`, with reproduction and `changes_requested`/`blocked`. Do not waive failures, hide defects in tests, or merge.
 
 ## Required response shape
 
@@ -36,7 +34,6 @@ HITL steer: none supplied.
 ```
 
 Review must be human-readable while retaining exact commands, SHA, evidence. Human Verification describes user-facing behavior, not instructions to run tests or inspect code.
-If there is HITL steer you used as context, you specificy in your comment.
 
 ## Failure evidence
 
@@ -50,13 +47,11 @@ Every `fail` or product `blocked` result includes:
 
 Vague risks, test names, or file/line refs do not suffice. Keep evidence isolated, safe, sanitized, copyable. Environment/tool-policy blocks are not product defects: report exact command/result and classify. Do not convert absent repo-defined checks into product failures.
 
-For past submitted blocked issues that you got a response for, analyse response and decide if Q issue is now passed or not. Comment accordingly. If HTIL steer has waived or decided to ignore a Q issue, always comply.
-
 ## Execution and recovery
 
 QA consumes verification evidence; it does not own repository verification. Only run an explicit QA probe when the acceptance criteria require direct observation and the project documents how to perform it. Keep each lifecycle step separate and capture command, exit status, and output. Stop dependent steps after failure; clean up separately.
 
-After policy rejection, make at most one materially different safe attempt; never loop or evade policy.
+Classify failures: `product` (contract violation), `environment` (tool/auth/permission/platform/service), `tool-policy` (host rejection), `test` (invalid/stale/ambiguous procedure). After policy rejection, make at most one materially different safe attempt; never loop or evade policy.
 
 For any explicitly required temp/install probe, follow the project's documented lifecycle and verify the exact disposable target before cleanup. Prefer Worker/CI evidence.
 
