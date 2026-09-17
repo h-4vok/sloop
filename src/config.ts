@@ -390,7 +390,7 @@ export const configRegistry = deepFreeze([
         'codex',
         'exec',
         '--sandbox',
-        'danger-full-access',
+        role === 'arbiter' ? 'read-only' : 'danger-full-access',
         '--model',
         'gpt-5.6-luna',
         '-c',

@@ -620,7 +620,10 @@ function isWorkerStatus(status: Status | undefined): boolean {
 
 function isActiveStatus(status: Status | undefined): boolean {
   return Boolean(
-    status && !['done', 'ready_for_human_merge', 'blocked', 'abandoned'].includes(status),
+    status &&
+    !['done', 'ready_for_human_merge', 'human_review_required', 'blocked', 'abandoned'].includes(
+      status,
+    ),
   );
 }
 
@@ -1451,7 +1454,9 @@ function findingIds(feedback: string): string[] {
     ...new Set(
       feedback
         .split(/\r?\n/)
-        .filter((line) => /\[([QS]\d+)\]\s+(?:fail|blocked|high|critical|medium|low)\b/i.test(line))
+        .filter((line) =>
+          /\[([QSH]\d+)\]\s+(?:fail|blocked|high|critical|medium|low)\b/i.test(line),
+        )
         .map((line) => line.match(/\[([QS]\d+)\]/i)?.[1].toUpperCase())
         .filter((id): id is string => Boolean(id)),
     ),
@@ -1514,7 +1519,7 @@ async function invokeArbiter(
   });
   const findings: ArbiterFinding[] = ids.map((id) => ({
     id,
-    owner: id.startsWith('S') ? 'staff' : 'qa',
+    owner: id.startsWith('Q') ? 'qa' : 'staff',
     summary: id,
   }));
   const next = applyArbiterDecisions(
@@ -1642,7 +1647,7 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
         round += 1;
         if (cfg.arbiterCommand) {
           try {
-            const arbiter = await invokeArbiter(cfg, d, issue, pr, round, evidence);
+            const arbiter = await invokeArbiter(cfg, d, issue, pr, round - 1, evidence);
             if (arbiter === 'terminal') {
               status(d, issue.number, 'human_review_required', {
                 lastQaFeedback: d.load().lastQaFeedback,
@@ -2220,7 +2225,8 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           }
           try {
             await processIssue(cfg, d, issue);
-            if (claimed) publishRemoteManifest(cfg, d, issue.number, 'complete', claimed);
+            if (claimed && d.load().status !== 'human_review_required')
+              publishRemoteManifest(cfg, d, issue.number, 'complete', claimed);
           } finally {
             const facts = d.workspaceAdapter?.recover(
               issue.number,
