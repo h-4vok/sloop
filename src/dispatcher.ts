@@ -39,6 +39,7 @@ import type { RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
 import {
   applyArbiterDecisions,
+  followUpKey,
   shouldInvokeArbiter,
   type ArbiterFinding,
 } from './arbiter-contracts.js';
@@ -98,6 +99,7 @@ export type State = {
   };
   arbiterInterventions?: number;
   arbiterDecisions?: readonly import('./arbiter-contracts.js').ArbiterDecision[];
+  arbiterFollowUps?: Readonly<Record<string, number>>;
   arbiterTerminal?: 'human_review_required';
   abandonment?: {
     steer: string;
@@ -654,7 +656,7 @@ function skillFor(status: Status | undefined): string {
 }
 
 function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}): void {
-  const current = d.load();
+  let current = d.load();
   const diagnostic =
     extra.lastError ??
     (['ci_failed', 'qa_changes_requested'].includes(next)
@@ -1462,7 +1464,7 @@ async function invokeArbiter(
   evidence: PullRequest,
 ): Promise<'continue' | 'terminal' | 'not_invoked'> {
   if (!cfg.arbiterCommand) throw new Error('arbiterCommand is required');
-  const current = d.load();
+  let current = d.load();
   const feedback = current.lastQaFeedback ?? '';
   const ids = findingIds(feedback);
   if (!shouldInvokeArbiter({ substantiveRounds: round, findingAppearances: 2 }))
@@ -1501,16 +1503,26 @@ async function invokeArbiter(
     .join('\n');
   for (const decision of decisions) {
     if (decision.action !== 'defer' || !decision.followUp || !d.createIssue) continue;
+    const key = followUpKey(issue.number, decision.findingId);
+    if (current.arbiterFollowUps?.[key]) continue;
     const followUp = decision.followUp;
-    d.createIssue(
+    const followUpNumber = d.createIssue(
       followUp.title,
       `Created from issue #${issue.number}, PR #${pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
     );
+    current = {
+      ...current,
+      arbiterFollowUps: {
+        ...(current.arbiterFollowUps ?? {}),
+        [key]: followUpNumber,
+      },
+    };
   }
   d.save({
     ...current,
     arbiterInterventions: next.interventions,
     arbiterDecisions: next.decisions,
+    arbiterFollowUps: current.arbiterFollowUps,
     ...(next.terminal ? { arbiterTerminal: next.terminal } : {}),
     ...(steer
       ? { lastQaFeedback: `${feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
