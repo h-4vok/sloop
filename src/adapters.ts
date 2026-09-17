@@ -476,6 +476,31 @@ export function productionDependencies(
     createIssue: (title, body) => {
       logGithub('request', 'issue.create', { title, body });
       try {
+        const key = body.match(/Idempotency key:\s*(\S+)/)?.[1];
+        if (key) {
+          const existing = adapterGh(
+            execute,
+            [
+              'issue',
+              'list',
+              '--state',
+              'all',
+              '--search',
+              key,
+              '--json',
+              'number,body',
+              '--limit',
+              '100',
+            ],
+            root,
+            repository,
+            { stdio: 'pipe' },
+          );
+          const match = JSON.parse(existing).find((item: { number?: number; body?: string }) =>
+            item.body?.includes(key),
+          );
+          if (match?.number) return match.number;
+        }
         const raw = adapterGh(
           execute,
           ['issue', 'create', '--title', title, '--body', publicationBody(body)],

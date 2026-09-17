@@ -40,6 +40,7 @@ import { issueLabelNames } from './issue-selection.js';
 import { validateAgentEnvelope } from './agent-runner.js';
 import {
   applyArbiterDecisions,
+  followUpEligible,
   followUpKey,
   shouldInvokeArbiter,
   type ArbiterFinding,
@@ -101,6 +102,7 @@ export type State = {
   arbiterInterventions?: number;
   arbiterDecisions?: readonly import('./arbiter-contracts.js').ArbiterDecision[];
   arbiterFollowUps?: Readonly<Record<string, number>>;
+  arbiterFollowUpEligibility?: Readonly<Record<string, boolean>>;
   arbiterTerminal?: 'human_review_required';
   abandonment?: {
     steer: string;
@@ -1474,7 +1476,12 @@ async function invokeArbiter(
   if (!cfg.arbiterCommand) throw new Error('arbiterCommand is required');
   let current = d.load();
   const feedback = current.lastQaFeedback ?? '';
-  const ids = findingIds(feedback);
+  const closed = new Set(
+    (current.arbiterDecisions ?? [])
+      .filter((decision) => decision.action === 'overrule' || decision.action === 'defer')
+      .map((decision) => decision.findingId),
+  );
+  const ids = findingIds(feedback).filter((id) => !closed.has(id));
   const record = JSON.stringify({
     issue,
     pr: evidence,
@@ -1545,13 +1552,17 @@ async function invokeArbiter(
     const followUp = decision.followUp;
     const followUpNumber = d.createIssue(
       followUp.title,
-      `Created from issue #${issue.number}, PR #${pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
+      `Idempotency key: ${key}\n\nCreated from issue #${issue.number}, PR #${pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
     );
     current = {
       ...current,
       arbiterFollowUps: {
         ...(current.arbiterFollowUps ?? {}),
         [key]: followUpNumber,
+      },
+      arbiterFollowUpEligibility: {
+        ...(current.arbiterFollowUpEligibility ?? {}),
+        [key]: followUpEligible(false, true),
       },
     };
   }
@@ -1560,6 +1571,7 @@ async function invokeArbiter(
     arbiterInterventions: next.interventions,
     arbiterDecisions: next.decisions,
     arbiterFollowUps: current.arbiterFollowUps,
+    arbiterFollowUpEligibility: current.arbiterFollowUpEligibility,
     ...(next.terminal ? { arbiterTerminal: next.terminal } : {}),
     ...(steer
       ? { lastQaFeedback: `${feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
