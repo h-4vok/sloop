@@ -153,6 +153,7 @@ export type Config = {
   arbiterCommand?: Command;
   arbiterReviewRounds?: number;
   arbiterStagnatingAppearances?: number;
+  arbiterDecisionLimit?: number;
   checkPollIntervalMs?: number;
   checkTimeoutMs?: number;
   evidencePollIntervalMs?: number;
@@ -1493,8 +1494,10 @@ async function invokeArbiter(
     0,
     ...ids.map(
       (id) =>
-        (evidence.comments ?? []).filter((comment) => (comment.body ?? '').includes(`[${id}]`))
-          .length,
+        [
+          ...(evidence.comments ?? []).map((comment) => comment.body ?? ''),
+          ...(evidence.reviews ?? []).map((review) => review.body ?? ''),
+        ].filter((body) => body.includes(`[${id}]`)).length,
     ),
   );
   if (
@@ -1536,6 +1539,7 @@ async function invokeArbiter(
     },
     findings,
     parsed.payload.decisions,
+    cfg.arbiterDecisionLimit,
   );
   const decisions = [...next.decisions.slice(-findings.length)];
   const steer = decisions

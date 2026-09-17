@@ -16,7 +16,11 @@ export type ArbiterState = Readonly<{
 }>;
 
 const actions = new Set<ArbiterAction>(['uphold', 'overrule', 'defer', 'escalate']);
-const reasonWords = /conflict|argument|analysis|contract|product|ux|justify|rationale/i;
+const conflictWords = /conflict|disagree|tension/i;
+const argumentWords = /argument|position|claim|evidence/i;
+const analysisWords = /analysis|analy[sz]e|because|therefore/i;
+const contractWords = /contract|requirement|product|ux|acceptance/i;
+const justificationWords = /justif|rationale|decision/i;
 
 export function shouldInvokeArbiter(input: {
   substantiveRounds: number;
@@ -56,7 +60,13 @@ export function validateArbiterDecisions(
     if (
       typeof value.rationale !== 'string' ||
       value.rationale.trim().length < 40 ||
-      !reasonWords.test(value.rationale)
+      !(
+        conflictWords.test(value.rationale) &&
+        argumentWords.test(value.rationale) &&
+        analysisWords.test(value.rationale) &&
+        contractWords.test(value.rationale) &&
+        justificationWords.test(value.rationale)
+      )
     )
       throw new Error('insufficient arbiter rationale');
     if (
@@ -84,8 +94,10 @@ export function applyArbiterDecisions(
   state: ArbiterState,
   findings: readonly ArbiterFinding[],
   raw: unknown,
+  maxInterventions = 2,
 ): ArbiterState {
-  if (state.interventions >= 2) throw new Error('arbiter intervention limit reached');
+  if (state.interventions >= maxInterventions)
+    throw new Error('arbiter intervention limit reached');
   const decisions = validateArbiterDecisions(findings, raw, state.interventions + 1);
   return {
     interventions: state.interventions + 1,
