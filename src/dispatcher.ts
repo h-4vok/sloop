@@ -37,6 +37,7 @@ import type {
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
+import { validateAgentEnvelope } from './agent-runner.js';
 import {
   applyArbiterDecisions,
   followUpKey,
@@ -148,6 +149,8 @@ export type Config = {
   workerCommand?: Command;
   qaCommand?: Command;
   arbiterCommand?: Command;
+  arbiterReviewRounds?: number;
+  arbiterStagnatingAppearances?: number;
   checkPollIntervalMs?: number;
   checkTimeoutMs?: number;
   evidencePollIntervalMs?: number;
@@ -1467,7 +1470,23 @@ async function invokeArbiter(
   let current = d.load();
   const feedback = current.lastQaFeedback ?? '';
   const ids = findingIds(feedback);
-  if (!shouldInvokeArbiter({ substantiveRounds: round, findingAppearances: 2 }))
+  const record = JSON.stringify({ issue, pr: evidence, state: current, qaFeedback: feedback });
+  const appearances = Math.max(
+    0,
+    ...ids.map(
+      (id) =>
+        (evidence.comments ?? []).filter((comment) => (comment.body ?? '').includes(`[${id}]`))
+          .length,
+    ),
+  );
+  if (
+    !shouldInvokeArbiter({
+      substantiveRounds: round,
+      findingAppearances: appearances,
+      reviewRounds: cfg.arbiterReviewRounds,
+      stagnatingAppearances: cfg.arbiterStagnatingAppearances,
+    })
+  )
     return 'not_invoked';
   if (ids.length === 0) return 'not_invoked';
   const logger = new RunLogger(
@@ -1477,9 +1496,9 @@ async function invokeArbiter(
   logger.write('transition', { phase: 'arbiter', round, pr });
   const spec = roleCommand(cfg.arbiterCommand, issue.number, cfg);
   if (!spec) throw new Error('arbiterCommand is required');
-  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the issue, PR #${pr} at ${evidence.headRefOid ?? 'unknown'}, and QA feedback. Decide every open finding exactly once. Return JSON only: {"decisions":[{"findingId":"Q1","owner":"qa","action":"uphold|overrule|defer|escalate","rationale":"...", "direction":"...", "verification":"...", "followUp":{"title":"...","acceptance":"...","context":"..."}}]}. The second intervention cannot use uphold. QA feedback:\n${feedback}`;
+  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below. Return a sloop.agent-output/v1 envelope with producer arbiter and payload.decisions containing {findingId,owner,action,rationale,direction,verification,followUp}. Decide every open finding exactly once. The second intervention cannot use uphold. Record:\n${record}`;
   const output = await runLogged(d, logger, { ...spec, input: prompt });
-  const parsed = JSON.parse(output.trim()) as { decisions?: unknown };
+  const parsed = validateAgentEnvelope(JSON.parse(output.trim()));
   const findings: ArbiterFinding[] = ids.map((id) => ({
     id,
     owner: id.startsWith('S') ? 'staff' : 'qa',
@@ -1491,7 +1510,7 @@ async function invokeArbiter(
       decisions: current.arbiterDecisions ?? [],
     },
     findings,
-    parsed.decisions,
+    parsed.payload.decisions,
   );
   const decisions = [...next.decisions.slice(-findings.length)];
   const steer = decisions

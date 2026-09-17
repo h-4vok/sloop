@@ -246,6 +246,8 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     workerCommand: runner(config.agents.worker),
     qaCommand: runner(config.agents.qa),
     arbiterCommand: runner(config.agents.arbiter),
+    arbiterReviewRounds: config.arbiter.reviewRounds,
+    arbiterStagnatingAppearances: config.arbiter.stagnatingAppearances,
     workerLeaseMs: config.agents.worker.timeout,
     maxReviewRounds: config.arbiter.reviewRounds,
     logRoleInvocation: config.logging.roleInvocation,

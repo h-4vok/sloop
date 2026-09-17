@@ -760,26 +760,41 @@ function harness(
       }
       if (role === 'arbiter') {
         return JSON.stringify({
-          decisions: [
-            {
-              findingId: 'Q1',
-              owner: 'qa',
-              action: overrides.arbiterAction ?? 'uphold',
-              rationale:
-                'Conflict between the review arguments; analysis against contract, product and UX justifies this decision.',
-              direction: 'Apply the requested correction.',
-              verification: 'Run the repository gate and repeat QA.',
-              ...(overrides.arbiterAction === 'defer'
-                ? {
-                    followUp: {
-                      title: 'Deferred Arbiter follow-up',
-                      acceptance: 'The deferred finding is implemented and verified.',
-                      context: 'Relevant review context and source evidence.',
-                    },
-                  }
-                : {}),
-            },
-          ],
+          schema: 'sloop.agent-output/v1',
+          context: {
+            run: 'worker-run',
+            issue: 1,
+            pr: 14,
+            round: 2,
+            sha: 'abc1',
+            cursor: 'arbiter-2',
+          },
+          producer: 'arbiter',
+          status: overrides.arbiterAction ?? 'uphold',
+          payload: {
+            rationale: 'Conflict analysis against the contract justifies this decision.',
+            references: ['QA feedback'],
+            decisions: [
+              {
+                findingId: 'Q1',
+                owner: 'qa',
+                action: overrides.arbiterAction ?? 'uphold',
+                rationale:
+                  'Conflict between the review arguments; analysis against contract, product and UX justifies this decision.',
+                direction: 'Apply the requested correction.',
+                verification: 'Run the repository gate and repeat QA.',
+                ...(overrides.arbiterAction === 'defer'
+                  ? {
+                      followUp: {
+                        title: 'Deferred Arbiter follow-up',
+                        acceptance: 'The deferred finding is implemented and verified.',
+                        context: 'Relevant review context and source evidence.',
+                      },
+                    }
+                  : {}),
+              },
+            ],
+          },
         });
       }
       return 'completed';
@@ -1280,7 +1295,11 @@ test('configured Arbiter upholds a finding and adds a Worker round', async () =>
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
       '[QA/SDET Review] round=2 verdict=passed commit=abc2',
     ],
-    config: { maxReviewRounds: 1, arbiterCommand: { command: 'codex', args: [] } },
+    config: {
+      maxReviewRounds: 1,
+      arbiterReviewRounds: 1,
+      arbiterCommand: { command: 'codex', args: [] },
+    },
   });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.counts().workerCount, 2);
@@ -1296,7 +1315,11 @@ test('configured Arbiter defer creates backlog follow-up without Automation Read
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
     ],
     arbiterAction: 'defer',
-    config: { maxReviewRounds: 1, arbiterCommand: { command: 'codex', args: [] } },
+    config: {
+      maxReviewRounds: 1,
+      arbiterReviewRounds: 1,
+      arbiterCommand: { command: 'codex', args: [] },
+    },
   });
   await dispatch(h.cfg, h.deps);
   assert.equal(h.createdIssues.length, 1);
@@ -1310,7 +1333,11 @@ test('configured Arbiter protocol failure stops the loop and preserves intervent
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
     ],
-    config: { maxReviewRounds: 1, arbiterCommand: { command: 'codex', args: [] } },
+    config: {
+      maxReviewRounds: 1,
+      arbiterReviewRounds: 1,
+      arbiterCommand: { command: 'codex', args: [] },
+    },
   });
   const originalRun = h.deps.run;
   h.deps.run = async (spec) => {
