@@ -48,7 +48,7 @@ export type SloopConfig = Readonly<{
     reviewOrder: readonly ['qa'];
     verification: readonly (readonly string[])[];
   }>;
-  agents: Readonly<{ worker: RunnerConfig; qa: RunnerConfig }>;
+  agents: Readonly<{ worker: RunnerConfig; qa: RunnerConfig; arbiter: RunnerConfig }>;
   skills: Readonly<{ scope: 'repository' | 'user'; required: readonly string[] }>;
   health: Readonly<{ enabled: boolean; command: readonly string[]; timeout: number }>;
   loop: Readonly<{ interval: number; taskName: string }>;
@@ -381,7 +381,7 @@ export const configRegistry = deepFreeze([
     ],
     'Safe verification commands as argv arrays.',
   ),
-  ...(['worker', 'qa'] as const).flatMap((role) => [
+  ...(['worker', 'qa', 'arbiter'] as const).flatMap((role) => [
     f(
       `agents.${role}.argv`,
       'argv',

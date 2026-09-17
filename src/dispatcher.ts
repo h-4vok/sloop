@@ -37,6 +37,11 @@ import type {
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
+import {
+  applyArbiterDecisions,
+  shouldInvokeArbiter,
+  type ArbiterFinding,
+} from './arbiter-contracts.js';
 
 export type Status =
   | 'queued'
@@ -54,6 +59,7 @@ export type Status =
   | 'abandon_pending'
   | 'abandoned'
   | 'ready_for_human_merge'
+  | 'human_review_required'
   | 'blocked'
   | 'done';
 
@@ -90,6 +96,9 @@ export type State = {
     resolvedBy?: string;
     resolvedAt?: string;
   };
+  arbiterInterventions?: number;
+  arbiterDecisions?: readonly import('./arbiter-contracts.js').ArbiterDecision[];
+  arbiterTerminal?: 'human_review_required';
   abandonment?: {
     steer: string;
     commentPublished?: boolean;
@@ -136,6 +145,7 @@ export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
   qaCommand?: Command;
+  arbiterCommand?: Command;
   checkPollIntervalMs?: number;
   checkTimeoutMs?: number;
   evidencePollIntervalMs?: number;
@@ -1443,6 +1453,75 @@ function findingIds(feedback: string): string[] {
   ];
 }
 
+async function invokeArbiter(
+  cfg: Config,
+  d: Deps,
+  issue: Issue,
+  pr: number,
+  round: number,
+  evidence: PullRequest,
+): Promise<'continue' | 'terminal' | 'not_invoked'> {
+  if (!cfg.arbiterCommand) throw new Error('arbiterCommand is required');
+  const current = d.load();
+  const feedback = current.lastQaFeedback ?? '';
+  const ids = findingIds(feedback);
+  if (!shouldInvokeArbiter({ substantiveRounds: round, findingAppearances: 2 }))
+    return 'not_invoked';
+  if (ids.length === 0) return 'not_invoked';
+  const logger = new RunLogger(
+    runDirectory(d.root, issue.number, current.workerRunId ?? `arbiter-${round}`),
+  );
+  d.setRunLogger?.(logger);
+  logger.write('transition', { phase: 'arbiter', round, pr });
+  const spec = roleCommand(cfg.arbiterCommand, issue.number, cfg);
+  if (!spec) throw new Error('arbiterCommand is required');
+  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the issue, PR #${pr} at ${evidence.headRefOid ?? 'unknown'}, and QA feedback. Decide every open finding exactly once. Return JSON only: {"decisions":[{"findingId":"Q1","owner":"qa","action":"uphold|overrule|defer|escalate","rationale":"...", "direction":"...", "verification":"...", "followUp":{"title":"...","acceptance":"...","context":"..."}}]}. The second intervention cannot use uphold. QA feedback:\n${feedback}`;
+  const output = await runLogged(d, logger, { ...spec, input: prompt });
+  const parsed = JSON.parse(output.trim()) as { decisions?: unknown };
+  const findings: ArbiterFinding[] = ids.map((id) => ({
+    id,
+    owner: id.startsWith('S') ? 'staff' : 'qa',
+    summary: id,
+  }));
+  const next = applyArbiterDecisions(
+    {
+      interventions: current.arbiterInterventions ?? 0,
+      decisions: current.arbiterDecisions ?? [],
+    },
+    findings,
+    parsed.decisions,
+  );
+  const decisions = [...next.decisions.slice(-findings.length)];
+  const steer = decisions
+    .filter((decision) => decision.action === 'uphold')
+    .map(
+      (decision) =>
+        `${decision.findingId}: ${decision.direction}; verify: ${decision.verification}`,
+    )
+    .join('\n');
+  for (const decision of decisions) {
+    if (decision.action !== 'defer' || !decision.followUp || !d.createIssue) continue;
+    const followUp = decision.followUp;
+    d.createIssue(
+      followUp.title,
+      `Created from issue #${issue.number}, PR #${pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
+    );
+  }
+  d.save({
+    ...current,
+    arbiterInterventions: next.interventions,
+    arbiterDecisions: next.decisions,
+    ...(next.terminal ? { arbiterTerminal: next.terminal } : {}),
+    ...(steer
+      ? { lastQaFeedback: `${feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
+      : {}),
+  });
+  const body = `[Sloop Arbiter] round=${round} intervention=${next.interventions} pr=${pr} commit=${evidence.headRefOid ?? 'unknown'}\n\n${JSON.stringify(decisions)}`;
+  d.comment(issue.number, body);
+  d.prComment(pr, body);
+  return next.terminal ? 'terminal' : 'continue';
+}
+
 async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: number): Promise<void> {
   const current = d.load();
   const feedback = [current.lastQaFeedback].filter(Boolean).join('\n');
@@ -1517,6 +1596,30 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
         status(d, issue.number, 'qa_changes_requested', { lastQaFeedback: qaFeedback });
         feedback = qaFeedback;
         round += 1;
+        if (cfg.arbiterCommand) {
+          try {
+            const arbiter = await invokeArbiter(cfg, d, issue, pr, round, evidence);
+            if (arbiter === 'terminal') {
+              status(d, issue.number, 'human_review_required', {
+                lastQaFeedback: d.load().lastQaFeedback,
+              });
+              return;
+            }
+            if (arbiter === 'continue') {
+              round += 1;
+              d.save({ ...d.load(), reviewRound: round });
+              feedback = d.load().lastQaFeedback ?? feedback;
+              pr = await runWorker(cfg, d, issue, round, pr, d.load().taskContext ?? '', feedback);
+              continue;
+            }
+          } catch (error) {
+            d.save({
+              ...d.load(),
+              lastError: `Arbiter failed: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            throw error;
+          }
+        }
         if (round > effectiveMaxRounds(cfg, d.load())) {
           await pauseForReviewCap(cfg, d, issue, round);
           return;

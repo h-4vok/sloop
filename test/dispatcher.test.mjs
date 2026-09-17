@@ -627,6 +627,7 @@ function harness(
   const runs = [];
   const prBodyUpdates = [];
   const createdPrBodies = [];
+  const createdIssues = [];
   const reviews = [];
   let activeLogger;
   const pr = {
@@ -669,6 +670,7 @@ function harness(
     if (spec.input?.includes('Use the worker skill')) return 'worker';
     if (spec.input?.includes('Use the qa-sdet skill')) return 'qa';
     if (spec.input?.includes('Use the staff-reviewer skill')) return 'staff';
+    if (spec.input?.includes('Use the Arbiter contract')) return 'arbiter';
     return 'unknown';
   };
 
@@ -756,6 +758,30 @@ function harness(
           });
         return 'Staff completed';
       }
+      if (role === 'arbiter') {
+        return JSON.stringify({
+          decisions: [
+            {
+              findingId: 'Q1',
+              owner: 'qa',
+              action: overrides.arbiterAction ?? 'uphold',
+              rationale:
+                'Conflict between the review arguments; analysis against contract, product and UX justifies this decision.',
+              direction: 'Apply the requested correction.',
+              verification: 'Run the repository gate and repeat QA.',
+              ...(overrides.arbiterAction === 'defer'
+                ? {
+                    followUp: {
+                      title: 'Deferred Arbiter follow-up',
+                      acceptance: 'The deferred finding is implemented and verified.',
+                      context: 'Relevant review context and source evidence.',
+                    },
+                  }
+                : {}),
+            },
+          ],
+        });
+      }
       return 'completed';
     },
     pullRequest: () => {
@@ -771,6 +797,10 @@ function harness(
     prComment: (number, body) => {
       assert.equal(number, pr.number);
       pr.comments.push({ body });
+    },
+    createIssue: (title, body) => {
+      createdIssues.push({ title, body });
+      return 99;
     },
     now: () => Date.now(),
     pid: () => process.pid,
@@ -810,6 +840,7 @@ function harness(
     counts: () => ({ workerCount, qaCount, staffCount }),
     prBodyUpdates,
     createdPrBodies,
+    createdIssues,
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
@@ -1240,6 +1271,55 @@ test('review cap pauses before a replacement Worker is launched', async () => {
   assert.equal(h.state().reviewRound, 2);
   assert.equal(h.counts().workerCount, 1);
   assert.deepEqual(h.state().reviewCap.outstandingFindingIds, []);
+});
+
+test('configured Arbiter upholds a finding and adds a Worker round', async () => {
+  const h = harness([{ number: 1, title: 'one' }], {
+    qaVerdicts: ['changes_requested', 'passed'],
+    qaBodies: [
+      '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
+      '[QA/SDET Review] round=2 verdict=passed commit=abc2',
+    ],
+    config: { maxReviewRounds: 1, arbiterCommand: { command: 'codex', args: [] } },
+  });
+  await dispatch(h.cfg, h.deps);
+  assert.equal(h.counts().workerCount, 2);
+  assert.equal(h.state().arbiterInterventions, 1);
+  assert.match(h.state().lastQaFeedback, /Worker steering/);
+  assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
+});
+
+test('configured Arbiter defer creates backlog follow-up without Automation Ready', async () => {
+  const h = harness([{ number: 1, title: 'one' }], {
+    qaVerdicts: ['changes_requested'],
+    qaBodies: [
+      '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
+    ],
+    arbiterAction: 'defer',
+    config: { maxReviewRounds: 1, arbiterCommand: { command: 'codex', args: [] } },
+  });
+  await dispatch(h.cfg, h.deps);
+  assert.equal(h.createdIssues.length, 1);
+  assert.match(h.createdIssues[0].body, /not Automation Ready/);
+  assert.equal(h.state().status, 'review_cap_pending');
+});
+
+test('configured Arbiter protocol failure stops the loop and preserves intervention budget', async () => {
+  const h = harness([{ number: 1, title: 'one' }], {
+    qaVerdicts: ['changes_requested'],
+    qaBodies: [
+      '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
+    ],
+    config: { maxReviewRounds: 1, arbiterCommand: { command: 'codex', args: [] } },
+  });
+  const originalRun = h.deps.run;
+  h.deps.run = async (spec) => {
+    if (spec.input?.includes('Use the Arbiter contract')) return '{invalid';
+    return originalRun(spec);
+  };
+  await dispatch(h.cfg, h.deps);
+  assert.equal(h.state().arbiterInterventions ?? 0, 0);
+  assert.match(h.state().lastErrorVerbose, /Expected property name/);
 });
 
 test('a local HITL budget and steer are included in the resumed Worker context', async () => {
