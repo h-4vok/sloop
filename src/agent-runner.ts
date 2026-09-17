@@ -144,9 +144,16 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
     throw new AgentContractError('malformed', 'invalid producer');
   if (
     typeof e.status !== 'string' ||
-    !['ready', 'blocked', 'accepted', 'changes-requested', 'uphold', 'overrule', 'defer'].includes(
-      e.status,
-    )
+    ![
+      'ready',
+      'blocked',
+      'accepted',
+      'changes-requested',
+      'uphold',
+      'overrule',
+      'defer',
+      'escalate',
+    ].includes(e.status)
   )
     throw new AgentContractError('malformed', 'invalid status');
   const payload = object(e.payload, 'payload');

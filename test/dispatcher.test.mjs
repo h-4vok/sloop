@@ -759,15 +759,16 @@ function harness(
         return 'Staff completed';
       }
       if (role === 'arbiter') {
+        const record = JSON.parse(spec.input.split('Record:\n')[1]);
         return JSON.stringify({
           schema: 'sloop.agent-output/v1',
           context: {
-            run: 'worker-run',
-            issue: 1,
-            pr: 14,
-            round: 2,
-            sha: 'abc1',
-            cursor: 'arbiter-2',
+            run: record.state.workerRunId ?? `arbiter-${record.round}`,
+            issue: record.issue.number,
+            pr: record.pr.number,
+            round: record.round,
+            sha: record.pr.headRefOid ?? 'unknown',
+            cursor: `arbiter-${record.round}`,
           },
           producer: 'arbiter',
           status: overrides.arbiterAction ?? 'uphold',

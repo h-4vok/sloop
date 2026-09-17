@@ -1470,7 +1470,13 @@ async function invokeArbiter(
   let current = d.load();
   const feedback = current.lastQaFeedback ?? '';
   const ids = findingIds(feedback);
-  const record = JSON.stringify({ issue, pr: evidence, state: current, qaFeedback: feedback });
+  const record = JSON.stringify({
+    issue,
+    pr: evidence,
+    round,
+    state: current,
+    qaFeedback: feedback,
+  });
   const appearances = Math.max(
     0,
     ...ids.map(
@@ -1498,7 +1504,14 @@ async function invokeArbiter(
   if (!spec) throw new Error('arbiterCommand is required');
   const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below. Return a sloop.agent-output/v1 envelope with producer arbiter and payload.decisions containing {findingId,owner,action,rationale,direction,verification,followUp}. Decide every open finding exactly once. The second intervention cannot use uphold. Record:\n${record}`;
   const output = await runLogged(d, logger, { ...spec, input: prompt });
-  const parsed = validateAgentEnvelope(JSON.parse(output.trim()));
+  const parsed = validateAgentEnvelope(JSON.parse(output.trim()), {
+    run: current.workerRunId ?? `arbiter-${round}`,
+    issue: issue.number,
+    pr,
+    round,
+    sha: evidence.headRefOid ?? 'unknown',
+    cursor: `arbiter-${round}`,
+  });
   const findings: ArbiterFinding[] = ids.map((id) => ({
     id,
     owner: id.startsWith('S') ? 'staff' : 'qa',
