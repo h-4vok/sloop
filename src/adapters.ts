@@ -40,7 +40,7 @@ import type { RunManifest } from './remote-state.js';
 type AdapterExecOptions = {
   cwd: string;
   encoding?: BufferEncoding;
-  stdio?: 'inherit';
+  stdio?: 'inherit' | 'pipe';
 };
 type AdapterExec = (
   file: string,
@@ -245,6 +245,10 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     baseBranch: config.repository.baseBranch,
     workerCommand: runner(config.agents.worker),
     qaCommand: runner(config.agents.qa),
+    arbiterCommand: runner(config.agents.arbiter),
+    arbiterReviewRounds: config.arbiter.reviewRounds,
+    arbiterStagnatingAppearances: config.arbiter.stagnatingAppearances,
+    arbiterDecisionLimit: config.arbiter.decisions,
     workerLeaseMs: config.agents.worker.timeout,
     maxReviewRounds: config.arbiter.reviewRounds,
     logRoleInvocation: config.logging.roleInvocation,
@@ -467,6 +471,51 @@ export function productionDependencies(
         return result;
       } catch (error) {
         logGithub('error', 'eligible', error instanceof Error ? error.message : String(error));
+        throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+      }
+    },
+    createIssue: (title, body) => {
+      logGithub('request', 'issue.create', { title, body });
+      try {
+        const key = body.match(/Idempotency key:\s*(\S+)/)?.[1];
+        if (key) {
+          const existing = adapterGh(
+            execute,
+            [
+              'issue',
+              'list',
+              '--state',
+              'all',
+              '--search',
+              key,
+              '--json',
+              'number,body',
+              '--limit',
+              '100',
+            ],
+            root,
+            repository,
+            { stdio: 'pipe' },
+          );
+          const match = JSON.parse(existing).find((item: { number?: number; body?: string }) =>
+            item.body?.includes(key),
+          );
+          if (match?.number) return match.number;
+        }
+        const raw = adapterGh(
+          execute,
+          ['issue', 'create', '--title', title, '--body', publicationBody(body)],
+          root,
+          repository,
+          { stdio: 'pipe' },
+        ).trim();
+        const match = raw.match(/\/issues\/(\d+)(?:\D|$)/);
+        if (!match) throw new Error(`gh issue create returned no issue number: ${raw}`);
+        const issue = Number(match[1]);
+        logGithub('response', 'issue.create', { issue });
+        return issue;
+      } catch (error) {
+        logGithub('error', 'issue.create', error instanceof Error ? error.message : String(error));
         throw new CliFailure(5, error instanceof Error ? error.message : String(error));
       }
     },

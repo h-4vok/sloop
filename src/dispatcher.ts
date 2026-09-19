@@ -37,6 +37,14 @@ import type {
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
+import { validateAgentEnvelope } from './agent-runner.js';
+import {
+  applyArbiterDecisions,
+  followUpEligible,
+  followUpKey,
+  shouldInvokeArbiter,
+  type ArbiterFinding,
+} from './arbiter-contracts.js';
 
 export type Status =
   | 'queued'
@@ -54,6 +62,7 @@ export type Status =
   | 'abandon_pending'
   | 'abandoned'
   | 'ready_for_human_merge'
+  | 'human_review_required'
   | 'blocked'
   | 'done';
 
@@ -90,6 +99,11 @@ export type State = {
     resolvedBy?: string;
     resolvedAt?: string;
   };
+  arbiterInterventions?: number;
+  arbiterDecisions?: readonly import('./arbiter-contracts.js').ArbiterDecision[];
+  arbiterFollowUps?: Readonly<Record<string, number>>;
+  arbiterFollowUpEligibility?: Readonly<Record<string, boolean>>;
+  arbiterTerminal?: 'human_review_required';
   abandonment?: {
     steer: string;
     commentPublished?: boolean;
@@ -136,6 +150,10 @@ export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
   qaCommand?: Command;
+  arbiterCommand?: Command;
+  arbiterReviewRounds?: number;
+  arbiterStagnatingAppearances?: number;
+  arbiterDecisionLimit?: number;
   checkPollIntervalMs?: number;
   checkTimeoutMs?: number;
   evidencePollIntervalMs?: number;
@@ -605,7 +623,10 @@ function isWorkerStatus(status: Status | undefined): boolean {
 
 function isActiveStatus(status: Status | undefined): boolean {
   return Boolean(
-    status && !['done', 'ready_for_human_merge', 'blocked', 'abandoned'].includes(status),
+    status &&
+    !['done', 'ready_for_human_merge', 'human_review_required', 'blocked', 'abandoned'].includes(
+      status,
+    ),
   );
 }
 
@@ -644,7 +665,7 @@ function skillFor(status: Status | undefined): string {
 }
 
 function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}): void {
-  const current = d.load();
+  let current = d.load();
   const diagnostic =
     extra.lastError ??
     (['ci_failed', 'qa_changes_requested'].includes(next)
@@ -1436,11 +1457,134 @@ function findingIds(feedback: string): string[] {
     ...new Set(
       feedback
         .split(/\r?\n/)
-        .filter((line) => /\[([QS]\d+)\]\s+(?:fail|blocked|high|critical|medium|low)\b/i.test(line))
+        .filter((line) =>
+          /\[([QSH]\d+)\]\s+(?:fail|blocked|high|critical|medium|low)\b/i.test(line),
+        )
         .map((line) => line.match(/\[([QS]\d+)\]/i)?.[1].toUpperCase())
         .filter((id): id is string => Boolean(id)),
     ),
   ];
+}
+
+async function invokeArbiter(
+  cfg: Config,
+  d: Deps,
+  issue: Issue,
+  pr: number,
+  round: number,
+  evidence: PullRequest,
+): Promise<'continue' | 'terminal' | 'not_invoked'> {
+  if (!cfg.arbiterCommand) throw new Error('arbiterCommand is required');
+  let current = d.load();
+  const feedback = current.lastQaFeedback ?? '';
+  const closed = new Set(
+    (current.arbiterDecisions ?? [])
+      .filter((decision) => decision.action === 'overrule' || decision.action === 'defer')
+      .map((decision) => decision.findingId),
+  );
+  const ids = findingIds(feedback).filter((id) => !closed.has(id));
+  const record = JSON.stringify({
+    issue,
+    pr: evidence,
+    round,
+    state: current,
+    qaFeedback: feedback,
+  });
+  const appearances = Math.max(
+    0,
+    ...ids.map(
+      (id) =>
+        [
+          ...(evidence.comments ?? []).map((comment) => comment.body ?? ''),
+          ...(evidence.reviews ?? []).map((review) => review.body ?? ''),
+        ].filter((body) => body.includes(`[${id}]`)).length,
+    ),
+  );
+  if (
+    !shouldInvokeArbiter({
+      substantiveRounds: round,
+      findingAppearances: appearances,
+      reviewRounds: cfg.arbiterReviewRounds,
+      stagnatingAppearances: cfg.arbiterStagnatingAppearances,
+    })
+  )
+    return 'not_invoked';
+  if (ids.length === 0) return 'not_invoked';
+  const logger = new RunLogger(
+    runDirectory(d.root, issue.number, current.workerRunId ?? `arbiter-${round}`),
+  );
+  d.setRunLogger?.(logger);
+  logger.write('transition', { phase: 'arbiter', round, pr });
+  const spec = roleCommand(cfg.arbiterCommand, issue.number, cfg);
+  if (!spec) throw new Error('arbiterCommand is required');
+  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below. Return a sloop.agent-output/v1 envelope with producer arbiter and payload.decisions containing {findingId,owner,action,rationale,direction,verification,followUp}. Decide every open finding exactly once. The second intervention cannot use uphold. Record:\n${record}`;
+  const output = await runLogged(d, logger, { ...spec, input: prompt });
+  const parsed = validateAgentEnvelope(JSON.parse(output.trim()), {
+    run: current.workerRunId ?? `arbiter-${round}`,
+    issue: issue.number,
+    pr,
+    round,
+    sha: evidence.headRefOid ?? 'unknown',
+    cursor: `arbiter-${round}`,
+  });
+  const findings: ArbiterFinding[] = ids.map((id) => ({
+    id,
+    owner: id.startsWith('Q') ? 'qa' : 'staff',
+    summary: id,
+  }));
+  const next = applyArbiterDecisions(
+    {
+      interventions: current.arbiterInterventions ?? 0,
+      decisions: current.arbiterDecisions ?? [],
+    },
+    findings,
+    parsed.payload.decisions,
+    cfg.arbiterDecisionLimit,
+  );
+  const decisions = [...next.decisions.slice(-findings.length)];
+  const steer = decisions
+    .filter((decision) => decision.action === 'uphold')
+    .map(
+      (decision) =>
+        `${decision.findingId}: ${decision.direction}; verify: ${decision.verification}`,
+    )
+    .join('\n');
+  for (const decision of decisions) {
+    if (decision.action !== 'defer' || !decision.followUp || !d.createIssue) continue;
+    const key = followUpKey(issue.number, decision.findingId);
+    if (current.arbiterFollowUps?.[key]) continue;
+    const followUp = decision.followUp;
+    const followUpNumber = d.createIssue(
+      followUp.title,
+      `Idempotency key: ${key}\n\nCreated from issue #${issue.number}, PR #${pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
+    );
+    current = {
+      ...current,
+      arbiterFollowUps: {
+        ...(current.arbiterFollowUps ?? {}),
+        [key]: followUpNumber,
+      },
+      arbiterFollowUpEligibility: {
+        ...(current.arbiterFollowUpEligibility ?? {}),
+        [key]: followUpEligible(false, true),
+      },
+    };
+  }
+  d.save({
+    ...current,
+    arbiterInterventions: next.interventions,
+    arbiterDecisions: next.decisions,
+    arbiterFollowUps: current.arbiterFollowUps,
+    arbiterFollowUpEligibility: current.arbiterFollowUpEligibility,
+    ...(next.terminal ? { arbiterTerminal: next.terminal } : {}),
+    ...(steer
+      ? { lastQaFeedback: `${feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
+      : {}),
+  });
+  const body = `[Sloop Arbiter] round=${round} intervention=${next.interventions} pr=${pr} commit=${evidence.headRefOid ?? 'unknown'}\n\n${JSON.stringify(decisions)}`;
+  d.comment(issue.number, body);
+  d.prComment(pr, body);
+  return next.terminal ? 'terminal' : 'continue';
 }
 
 async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: number): Promise<void> {
@@ -1517,6 +1661,30 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
         status(d, issue.number, 'qa_changes_requested', { lastQaFeedback: qaFeedback });
         feedback = qaFeedback;
         round += 1;
+        if (cfg.arbiterCommand) {
+          try {
+            const arbiter = await invokeArbiter(cfg, d, issue, pr, round - 1, evidence);
+            if (arbiter === 'terminal') {
+              status(d, issue.number, 'human_review_required', {
+                lastQaFeedback: d.load().lastQaFeedback,
+              });
+              return;
+            }
+            if (arbiter === 'continue') {
+              round += 1;
+              d.save({ ...d.load(), reviewRound: round });
+              feedback = d.load().lastQaFeedback ?? feedback;
+              pr = await runWorker(cfg, d, issue, round, pr, d.load().taskContext ?? '', feedback);
+              continue;
+            }
+          } catch (error) {
+            d.save({
+              ...d.load(),
+              lastError: `Arbiter failed: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            throw error;
+          }
+        }
         if (round > effectiveMaxRounds(cfg, d.load())) {
           await pauseForReviewCap(cfg, d, issue, round);
           return;
@@ -2073,7 +2241,8 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           }
           try {
             await processIssue(cfg, d, issue);
-            if (claimed) publishRemoteManifest(cfg, d, issue.number, 'complete', claimed);
+            if (claimed && d.load().status !== 'human_review_required')
+              publishRemoteManifest(cfg, d, issue.number, 'complete', claimed);
           } finally {
             const facts = d.workspaceAdapter?.recover(
               issue.number,

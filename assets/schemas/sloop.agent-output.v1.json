@@ -26,7 +26,16 @@
     },
     "producer": { "enum": ["worker", "qa", "staff", "arbiter"] },
     "status": {
-      "enum": ["ready", "blocked", "accepted", "changes-requested", "uphold", "overrule", "defer"]
+      "enum": [
+        "ready",
+        "blocked",
+        "accepted",
+        "changes-requested",
+        "uphold",
+        "overrule",
+        "defer",
+        "escalate"
+      ]
     },
     "payload": {
       "type": "object",
@@ -49,7 +58,8 @@
           "items": { "type": "object", "additionalProperties": false }
         },
         "rationale": { "type": "string" },
-        "references": { "type": "array", "items": { "type": "string" } }
+        "references": { "type": "array", "items": { "type": "string" } },
+        "decisions": { "type": "array", "items": { "type": "object" } }
       },
       "required": []
     }
@@ -72,7 +82,7 @@
     {
       "properties": {
         "producer": { "const": "arbiter" },
-        "status": { "enum": ["uphold", "overrule", "defer"] },
+        "status": { "enum": ["uphold", "overrule", "defer", "escalate"] },
         "payload": { "$ref": "#/$defs/arbiter" }
       }
     }

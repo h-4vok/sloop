@@ -98,6 +98,29 @@ test('production adapters sanitize every GitHub body and marker publication path
   assert.match(published, /sloop\/v1\/lease\/33\/owner\//);
 });
 
+test('production adapters reconcile idempotent Arbiter follow-up issues', () => {
+  const calls = [];
+  let existing = true;
+  const key = 'sloop/arbiter/follow-up/41/Q1';
+  const execute = (_file, args) => {
+    calls.push([...args]);
+    if (args[0] === 'issue' && args[1] === 'list')
+      return existing ? JSON.stringify([{ number: 88, body: `Idempotency key: ${key}` }]) : '[]';
+    return 'https://github.com/h-4vok/sloop/issues/99';
+  };
+  const dependencies = productionDependencies(
+    mkdtempSync(join(tmpdir(), 'sloop-arbiter-issue-')),
+    loadConfigText(canonicalConfigYaml()),
+    'h-4vok/sloop',
+    { execFileSync: execute },
+  );
+  const body = `Idempotency key: ${key}\n\nFollow-up`;
+  assert.equal(dependencies.createIssue('follow-up', body), 88);
+  existing = false;
+  assert.equal(dependencies.createIssue('follow-up', body), 99);
+  assert.equal(calls.filter((args) => args[0] === 'issue' && args[1] === 'create').length, 1);
+});
+
 test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
   const calls = [];
   const manifest = {
