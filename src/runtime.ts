@@ -141,6 +141,92 @@ function emit(value: ResultEnvelope, json: boolean, code: ExitCode, io: RuntimeI
   return code;
 }
 
+type RecoveryObservation = {
+  phase?: string;
+  issue?: number;
+  pullRequest?: number;
+  blocker: string;
+  command: string;
+  description: string;
+  mutates: boolean;
+};
+
+function recoveryObservations(workflow: Record<string, unknown>): RecoveryObservation[] {
+  const issue = typeof workflow.issue === 'number' ? workflow.issue : undefined;
+  const pullRequest = typeof workflow.pr === 'number' ? workflow.pr : undefined;
+  const context = { ...(issue ? { issue } : {}), ...(pullRequest ? { pullRequest } : {}) };
+  const command =
+    issue && pullRequest
+      ? `sloop --prepare-recovery ${issue} --pr ${pullRequest}`
+      : 'sloop status --verbose';
+  const observations: RecoveryObservation[] = [];
+  const add = (
+    keys: string[],
+    phase: string,
+    blocker: string,
+    action = command,
+    mutates = action.startsWith('sloop --prepare-recovery'),
+  ) => {
+    if (
+      keys.some(
+        (key) =>
+          workflow[key] === true || (Array.isArray(workflow[key]) && workflow[key].length > 0),
+      )
+    )
+      observations.push({
+        phase,
+        ...context,
+        blocker,
+        command: action,
+        description:
+          action === 'sloop status --verbose'
+            ? 'Inspect the recorded state; no repair command is available without complete context.'
+            : 'Prepare the recorded recovery for the issue and pull request.',
+        mutates,
+      });
+  };
+  add(['leaseActive', 'lease'], 'lease', 'Another dispatcher owns an active run lease.');
+  add(['blockedPhase', 'phase'], 'blocked', 'The remote workflow phase is blocked.');
+  add(['artifactMissing', 'missingArtifact'], 'artifact', 'The expected run artifact is absent.');
+  add(
+    ['configStale', 'configurationStale'],
+    'configuration',
+    'The recorded configuration fingerprint is stale.',
+  );
+  add(['checkoutDirty', 'dirtyCheckout'], 'checkout', 'The checkout has uncommitted changes.');
+  add(['checksFailed', 'failedChecks'], 'checks', 'One or more required PR checks failed.');
+  add(
+    ['prClosedUnmerged', 'closedUnmergedPr'],
+    'pull request',
+    'The pull request is closed but not merged.',
+  );
+  add(
+    ['schedulerDrift', 'scheduler'],
+    'scheduler',
+    'The scheduler configuration or heartbeat has drifted.',
+  );
+  return observations;
+}
+
+function observationDiagnostics(workflow: Record<string, unknown>): Diagnostic[] {
+  return recoveryObservations(workflow).map((item) => ({
+    check: `recovery-${item.phase}`,
+    message: `${item.blocker}${item.issue ? ` (issue #${item.issue}${item.pullRequest ? `, PR #${item.pullRequest}` : ''})` : ''}`,
+    remediation: `Next: ${item.command}; ${item.mutates ? 'this mutates local recovery state' : 'read-only'}.`,
+    phase: item.phase,
+    ...(Object.keys(item).some((key) => key === 'issue' || key === 'pullRequest')
+      ? {
+          context: {
+            ...(item.issue ? { issue: item.issue } : {}),
+            ...(item.pullRequest ? { pullRequest: item.pullRequest } : {}),
+          },
+        }
+      : {}),
+    nextAction: { command: item.command, description: item.description, mutates: item.mutates },
+    mutates: false,
+  }));
+}
+
 export function emitNodeVersionFailure(
   args: readonly string[],
   nodeVersion: string,
@@ -884,6 +970,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
           mutates: false,
         }
       : undefined;
+  const recoveryDiagnostics = observationDiagnostics(workflow);
   const value = envelope(
     parsed.command,
     parsed.command === 'status' ? status : 'completed',
@@ -907,7 +994,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
       ...(parsed.verbose ? { config } : {}),
       ...(recovery ? { nextAction: recovery } : {}),
     },
-    [],
+    recoveryDiagnostics,
     typeof workflow.issue === 'number' ? [workflow.issue] : [],
     typeof workflow.pr === 'number' ? [workflow.pr] : [],
   );

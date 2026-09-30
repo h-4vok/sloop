@@ -1309,6 +1309,46 @@ test('configured Arbiter upholds a finding and adds a Worker round', async () =>
   assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
 });
 
+test('configured Codex Arbiter receives the output schema and returns its structured result', async () => {
+  const h = harness([{ number: 1, title: 'one' }], {
+    qaVerdicts: ['changes_requested', 'passed'],
+    qaBodies: [
+      '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
+      '[QA/SDET Review] round=2 verdict=passed commit=abc2',
+    ],
+    config: {
+      maxReviewRounds: 1,
+      arbiterReviewRounds: 1,
+      arbiterCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
+    },
+  });
+  const originalRun = h.deps.run;
+  let schema;
+  let prompt;
+  h.deps.run = async (spec) => {
+    if (!spec.input?.includes('Use the Arbiter contract')) return originalRun(spec);
+    prompt = spec.input;
+    const schemaIndex = spec.args.indexOf('--output-schema');
+    const outputIndex = spec.args.indexOf('--output-last-message');
+    assert.notEqual(schemaIndex, -1);
+    assert.notEqual(outputIndex, -1);
+    schema = JSON.parse(readFileSync(spec.args[schemaIndex + 1], 'utf8'));
+    assert.deepEqual(schema.required, ['schema', 'context', 'producer', 'status', 'payload']);
+    assert.deepEqual(schema.$defs.arbiter.required, ['rationale', 'references']);
+    const result = await originalRun(spec);
+    writeFileSync(spec.args[outputIndex + 1], result);
+    return 'Codex execution metadata is not the structured result';
+  };
+
+  await dispatch(h.cfg, h.deps);
+
+  assert.ok(schema);
+  assert.match(prompt, /Do not use "version" in place of "schema"/);
+  assert.match(prompt, /"run":"/);
+  assert.equal(h.state().arbiterInterventions, 1);
+  assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
+});
+
 test('configured Arbiter defer creates backlog follow-up without Automation Ready', async () => {
   const h = harness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
@@ -1337,12 +1377,16 @@ test('configured Arbiter protocol failure stops the loop and preserves intervent
     config: {
       maxReviewRounds: 1,
       arbiterReviewRounds: 1,
-      arbiterCommand: { command: 'codex', args: [] },
+      arbiterCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
     },
   });
   const originalRun = h.deps.run;
   h.deps.run = async (spec) => {
-    if (spec.input?.includes('Use the Arbiter contract')) return '{invalid';
+    if (spec.input?.includes('Use the Arbiter contract')) {
+      const outputIndex = spec.args.indexOf('--output-last-message');
+      writeFileSync(spec.args[outputIndex + 1], '{invalid');
+      return 'Codex execution metadata';
+    }
     return originalRun(spec);
   };
   await dispatch(h.cfg, h.deps);
