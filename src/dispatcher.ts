@@ -3,14 +3,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   appendFileSync,
   existsSync,
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { RunLogger, applyRunRetention, runDirectory } from './run-log.js';
 import { allowlistedPublication, publicationBody } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
@@ -37,7 +39,7 @@ import type {
 import type { DispatcherCommand } from './runtime.js';
 import type { RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
-import { validateAgentEnvelope } from './agent-runner.js';
+import { validateAgentEnvelope, type RunContext as AgentRunContext } from './agent-runner.js';
 import {
   applyArbiterDecisions,
   followUpEligible,
@@ -1466,6 +1468,88 @@ function findingIds(feedback: string): string[] {
   ];
 }
 
+function withOption(args: readonly string[], name: string, value: string): string[] {
+  const result = [...args];
+  const index = result.indexOf(name);
+  if (index === -1) return [...result, name, value];
+  if (index + 1 === result.length) result.push(value);
+  else result[index + 1] = value;
+  return result;
+}
+
+function createStructuredArbiterOutput(
+  spec: Spec,
+): { spec: Spec; outputPath: string; directory: string } | undefined {
+  if (!/^(?:.*[\\/])?codex(?:\.cmd|\.exe)?$/i.test(spec.command) || spec.args[0] !== 'exec')
+    return undefined;
+  const schemaRoot = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'schemas');
+  const directory = mkdtempSync(join(tmpdir(), 'sloop-arbiter-'));
+  const schemaPath = join(directory, 'schema.json');
+  const outputPath = join(directory, 'output.json');
+  try {
+    const envelope = JSON.parse(
+      readFileSync(join(schemaRoot, 'sloop.agent-output.v1.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const arbiter = JSON.parse(readFileSync(join(schemaRoot, 'arbiter.v1.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const arbiterProperties = arbiter.properties as Record<string, Record<string, unknown>>;
+    const decisions = arbiterProperties.decisions!;
+    const decisionItems = decisions.items as Record<string, unknown>;
+    decisionItems.additionalProperties = false;
+    decisionItems.required = [
+      'findingId',
+      'owner',
+      'action',
+      'rationale',
+      'direction',
+      'verification',
+      'followUp',
+    ];
+    decisionItems.properties = {
+      findingId: { type: 'string' },
+      owner: { type: 'string' },
+      action: { enum: ['uphold', 'overrule', 'defer', 'escalate'] },
+      rationale: { type: 'string' },
+      direction: { type: ['string', 'null'] },
+      verification: { type: ['string', 'null'] },
+      followUp: {
+        type: ['object', 'null'],
+        additionalProperties: false,
+        required: ['title', 'acceptance', 'context'],
+        properties: {
+          title: { type: 'string' },
+          acceptance: { type: 'string' },
+          context: { type: 'string' },
+        },
+      },
+    };
+    envelope.$defs = { arbiter };
+    delete envelope.oneOf;
+    const properties = envelope.properties as Record<string, unknown>;
+    properties.producer = { const: 'arbiter' };
+    properties.status = { enum: ['uphold', 'overrule', 'defer', 'escalate'] };
+    properties.payload = { $ref: '#/$defs/arbiter' };
+    writeFileSync(schemaPath, JSON.stringify(envelope));
+    return {
+      spec: {
+        ...spec,
+        args: withOption(
+          withOption(spec.args, '--output-schema', schemaPath),
+          '--output-last-message',
+          outputPath,
+        ),
+      },
+      outputPath,
+      directory,
+    };
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function invokeArbiter(
   cfg: Config,
   d: Deps,
@@ -1517,16 +1601,29 @@ async function invokeArbiter(
   logger.write('transition', { phase: 'arbiter', round, pr });
   const spec = roleCommand(cfg.arbiterCommand, issue.number, cfg);
   if (!spec) throw new Error('arbiterCommand is required');
-  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below. Return a sloop.agent-output/v1 envelope with producer arbiter and payload.decisions containing {findingId,owner,action,rationale,direction,verification,followUp}. Decide every open finding exactly once. The second intervention cannot use uphold. Record:\n${record}`;
-  const output = await runLogged(d, logger, { ...spec, input: prompt });
-  const parsed = validateAgentEnvelope(JSON.parse(output.trim()), {
+  const expectedContext: AgentRunContext = {
     run: current.workerRunId ?? `arbiter-${round}`,
     issue: issue.number,
     pr,
     round,
     sha: evidence.headRefOid ?? 'unknown',
     cursor: `arbiter-${round}`,
-  });
+  };
+  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below and return only a JSON object that conforms exactly to the Sloop agent-output schema. The envelope must have exactly these top-level keys: schema, context, producer, status, payload. Set schema to "sloop.agent-output/v1", context to exactly ${JSON.stringify(expectedContext)}, producer to "arbiter", and status to one of "uphold", "overrule", "defer", or "escalate". Payload must contain rationale, references, and decisions. Each decision must contain findingId, owner, action, rationale, direction, and verification; include followUp when required by the selected action. Decide every open finding exactly once. The second intervention cannot use uphold. Do not use "version" in place of "schema". Record:\n${record}`;
+  const structured = createStructuredArbiterOutput(spec);
+  let parsed;
+  try {
+    const output = await runLogged(d, logger, {
+      ...(structured?.spec ?? spec),
+      input: prompt,
+    });
+    parsed = validateAgentEnvelope(
+      JSON.parse(structured ? readFileSync(structured.outputPath, 'utf8') : output.trim()),
+      expectedContext,
+    );
+  } finally {
+    if (structured) rmSync(structured.directory, { recursive: true, force: true });
+  }
   const findings: ArbiterFinding[] = ids.map((id) => ({
     id,
     owner: id.startsWith('Q') ? 'qa' : 'staff',

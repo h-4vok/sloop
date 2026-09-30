@@ -13,6 +13,10 @@ export type Diagnostic = Readonly<{
   check: string;
   message: string;
   remediation: string;
+  phase?: string;
+  context?: Readonly<{ issue?: number; pullRequest?: number }>;
+  nextAction?: Readonly<{ command?: string; description: string; mutates: boolean }>;
+  mutates?: boolean;
 }>;
 export type ResultEnvelope = Readonly<{
   command: string;
@@ -71,10 +75,23 @@ const productionIo = (): RuntimeIo => ({
   stderr: (text) => process.stderr.write(`${text}\n`),
 });
 
-const diagnostic = (check: string, message: string, remediation: string): Diagnostic => ({
+const diagnostic = (
+  check: string,
+  message: string,
+  remediation: string,
+  extra: Omit<Diagnostic, 'check' | 'message' | 'remediation'> = {},
+): Diagnostic => ({
   check,
   message,
   remediation,
+  nextAction: {
+    command: 'sloop doctor',
+    description:
+      'Re-run the read-only prerequisite checks; no safe repair command is available from this diagnostic.',
+    mutates: false,
+  },
+  mutates: false,
+  ...extra,
 });
 const clean = (value: string): string => value.trim().replace(/\r/g, '');
 const envelope = (
@@ -102,14 +119,112 @@ function commandName(args: readonly string[]): string {
 }
 
 function emit(value: ResultEnvelope, json: boolean, code: ExitCode, io: RuntimeIo): ExitCode {
-  if (json) io.stdout(JSON.stringify(value));
+  if (json) io.stdout(JSON.stringify(value, null, 2));
   else {
     const lines = [value.summary];
     for (const item of value.diagnostics)
       lines.push(`[${item.check}] ${item.message} Remediation: ${item.remediation}`);
+    const nextAction =
+      value.result && typeof value.result === 'object' && 'nextAction' in value.result
+        ? (
+            value.result as {
+              nextAction?: { command?: string; description?: string; mutates?: boolean };
+            }
+          ).nextAction
+        : undefined;
+    if (nextAction?.command)
+      lines.push(
+        `Next: ${nextAction.command} (${nextAction.description ?? 'inspect the recorded state'}; ${nextAction.mutates ? 'mutates state' : 'read-only'})`,
+      );
     (code === EXIT.ok ? io.stdout : io.stderr)(lines.join('\n'));
   }
   return code;
+}
+
+type RecoveryObservation = {
+  phase?: string;
+  issue?: number;
+  pullRequest?: number;
+  blocker: string;
+  command: string;
+  description: string;
+  mutates: boolean;
+};
+
+function recoveryObservations(workflow: Record<string, unknown>): RecoveryObservation[] {
+  const issue = typeof workflow.issue === 'number' ? workflow.issue : undefined;
+  const pullRequest = typeof workflow.pr === 'number' ? workflow.pr : undefined;
+  const context = { ...(issue ? { issue } : {}), ...(pullRequest ? { pullRequest } : {}) };
+  const command =
+    issue && pullRequest
+      ? `sloop --prepare-recovery ${issue} --pr ${pullRequest}`
+      : 'sloop status --verbose';
+  const observations: RecoveryObservation[] = [];
+  const add = (
+    keys: string[],
+    phase: string,
+    blocker: string,
+    action = command,
+    mutates = action.startsWith('sloop --prepare-recovery'),
+  ) => {
+    if (
+      keys.some(
+        (key) =>
+          workflow[key] === true || (Array.isArray(workflow[key]) && workflow[key].length > 0),
+      )
+    )
+      observations.push({
+        phase,
+        ...context,
+        blocker,
+        command: action,
+        description:
+          action === 'sloop status --verbose'
+            ? 'Inspect the recorded state; no repair command is available without complete context.'
+            : 'Prepare the recorded recovery for the issue and pull request.',
+        mutates,
+      });
+  };
+  add(['leaseActive', 'lease'], 'lease', 'Another dispatcher owns an active run lease.');
+  add(['blockedPhase', 'phase'], 'blocked', 'The remote workflow phase is blocked.');
+  add(['artifactMissing', 'missingArtifact'], 'artifact', 'The expected run artifact is absent.');
+  add(
+    ['configStale', 'configurationStale'],
+    'configuration',
+    'The recorded configuration fingerprint is stale.',
+  );
+  add(['checkoutDirty', 'dirtyCheckout'], 'checkout', 'The checkout has uncommitted changes.');
+  add(['checksFailed', 'failedChecks'], 'checks', 'One or more required PR checks failed.');
+  add(
+    ['prClosedUnmerged', 'closedUnmergedPr'],
+    'pull request',
+    'The pull request is closed but not merged.',
+  );
+  add(
+    ['schedulerDrift', 'scheduler'],
+    'scheduler',
+    'The scheduler configuration or heartbeat has drifted.',
+  );
+  return observations;
+}
+
+function observationDiagnostics(workflow: Record<string, unknown>): Diagnostic[] {
+  return recoveryObservations(workflow).map((item) => ({
+    check: `recovery-${item.phase}`,
+    message: `${item.blocker}${item.issue ? ` (issue #${item.issue}${item.pullRequest ? `, PR #${item.pullRequest}` : ''})` : ''}`,
+    remediation: `Next: ${item.command}; ${item.mutates ? 'this mutates local recovery state' : 'read-only'}.`,
+    phase: item.phase,
+    ...(Object.keys(item).some((key) => key === 'issue' || key === 'pullRequest')
+      ? {
+          context: {
+            ...(item.issue ? { issue: item.issue } : {}),
+            ...(item.pullRequest ? { pullRequest: item.pullRequest } : {}),
+          },
+        }
+      : {}),
+    nextAction: { command: item.command, description: item.description, mutates: item.mutates },
+    mutates: false,
+  }));
 }
 
 export function emitNodeVersionFailure(
@@ -160,7 +275,7 @@ function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref
     throw diagnostic(
       'configuration',
       'sloop.config.yaml is absent from the working tree.',
-      'Create a valid sloop.config.yaml in the repository root.',
+      'No safe repair command is available; create a valid sloop.config.yaml in the repository root.',
     );
   }
   try {
@@ -169,7 +284,7 @@ function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref
     throw diagnostic(
       'configuration',
       String(error),
-      'Repair sloop.config.yaml in the working tree.',
+      'No safe repair command is available; repair sloop.config.yaml in the working tree.',
     );
   }
 }
@@ -372,14 +487,22 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
       accessSync(join(base, skill, 'SKILL.md'), constants.R_OK);
     } catch {
       failures.push(
-        diagnostic('skills', `Required skill ${skill} is missing.`, `Install ${skill} in ${base}.`),
+        diagnostic(
+          'skills',
+          `Required skill ${skill} is missing.`,
+          `No safe repair command is available; install ${skill} in ${base}.`,
+        ),
       );
     }
   }
   const tree = io.run('git', ['status', '--porcelain'], root);
   if (tree.status !== 0)
     failures.push(
-      diagnostic('working-tree', 'Working tree status failed.', 'Repair the Git checkout.'),
+      diagnostic(
+        'working-tree',
+        'Working tree status failed.',
+        'No safe repair command is available because the checkout status could not be inspected.',
+      ),
     );
   const branch = io.run('git', ['symbolic-ref', '--short', 'HEAD'], root);
   const branchName = clean(branch.stdout);
@@ -626,6 +749,7 @@ export function parseReadOnlyCommand(args: readonly string[]): ReadOnlyCommand |
     const rest = stripped.slice(1);
     if (rest.some((arg) => arg !== '--verbose') || rest.filter((x) => x === '--verbose').length > 1)
       throw new Error('status accepts only --verbose and --json');
+    if (rest.includes('--verbose') && !json) throw new Error('status --verbose requires --json');
     return { command: 'status', json, verbose: rest.includes('--verbose') };
   }
   if (stripped[0] === 'issues' && stripped[1] === 'list' && stripped.length === 2)
@@ -809,7 +933,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
           diagnostic(
             'state',
             'The local workflow state is invalid JSON.',
-            'Repair the state through dispatcher recovery tooling.',
+            'No safe repair command is available because the state file could not be inspected.',
           ),
         ]),
         parsed.json,
@@ -825,6 +949,29 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
       : /running|pending|review|claimed/.test(workflowStatus)
         ? 'waiting'
         : 'idle';
+  const issue = typeof workflow.issue === 'number' ? workflow.issue : undefined;
+  const pullRequest = typeof workflow.pr === 'number' ? workflow.pr : undefined;
+  const recovery = ['worker_recovery_pending', 'ci_failed', 'qa_changes_requested'].includes(
+    workflowStatus,
+  )
+    ? {
+        ...(issue && pullRequest
+          ? { command: `sloop --prepare-recovery ${issue} --pr ${pullRequest}` }
+          : { command: 'sloop status --verbose' }),
+        description:
+          issue && pullRequest
+            ? 'Prepare local recovery for the recorded issue and PR.'
+            : 'Inspect the recovery state; issue or PR context is unavailable.',
+        mutates: Boolean(issue && pullRequest),
+      }
+    : workflowStatus === 'blocked' || workflowStatus === 'abandoned'
+      ? {
+          command: 'sloop status --verbose',
+          description: 'Inspect the recorded blocker and available context.',
+          mutates: false,
+        }
+      : undefined;
+  const recoveryDiagnostics = observationDiagnostics(workflow);
   const value = envelope(
     parsed.command,
     parsed.command === 'status' ? status : 'completed',
@@ -846,8 +993,9 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
             lastError: workflow.lastError,
           },
       ...(parsed.verbose ? { config } : {}),
+      ...(recovery ? { nextAction: recovery } : {}),
     },
-    [],
+    recoveryDiagnostics,
     typeof workflow.issue === 'number' ? [workflow.issue] : [],
     typeof workflow.pr === 'number' ? [workflow.pr] : [],
   );
