@@ -15,6 +15,7 @@ export type Diagnostic = Readonly<{
   remediation: string;
   phase?: string;
   context?: Readonly<{ issue?: number; pullRequest?: number }>;
+  nextAction?: Readonly<{ command?: string; description: string; mutates: boolean }>;
   mutates?: boolean;
 }>;
 export type ResultEnvelope = Readonly<{
@@ -83,6 +84,13 @@ const diagnostic = (
   check,
   message,
   remediation,
+  nextAction: {
+    command: 'sloop doctor',
+    description:
+      'Re-run the read-only prerequisite checks; no safe repair command is available from this diagnostic.',
+    mutates: false,
+  },
+  mutates: false,
   ...extra,
 });
 const clean = (value: string): string => value.trim().replace(/\r/g, '');
@@ -181,7 +189,7 @@ function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref
     throw diagnostic(
       'configuration',
       'sloop.config.yaml is absent from the working tree.',
-      'Create a valid sloop.config.yaml in the repository root.',
+      'No safe repair command is available; create a valid sloop.config.yaml in the repository root.',
     );
   }
   try {
@@ -190,7 +198,7 @@ function loadBaseConfig(root: string, io: RuntimeIo): { config: SloopConfig; ref
     throw diagnostic(
       'configuration',
       String(error),
-      'Repair sloop.config.yaml in the working tree.',
+      'No safe repair command is available; repair sloop.config.yaml in the working tree.',
     );
   }
 }
@@ -393,14 +401,22 @@ function doctorChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnos
       accessSync(join(base, skill, 'SKILL.md'), constants.R_OK);
     } catch {
       failures.push(
-        diagnostic('skills', `Required skill ${skill} is missing.`, `Install ${skill} in ${base}.`),
+        diagnostic(
+          'skills',
+          `Required skill ${skill} is missing.`,
+          `No safe repair command is available; install ${skill} in ${base}.`,
+        ),
       );
     }
   }
   const tree = io.run('git', ['status', '--porcelain'], root);
   if (tree.status !== 0)
     failures.push(
-      diagnostic('working-tree', 'Working tree status failed.', 'Repair the Git checkout.'),
+      diagnostic(
+        'working-tree',
+        'Working tree status failed.',
+        'No safe repair command is available because the checkout status could not be inspected.',
+      ),
     );
   const branch = io.run('git', ['symbolic-ref', '--short', 'HEAD'], root);
   const branchName = clean(branch.stdout);
@@ -830,7 +846,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
           diagnostic(
             'state',
             'The local workflow state is invalid JSON.',
-            'Repair the state through dispatcher recovery tooling.',
+            'No safe repair command is available because the state file could not be inspected.',
           ),
         ]),
         parsed.json,
@@ -848,22 +864,26 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
         : 'idle';
   const issue = typeof workflow.issue === 'number' ? workflow.issue : undefined;
   const pullRequest = typeof workflow.pr === 'number' ? workflow.pr : undefined;
-  const recovery =
-    issue &&
-    pullRequest &&
-    ['worker_recovery_pending', 'ci_failed', 'qa_changes_requested'].includes(workflowStatus)
+  const recovery = ['worker_recovery_pending', 'ci_failed', 'qa_changes_requested'].includes(
+    workflowStatus,
+  )
+    ? {
+        ...(issue && pullRequest
+          ? { command: `sloop --prepare-recovery ${issue} --pr ${pullRequest}` }
+          : { command: 'sloop status --verbose' }),
+        description:
+          issue && pullRequest
+            ? 'Prepare local recovery for the recorded issue and PR.'
+            : 'Inspect the recovery state; issue or PR context is unavailable.',
+        mutates: Boolean(issue && pullRequest),
+      }
+    : workflowStatus === 'blocked' || workflowStatus === 'abandoned'
       ? {
-          command: `sloop --prepare-recovery ${issue} --pr ${pullRequest}`,
-          description: 'Prepare local recovery for the recorded issue and PR.',
-          mutates: true,
+          command: 'sloop status --verbose',
+          description: 'Inspect the recorded blocker and available context.',
+          mutates: false,
         }
-      : workflowStatus === 'blocked' || workflowStatus === 'abandoned'
-        ? {
-            command: 'sloop status --verbose',
-            description: 'Inspect the recorded blocker and available context.',
-            mutates: false,
-          }
-        : undefined;
+      : undefined;
   const value = envelope(
     parsed.command,
     parsed.command === 'status' ? status : 'completed',

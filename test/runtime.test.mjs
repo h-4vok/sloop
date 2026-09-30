@@ -673,6 +673,71 @@ test('runtime reports malformed repository identity and label payloads', () => {
   assert.ok(identity.calls.some(({ file, args }) => file === 'gh' && args[0] === 'label'));
 });
 
+test('read-only diagnostics provide safe guidance for every inspection failure', () => {
+  const cases = [
+    [
+      {
+        'gh label list --repo o/r --limit 1000 --json name': {
+          stdout: '[]',
+          stderr: '',
+          status: 0,
+        },
+      },
+      ['issues', 'list', '--json'],
+      'labels',
+    ],
+    [
+      { 'git status --porcelain': { stdout: '', stderr: 'cannot inspect', status: 1 } },
+      ['doctor'],
+      'working-tree',
+    ],
+    [{ 'codex --version': { stdout: '', stderr: 'missing', status: 1 } }, ['doctor'], 'codex'],
+    [{ localConfig: 'schemaVersion: [' }, ['status', '--json'], 'configuration'],
+  ];
+  for (const [overrides, args, check] of cases) {
+    const h = harness(overrides);
+    runReadOnlyCommand(parseReadOnlyCommand(args), h.io);
+    const output = args.includes('--json') ? h.stdout[0] : h.stderr[0];
+    const result = args.includes('--json') ? JSON.parse(output) : undefined;
+    const item = result?.diagnostics?.find((diagnostic) => diagnostic.check === check);
+    if (item) {
+      assert.equal(item.mutates, false);
+      assert.equal(item.nextAction.mutates, false);
+      assert.equal(item.nextAction.command, 'sloop doctor');
+      assert.match(item.nextAction.description, /read-only|safe repair command/);
+    } else assert.match(output, new RegExp(`\\[${check}\\]`));
+    assert.ok(
+      !h.calls.some(({ args: commandArgs }) =>
+        ['checkout', 'reset', 'clean', 'push'].includes(commandArgs[0]),
+      ),
+    );
+  }
+});
+
+test('status recovery guidance remains safe and contextual when issue or PR data is absent', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sloop-recovery-guidance-'));
+  try {
+    mkdirSync(join(root, '.sloop'));
+    writeFileSync(join(root, '.sloop', 'state.json'), JSON.stringify({ status: 'ci_failed' }));
+    const h = harness({
+      'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+    });
+    h.io.cwd = root;
+    h.io.readFile = (file) =>
+      file.endsWith(join('.sloop', 'state.json')) ? readFileSync(file, 'utf8') : config;
+    assert.equal(runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io), EXIT.ok);
+    const result = JSON.parse(h.stdout[0]);
+    assert.deepEqual(result.result.nextAction, {
+      command: 'sloop status --verbose',
+      description: 'Inspect the recovery state; issue or PR context is unavailable.',
+      mutates: false,
+    });
+    assert.ok(!h.calls.some(({ file }) => file === 'gh'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('runtime reports insufficient permissions and missing doctor skills', () => {
   const h = harness({
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
