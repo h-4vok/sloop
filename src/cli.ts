@@ -26,8 +26,6 @@ Read-only commands:
 Options:
   --help                 Show this help
   --version              Show the installed version
-  --list                 List eligible issues
-  --status [--verbose]   Show local run state
   --recover-lock         Recover a stale dispatcher lock
   --reset                Reset completed local run state
   --prepare-recovery N [--pr PR]
@@ -175,8 +173,6 @@ function helpFor(target: string): string {
     status: 'Usage: sloop status [--verbose] [--json]',
     'issues list': 'Usage: sloop issues list [--json]',
     doctor: 'Usage: sloop doctor',
-    '--status': 'Usage: sloop --status [--verbose]',
-    '--list': 'Usage: sloop --list',
     '--recover-lock': 'Usage: sloop --recover-lock',
     '--reset': 'Usage: sloop --reset',
     '--prepare-recovery': 'Usage: sloop --prepare-recovery N [--pr N]',

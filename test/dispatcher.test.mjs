@@ -2058,7 +2058,10 @@ test('status rejects unsupported flag combinations', () => {
       { cwd: h.root, encoding: 'utf8' },
     );
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /mixed, duplicate, unknown, or unsupported/);
+    assert.match(
+      result.stderr,
+      /mixed, duplicate, unknown, or unsupported|no longer supported; use `sloop status`/,
+    );
     assert.equal(result.stdout, '');
   }
 });

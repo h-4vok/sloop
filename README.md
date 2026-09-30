@@ -9,7 +9,7 @@ npm ci
 npm run build
 npm run link:local
 sloop --help
-sloop --list
+sloop issues list
 ```
 
 The package remains private and is installed only as a link to this checkout. Node.js 22 or newer is required. After linking, `sloop` resolves its compiled code from this checkout and can be invoked from any subdirectory of a repository. Runtime configuration comes from the tracked `sloop.config.yaml` in the configured base commit.

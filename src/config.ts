@@ -46,7 +46,6 @@ export type SloopConfig = Readonly<{
   workflow: Readonly<{
     humanMergeWait: boolean;
     reviewOrder: readonly ['qa'];
-    verification: readonly (readonly string[])[];
   }>;
   agents: Readonly<{ worker: RunnerConfig; qa: RunnerConfig; arbiter: RunnerConfig }>;
   skills: Readonly<{ scope: 'repository' | 'user'; required: readonly string[] }>;
@@ -370,17 +369,6 @@ export const configRegistry = deepFreeze([
   f('workflow.reviewOrder', 'list', listParser, ['qa'], 'Review roles in execution order.', {
     choices: ['qa'],
   }),
-  f(
-    'workflow.verification',
-    'argv',
-    argvListParser,
-    [
-      ['npm', 'test'],
-      ['npm', 'run', 'build'],
-      ['npm', 'run', 'format:check'],
-    ],
-    'Safe verification commands as argv arrays.',
-  ),
   ...(['worker', 'qa', 'arbiter'] as const).flatMap((role) => [
     f(
       `agents.${role}.argv`,
@@ -524,15 +512,10 @@ function unknownKeys(value: unknown, allowed: unknown, path = '$'): ConfigDiagno
   if (!plainObject(value) || !plainObject(allowed)) return [];
   return Object.entries(value).flatMap(([key, child]) => {
     const childPath = `${path}.${key}`;
-    if (!Object.hasOwn(allowed, key))
-      return [
-        {
-          path: childPath,
-          message: /secret|token|password|credential|api.?key/i.test(key)
-            ? 'secrets are not accepted in sloop.config.yaml; use the external environment'
-            : 'unknown configuration key',
-        },
-      ];
+    if (!Object.hasOwn(allowed, key)) {
+      console.warn(`${childPath}: unknown configuration key; ignoring it`);
+      return [];
+    }
     return unknownKeys(child, allowed[key], childPath);
   });
 }

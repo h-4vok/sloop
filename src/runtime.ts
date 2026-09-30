@@ -785,6 +785,10 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
         return { kind: 'help', target };
     throw new Error('--help must be the only option for the requested command');
   }
+  if (args[0] === '--list')
+    throw new Error('`sloop --list` is no longer supported; use `sloop issues list`');
+  if (args[0] === '--status')
+    throw new Error('`sloop --status` is no longer supported; use `sloop status`');
   const readOnly = parseReadOnlyCommand(args);
   if (readOnly) return { kind: 'read-only', command: readOnly };
   if (args[0] === 'config') {
