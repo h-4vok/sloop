@@ -1335,8 +1335,8 @@ test('configured Codex Arbiter receives the output schema and returns its struct
     schema = JSON.parse(readFileSync(spec.args[schemaIndex + 1], 'utf8'));
     assert.deepEqual(schema.required, ['schema', 'context', 'producer', 'status', 'payload']);
     assert.equal(schema.oneOf, undefined);
-    assert.deepEqual(schema.properties.producer, { const: 'arbiter' });
-    assert.deepEqual(schema.$defs.arbiter.required, ['rationale', 'references']);
+    assert.deepEqual(schema.properties.producer, { type: 'string', const: 'arbiter' });
+    assert.deepEqual(schema.$defs.arbiter.required, ['rationale', 'references', 'decisions']);
     assert.equal(schema.$defs.arbiter.properties.decisions.items.additionalProperties, false);
     assert.deepEqual(schema.$defs.arbiter.properties.decisions.items.required, [
       'findingId',
@@ -1347,6 +1347,22 @@ test('configured Codex Arbiter receives the output schema and returns its struct
       'verification',
       'followUp',
     ]);
+    // Every object sent to Codex must be closed and require all its properties,
+    // even within nullable objects, arrays and local references.
+    const visit = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.$ref) assert.ok(node.$ref.startsWith('#/$defs/'));
+      if (node.properties) {
+        assert.equal(node.additionalProperties, false);
+        assert.deepEqual([...node.required].sort(), Object.keys(node.properties).sort());
+      }
+      if (node.enum || node.const) assert.ok(node.type);
+      for (const child of Object.values(node)) {
+        if (Array.isArray(child)) child.forEach(visit);
+        else visit(child);
+      }
+    };
+    visit(schema);
     const result = await originalRun(spec);
     writeFileSync(spec.args[outputIndex + 1], result);
     return 'Codex execution metadata is not the structured result';
@@ -1355,7 +1371,11 @@ test('configured Codex Arbiter receives the output schema and returns its struct
   await dispatch(h.cfg, h.deps);
 
   assert.ok(schema);
-  assert.match(prompt, /Do not use "version" in place of "schema"/);
+  assert.match(prompt, /Do not add fields or use "version" in place of "schema"/);
+  assert.match(prompt, /This is the first intervention: all four actions are allowed/);
+  assert.deepEqual(JSON.parse(prompt.split('Record:\n')[1]).openFindings, [
+    { id: 'Q1', owner: 'qa', summary: '- [Q1] fail - contract finding' },
+  ]);
   assert.match(prompt, /"run":"/);
   assert.equal(h.state().arbiterInterventions, 1);
   assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));

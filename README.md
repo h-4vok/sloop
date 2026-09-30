@@ -43,4 +43,24 @@ Local runtime state is `.sloop/state.json` and is intentionally untracked. There
 npm run format:check
 npm run build
 npm test
+npm run pr-checks
+npm run test:integration
 ```
+
+The integration suite mocks GitHub, Worker and QA. Its real Arbiter contract test
+is skipped unless `SLOOP_TEST_REAL_ARBITER=1` is set. To include it in PowerShell:
+
+```powershell
+$env:SLOOP_TEST_REAL_ARBITER = '1'
+npm run test:integration
+Remove-Item Env:SLOOP_TEST_REAL_ARBITER
+```
+
+This test consumes authenticated Codex usage with `gpt-5.6-luna`, low reasoning
+effort and a read-only sandbox in a temporary directory. It runs two fictional
+Worker/QA rounds and validates the Arbiter's unmodified output through the
+production dispatcher. Any of the four ruling actions is accepted; the test
+checks the contract, not the decision. The harness deliberately stops after the
+first ruling is persisted and projected to its fake issue/PR, before another
+Worker can run. Missing Codex authentication or an invalid result fails the test
+when enabled. CI runs the deterministic `pr-checks` gate without requiring Codex.

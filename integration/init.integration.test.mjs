@@ -97,7 +97,8 @@ test('CLI integration contracts preserve discovery, JSON, exit classes, and safe
 
   const version = runCli(outside, ['--version']);
   assert.equal(version.status, 0);
-  assert.match(version.stdout, /^0\.1\.2\r?\n$/);
+  const packageVersion = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).version;
+  assert.equal(version.stdout.trim(), packageVersion);
 
   const unknown = runCli(outside, ['--unknown']);
   assert.equal(unknown.status, 2);
@@ -186,9 +187,9 @@ test('wizard retries invalid input and persists varied valid answers', async () 
     0,
     baseIO.text(),
   );
-  const checksIO = scriptedIO(['ci,qa', 'y']);
+  const checksIO = scriptedIO(['1m', 'y']);
   assert.equal(
-    await runConfigCommand(root, ['workflow.requiredChecks'], undefined, checksIO),
+    await runConfigCommand(root, ['loop.interval'], undefined, checksIO),
     0,
     checksIO.text(),
   );
@@ -197,7 +198,7 @@ test('wizard retries invalid input and persists varied valid answers', async () 
   assert.equal(config.repository.baseBranch, 'develop');
   assert.equal(config.workspace.mode, 'worktree');
   assert.equal(config.workspace.worktreeRoot, '.tmp/worktrees');
-  assert.deepEqual(config.workflow.requiredChecks, ['ci', 'qa']);
+  assert.equal(config.loop.interval, 60_000);
   assert.equal((modeIO.text().match(/workspace\.mode\n/g) ?? []).length, 2);
 });
 

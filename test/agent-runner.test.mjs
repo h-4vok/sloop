@@ -28,6 +28,18 @@ const worker = () => ({
   payload: { summary: 'done', findingResolutions: [], verification: ['test'], guide },
 });
 
+for (const [condition, payload] of [
+  ['missing decisions', { rationale: 'Trim names.', references: ['Q1'] }],
+  ['empty decisions', { rationale: 'Trim names.', references: ['Q1'], decisions: [] }],
+  ['malformed decisions', { rationale: 'Trim names.', references: ['Q1'], decisions: [null] }],
+  ['empty references', { rationale: 'Trim names.', references: [], decisions: [{}] }],
+]) {
+  test(`Arbiter envelope rejects ${condition}`, () => {
+    const envelope = { ...worker(), producer: 'arbiter', status: 'uphold', payload };
+    assert.throws(() => validateAgentEnvelope(envelope, context), AgentContractError);
+  });
+}
+
 test('validates every role and rejects incomplete or contradictory payloads', () => {
   assert.equal(validateAgentEnvelope(worker(), context).status, 'ready');
   assert.throws(

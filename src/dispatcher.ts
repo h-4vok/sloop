@@ -1497,39 +1497,14 @@ function createStructuredArbiterOutput(
     const arbiterProperties = arbiter.properties as Record<string, Record<string, unknown>>;
     const decisions = arbiterProperties.decisions!;
     const decisionItems = decisions.items as Record<string, unknown>;
-    decisionItems.additionalProperties = false;
-    decisionItems.required = [
-      'findingId',
-      'owner',
-      'action',
-      'rationale',
-      'direction',
-      'verification',
-      'followUp',
-    ];
-    decisionItems.properties = {
-      findingId: { type: 'string' },
-      owner: { type: 'string' },
-      action: { enum: ['uphold', 'overrule', 'defer', 'escalate'] },
-      rationale: { type: 'string' },
-      direction: { type: ['string', 'null'] },
-      verification: { type: ['string', 'null'] },
-      followUp: {
-        type: ['object', 'null'],
-        additionalProperties: false,
-        required: ['title', 'acceptance', 'context'],
-        properties: {
-          title: { type: 'string' },
-          acceptance: { type: 'string' },
-          context: { type: 'string' },
-        },
-      },
-    };
+    // Codex strict output requires every declared property, including nullable
+    // action-specific fields. Keep their definitions in the canonical contract.
+    decisionItems.required = Object.keys(decisionItems.properties as Record<string, unknown>);
     envelope.$defs = { arbiter };
     delete envelope.oneOf;
     const properties = envelope.properties as Record<string, unknown>;
-    properties.producer = { const: 'arbiter' };
-    properties.status = { enum: ['uphold', 'overrule', 'defer', 'escalate'] };
+    properties.producer = { type: 'string', const: 'arbiter' };
+    properties.status = { type: 'string', enum: ['uphold', 'overrule', 'defer', 'escalate'] };
     properties.payload = { $ref: '#/$defs/arbiter' };
     writeFileSync(schemaPath, JSON.stringify(envelope));
     return {
@@ -1567,12 +1542,18 @@ async function invokeArbiter(
       .map((decision) => decision.findingId),
   );
   const ids = findingIds(feedback).filter((id) => !closed.has(id));
+  const findings: ArbiterFinding[] = ids.map((id) => ({
+    id,
+    owner: id.startsWith('Q') ? 'qa' : 'staff',
+    summary: feedback.split(/\r?\n/).find((line) => line.includes(`[${id}]`)) ?? id,
+  }));
   const record = JSON.stringify({
     issue,
     pr: evidence,
     round,
     state: current,
     qaFeedback: feedback,
+    openFindings: findings,
   });
   const appearances = Math.max(
     0,
@@ -1609,7 +1590,7 @@ async function invokeArbiter(
     sha: evidence.headRefOid ?? 'unknown',
     cursor: `arbiter-${round}`,
   };
-  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below and return only a JSON object that conforms exactly to the Sloop agent-output schema. The envelope must have exactly these top-level keys: schema, context, producer, status, payload. Set schema to "sloop.agent-output/v1", context to exactly ${JSON.stringify(expectedContext)}, producer to "arbiter", and status to one of "uphold", "overrule", "defer", or "escalate". Payload must contain rationale, references, and decisions. Each decision must contain findingId, owner, action, rationale, direction, and verification; include followUp when required by the selected action. Decide every open finding exactly once. The second intervention cannot use uphold. Do not use "version" in place of "schema". Record:\n${record}`;
+  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below and return only a JSON object that conforms exactly to the Sloop agent-output schema. The envelope must have exactly these top-level keys: schema, context, producer, status, payload. Set schema to "sloop.agent-output/v1", context to exactly ${JSON.stringify(expectedContext)}, producer to "arbiter", and status to one of "uphold", "overrule", "defer", or "escalate". Payload must contain a non-empty rationale, a non-empty array of reference strings, and decisions. Decide every entry in openFindings exactly once, preserving its id as findingId and its owner. Each decision must contain findingId, owner, action, rationale, direction, verification, and followUp. Choose each action from the evidence: uphold requires a concrete Worker direction and verification; overrule closes a finding that is not warranted by the contract; defer requires a followUp object with non-empty title, acceptance, and context; escalate requests human review. Use null for inapplicable direction, verification, and followUp fields. Every rationale must be non-empty; explain your reasoning against the issue and review evidence. ${(current.arbiterInterventions ?? 0) >= 1 ? 'This is the second intervention: uphold is not allowed; choose overrule, defer, or escalate.' : 'This is the first intervention: all four actions are allowed.'} Do not add fields or use "version" in place of "schema". Record:\n${record}`;
   const structured = createStructuredArbiterOutput(spec);
   let parsed;
   try {
@@ -1624,11 +1605,6 @@ async function invokeArbiter(
   } finally {
     if (structured) rmSync(structured.directory, { recursive: true, force: true });
   }
-  const findings: ArbiterFinding[] = ids.map((id) => ({
-    id,
-    owner: id.startsWith('Q') ? 'qa' : 'staff',
-    summary: id,
-  }));
   const next = applyArbiterDecisions(
     {
       interventions: current.arbiterInterventions ?? 0,
