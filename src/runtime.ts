@@ -13,6 +13,9 @@ export type Diagnostic = Readonly<{
   check: string;
   message: string;
   remediation: string;
+  phase?: string;
+  context?: Readonly<{ issue?: number; pullRequest?: number }>;
+  mutates?: boolean;
 }>;
 export type ResultEnvelope = Readonly<{
   command: string;
@@ -71,10 +74,16 @@ const productionIo = (): RuntimeIo => ({
   stderr: (text) => process.stderr.write(`${text}\n`),
 });
 
-const diagnostic = (check: string, message: string, remediation: string): Diagnostic => ({
+const diagnostic = (
+  check: string,
+  message: string,
+  remediation: string,
+  extra: Omit<Diagnostic, 'check' | 'message' | 'remediation'> = {},
+): Diagnostic => ({
   check,
   message,
   remediation,
+  ...extra,
 });
 const clean = (value: string): string => value.trim().replace(/\r/g, '');
 const envelope = (
@@ -107,6 +116,18 @@ function emit(value: ResultEnvelope, json: boolean, code: ExitCode, io: RuntimeI
     const lines = [value.summary];
     for (const item of value.diagnostics)
       lines.push(`[${item.check}] ${item.message} Remediation: ${item.remediation}`);
+    const nextAction =
+      value.result && typeof value.result === 'object' && 'nextAction' in value.result
+        ? (
+            value.result as {
+              nextAction?: { command?: string; description?: string; mutates?: boolean };
+            }
+          ).nextAction
+        : undefined;
+    if (nextAction?.command)
+      lines.push(
+        `Next: ${nextAction.command} (${nextAction.description ?? 'inspect the recorded state'}; ${nextAction.mutates ? 'mutates state' : 'read-only'})`,
+      );
     (code === EXIT.ok ? io.stdout : io.stderr)(lines.join('\n'));
   }
   return code;
@@ -825,6 +846,24 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
       : /running|pending|review|claimed/.test(workflowStatus)
         ? 'waiting'
         : 'idle';
+  const issue = typeof workflow.issue === 'number' ? workflow.issue : undefined;
+  const pullRequest = typeof workflow.pr === 'number' ? workflow.pr : undefined;
+  const recovery =
+    issue &&
+    pullRequest &&
+    ['worker_recovery_pending', 'ci_failed', 'qa_changes_requested'].includes(workflowStatus)
+      ? {
+          command: `sloop --prepare-recovery ${issue} --pr ${pullRequest}`,
+          description: 'Prepare local recovery for the recorded issue and PR.',
+          mutates: true,
+        }
+      : workflowStatus === 'blocked' || workflowStatus === 'abandoned'
+        ? {
+            command: 'sloop status --verbose',
+            description: 'Inspect the recorded blocker and available context.',
+            mutates: false,
+          }
+        : undefined;
   const value = envelope(
     parsed.command,
     parsed.command === 'status' ? status : 'completed',
@@ -846,6 +885,7 @@ export function runReadOnlyCommand(parsed: ReadOnlyCommand, providedIo?: Runtime
             lastError: workflow.lastError,
           },
       ...(parsed.verbose ? { config } : {}),
+      ...(recovery ? { nextAction: recovery } : {}),
     },
     [],
     typeof workflow.issue === 'number' ? [workflow.issue] : [],
