@@ -93,6 +93,19 @@ test('command parser accepts only documented read-only forms', () => {
   });
   assert.equal(parseReadOnlyCommand(['--list']), undefined);
   assert.throws(() => parseReadOnlyCommand(['doctor', '--json']), /usage:/);
+  assert.throws(() => parseReadOnlyCommand(['status', '--verbose']), /requires --json/);
+});
+
+test('JSON diagnostics are pretty-printed with stable two-space indentation', () => {
+  const h = harness({
+    'git rev-parse --show-toplevel': { stdout: '', stderr: 'not a repository', status: 1 },
+  });
+
+  const code = runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io);
+
+  assert.equal(code, EXIT.preflight);
+  assert.match(h.stdout[0], /^\{\n  "command": "status",/);
+  assert.deepEqual(JSON.parse(h.stdout[0]).diagnostics[0].check, 'repository');
 });
 
 test('top-level parser rejects unknown argv before a dispatcher command can exist', () => {

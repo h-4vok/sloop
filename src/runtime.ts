@@ -119,7 +119,7 @@ function commandName(args: readonly string[]): string {
 }
 
 function emit(value: ResultEnvelope, json: boolean, code: ExitCode, io: RuntimeIo): ExitCode {
-  if (json) io.stdout(JSON.stringify(value));
+  if (json) io.stdout(JSON.stringify(value, null, 2));
   else {
     const lines = [value.summary];
     for (const item of value.diagnostics)
@@ -749,6 +749,7 @@ export function parseReadOnlyCommand(args: readonly string[]): ReadOnlyCommand |
     const rest = stripped.slice(1);
     if (rest.some((arg) => arg !== '--verbose') || rest.filter((x) => x === '--verbose').length > 1)
       throw new Error('status accepts only --verbose and --json');
+    if (rest.includes('--verbose') && !json) throw new Error('status --verbose requires --json');
     return { command: 'status', json, verbose: rest.includes('--verbose') };
   }
   if (stripped[0] === 'issues' && stripped[1] === 'list' && stripped.length === 2)
