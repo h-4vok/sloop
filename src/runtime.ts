@@ -768,8 +768,6 @@ const helpTargets = new Map<string, readonly string[]>([
   ['status', ['status', '--help']],
   ['issues list', ['issues', 'list', '--help']],
   ['doctor', ['doctor', '--help']],
-  ['--status', ['--status', '--help']],
-  ['--list', ['--list', '--help']],
   ['--recover-lock', ['--recover-lock', '--help']],
   ['--reset', ['--reset', '--help']],
   ['--prepare-recovery', ['--prepare-recovery', '--help']],
@@ -779,16 +777,18 @@ const helpTargets = new Map<string, readonly string[]>([
 
 export function parseCliCommand(args: readonly string[]): CliCommand {
   if (args.length === 1 && args[0] === '--version') return { kind: 'version' };
+  if (args.includes('--list') && args.includes('--status'))
+    throw new Error('mixed, duplicate, unknown, or unsupported command options');
+  if (args.includes('--list'))
+    throw new Error('`sloop --list` is no longer supported; use `sloop issues list`');
+  if (args.includes('--status'))
+    throw new Error('`sloop --status` is no longer supported; use `sloop status`');
   if (args.includes('--help')) {
     for (const [target, form] of helpTargets)
       if (args.length === form.length && args.every((arg, index) => arg === form[index]))
         return { kind: 'help', target };
     throw new Error('--help must be the only option for the requested command');
   }
-  if (args[0] === '--list')
-    throw new Error('`sloop --list` is no longer supported; use `sloop issues list`');
-  if (args[0] === '--status')
-    throw new Error('`sloop --status` is no longer supported; use `sloop status`');
   const readOnly = parseReadOnlyCommand(args);
   if (readOnly) return { kind: 'read-only', command: readOnly };
   if (args[0] === 'config') {

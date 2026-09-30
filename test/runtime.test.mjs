@@ -115,6 +115,14 @@ test('top-level parser rejects unknown argv before a dispatcher command can exis
     kind: 'help',
     target: '--prepare-recovery',
   });
+  for (const [args, guidance] of [
+    [['--list', '--help'], 'sloop issues list'],
+    [['--status', '--help'], 'sloop status'],
+  ])
+    assert.throws(
+      () => parseCliCommand(args),
+      new RegExp(`no longer supported.*${guidance.replaceAll(' ', '\\s+')}`),
+    );
   for (const args of [
     ['--tuvieja'],
     ['status', '--tuvieja'],
@@ -124,7 +132,10 @@ test('top-level parser rejects unknown argv before a dispatcher command can exis
     ['status', '--verbose', '--help'],
     ['--version', '--list'],
   ])
-    assert.throws(() => parseCliCommand(args), /unsupported|requires|must be|usage|mixed|accepts/);
+    assert.throws(
+      () => parseCliCommand(args),
+      /unsupported|supported|requires|must be|usage|mixed|accepts/,
+    );
 });
 
 test('dispatcher parser accepts one complete command and rejects ambiguous or unsupported forms', () => {
