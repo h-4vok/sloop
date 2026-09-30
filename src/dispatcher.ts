@@ -2,7 +2,6 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   appendFileSync,
-  copyFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -1491,18 +1490,47 @@ function createStructuredArbiterOutput(
     const envelope = JSON.parse(
       readFileSync(join(schemaRoot, 'sloop.agent-output.v1.json'), 'utf8'),
     ) as Record<string, unknown>;
-    const defs = envelope.$defs as Record<string, Record<string, unknown>>;
-    for (const [name, file] of [
-      ['worker', 'worker.v1.json'],
-      ['reviewer', 'reviewer.v1.json'],
-      ['arbiter', 'arbiter.v1.json'],
-    ] as const) {
-      defs[name] = JSON.parse(readFileSync(join(schemaRoot, file), 'utf8')) as Record<
-        string,
-        unknown
-      >;
-      copyFileSync(join(schemaRoot, file), join(directory, file));
-    }
+    const arbiter = JSON.parse(readFileSync(join(schemaRoot, 'arbiter.v1.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    const arbiterProperties = arbiter.properties as Record<string, Record<string, unknown>>;
+    const decisions = arbiterProperties.decisions!;
+    const decisionItems = decisions.items as Record<string, unknown>;
+    decisionItems.additionalProperties = false;
+    decisionItems.required = [
+      'findingId',
+      'owner',
+      'action',
+      'rationale',
+      'direction',
+      'verification',
+      'followUp',
+    ];
+    decisionItems.properties = {
+      findingId: { type: 'string' },
+      owner: { type: 'string' },
+      action: { enum: ['uphold', 'overrule', 'defer', 'escalate'] },
+      rationale: { type: 'string' },
+      direction: { type: ['string', 'null'] },
+      verification: { type: ['string', 'null'] },
+      followUp: {
+        type: ['object', 'null'],
+        additionalProperties: false,
+        required: ['title', 'acceptance', 'context'],
+        properties: {
+          title: { type: 'string' },
+          acceptance: { type: 'string' },
+          context: { type: 'string' },
+        },
+      },
+    };
+    envelope.$defs = { arbiter };
+    delete envelope.oneOf;
+    const properties = envelope.properties as Record<string, unknown>;
+    properties.producer = { const: 'arbiter' };
+    properties.status = { enum: ['uphold', 'overrule', 'defer', 'escalate'] };
+    properties.payload = { $ref: '#/$defs/arbiter' };
     writeFileSync(schemaPath, JSON.stringify(envelope));
     return {
       spec: {

@@ -1334,7 +1334,19 @@ test('configured Codex Arbiter receives the output schema and returns its struct
     assert.notEqual(outputIndex, -1);
     schema = JSON.parse(readFileSync(spec.args[schemaIndex + 1], 'utf8'));
     assert.deepEqual(schema.required, ['schema', 'context', 'producer', 'status', 'payload']);
+    assert.equal(schema.oneOf, undefined);
+    assert.deepEqual(schema.properties.producer, { const: 'arbiter' });
     assert.deepEqual(schema.$defs.arbiter.required, ['rationale', 'references']);
+    assert.equal(schema.$defs.arbiter.properties.decisions.items.additionalProperties, false);
+    assert.deepEqual(schema.$defs.arbiter.properties.decisions.items.required, [
+      'findingId',
+      'owner',
+      'action',
+      'rationale',
+      'direction',
+      'verification',
+      'followUp',
+    ]);
     const result = await originalRun(spec);
     writeFileSync(spec.args[outputIndex + 1], result);
     return 'Codex execution metadata is not the structured result';
