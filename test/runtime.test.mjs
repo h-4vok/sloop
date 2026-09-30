@@ -738,6 +738,93 @@ test('status recovery guidance remains safe and contextual when issue or PR data
   }
 });
 
+test('status diagnoses every recovery observation with contextual safe guidance', () => {
+  const observations = [
+    ['leaseActive', 'lease', 'Another dispatcher owns an active run lease.'],
+    ['blockedPhase', 'blocked', 'The remote workflow phase is blocked.'],
+    ['artifactMissing', 'artifact', 'The expected run artifact is absent.'],
+    ['configStale', 'configuration', 'The recorded configuration fingerprint is stale.'],
+    ['checkoutDirty', 'checkout', 'The checkout has uncommitted changes.'],
+    ['checksFailed', 'checks', 'One or more required PR checks failed.'],
+    ['prClosedUnmerged', 'pull request', 'The pull request is closed but not merged.'],
+    ['schedulerDrift', 'scheduler', 'The scheduler configuration or heartbeat has drifted.'],
+  ];
+  const root = mkdtempSync(join(tmpdir(), 'sloop-recovery-matrix-'));
+  try {
+    mkdirSync(join(root, '.sloop'));
+    for (const [flag, phase, blocker] of observations) {
+      writeFileSync(
+        join(root, '.sloop', 'state.json'),
+        JSON.stringify({ status: 'ci_failed', issue: 45, pr: 107, [flag]: true }),
+      );
+      const h = harness({
+        'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+      });
+      h.io.cwd = root;
+      h.io.readFile = (file) =>
+        file.endsWith(join('.sloop', 'state.json')) ? readFileSync(file, 'utf8') : config;
+
+      assert.equal(
+        runReadOnlyCommand(parseReadOnlyCommand(['status', '--json']), h.io),
+        EXIT.ok,
+        `status should inspect ${flag}`,
+      );
+      const diagnostic = JSON.parse(h.stdout[0]).diagnostics.find(
+        (item) => item.check === `recovery-${phase}`,
+      );
+      assert.deepEqual(diagnostic, {
+        check: `recovery-${phase}`,
+        message: `${blocker} (issue #45, PR #107)`,
+        remediation:
+          'Next: sloop --prepare-recovery 45 --pr 107; this mutates local recovery state.',
+        phase,
+        context: { issue: 45, pullRequest: 107 },
+        nextAction: {
+          command: 'sloop --prepare-recovery 45 --pr 107',
+          description: 'Prepare the recorded recovery for the issue and pull request.',
+          mutates: true,
+        },
+        mutates: false,
+      });
+      assert.equal(
+        h.calls.some(
+          ({ file, args }) =>
+            file === 'gh' || ['checkout', 'reset', 'clean', 'push'].includes(args[0]),
+        ),
+        false,
+        `${flag} diagnosis must not mutate local or remote state`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('diagnostic commands remain read-only across local, GitHub, and scheduler boundaries', () => {
+  const forbidden = new Set(['checkout', 'reset', 'clean', 'push', 'schedule', 'workflow']);
+  for (const args of [['status', '--json'], ['issues', 'list', '--json'], ['doctor']]) {
+    const h = harness();
+    const originalReadFile = h.io.readFile;
+    let writes = 0;
+    h.io.readFile = (...readArgs) => originalReadFile(...readArgs);
+    h.io.writeFile = () => {
+      writes += 1;
+      throw new Error('diagnostic attempted a write');
+    };
+    runReadOnlyCommand(parseReadOnlyCommand(args), h.io);
+    assert.equal(writes, 0, `${args.join(' ')} must not write local state`);
+    assert.equal(
+      h.calls.some(({ file, args: commandArgs }) =>
+        file === 'gh' && ['pr', 'issue', 'label', 'repo', 'auth'].includes(commandArgs[0])
+          ? commandArgs.some((arg) => ['close', 'edit', 'merge', 'delete', 'create'].includes(arg))
+          : forbidden.has(commandArgs[0]),
+      ),
+      false,
+      `${args.join(' ')} must not mutate remote state or scheduler`,
+    );
+  }
+});
+
 test('runtime reports insufficient permissions and missing doctor skills', () => {
   const h = harness({
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
