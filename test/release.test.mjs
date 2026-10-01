@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseReleaseKind,
+  parseIssueReleaseKind,
+  deriveReleaseKind,
   nextVersion,
   updateMetadata,
   hasReleaseMetadata,
@@ -10,11 +11,19 @@ import {
   updateRepositoryMetadata,
 } from '../src/release.js';
 
-test('parses exact release prefixes and rejects ambiguous titles', () => {
-  assert.equal(parseReleaseKind('[patch] fix'), 'patch');
-  assert.equal(parseReleaseKind('[none] docs'), 'none');
-  for (const title of ['fix', '[Patch] fix', '[patch] [minor] fix', '[unknown] fix'])
-    assert.throws(() => parseReleaseKind(title));
+test('parses only exact issue release prefixes', () => {
+  assert.equal(parseIssueReleaseKind('[patch] fix'), 'patch');
+  assert.equal(parseIssueReleaseKind('[minor] feature'), 'minor');
+  assert.equal(parseIssueReleaseKind('[major] breaking'), 'major');
+  for (const title of ['fix', '[Patch] fix', '[none] docs', '[patch] [minor] fix', '[unknown] fix'])
+    assert.equal(parseIssueReleaseKind(title), null);
+});
+
+test('derives the highest issue bump independent of order and defaults to minor', () => {
+  assert.equal(deriveReleaseKind(['[patch] fix', '[major] break', '[minor] feature']), 'major');
+  assert.equal(deriveReleaseKind(['[major] break', '[patch] fix']), 'major');
+  assert.equal(deriveReleaseKind(['fix', '[none] docs']), 'minor');
+  assert.equal(deriveReleaseKind([]), 'minor');
 });
 
 test('calculates all SemVer bumps including 0.x major', () => {
@@ -22,7 +31,6 @@ test('calculates all SemVer bumps including 0.x major', () => {
   assert.equal(nextVersion('0.1.1', 'minor'), '0.2.0');
   assert.equal(nextVersion('0.9.9', 'major'), '1.0.0');
   assert.equal(nextVersion('1.2.3', 'major'), '2.0.0');
-  assert.equal(nextVersion('1.2.3', 'none'), '1.2.3');
   assert.throws(() => nextVersion('not-a-version', 'patch'), /not SemVer/);
 });
 

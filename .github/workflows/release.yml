@@ -26,13 +26,24 @@ jobs:
       - name: Calculate release
         id: release
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          kind=$(node --input-type=module -e "import {parseReleaseKind} from './dist/release.js'; console.log(parseReleaseKind(process.env.PR_TITLE))")
+          issue_numbers=$(gh pr view "$PR_NUMBER" --repo "$GH_REPO" --json closingIssuesReferences --jq '.closingIssuesReferences[]?.number' 2>/dev/null || true)
+          if [ -z "$issue_numbers" ]; then
+            issue_numbers=$(printf '%s\n' "$PR_BODY" | grep -Eio 'closes?[[:space:]]+#([0-9]+)' | grep -Eo '[0-9]+' | sort -nu || true)
+          fi
+          titles='[]'
+          while IFS= read -r issue_number; do
+            [ -n "$issue_number" ] || continue
+            issue_title=$(gh issue view "$issue_number" --repo "$GH_REPO" --json title --jq .title 2>/dev/null || true)
+            [ -n "$issue_title" ] || continue
+            titles=$(ISSUE_TITLE="$issue_title" TITLES="$titles" node --input-type=module -e "const titles=JSON.parse(process.env.TITLES); titles.push(process.env.ISSUE_TITLE); console.log(JSON.stringify(titles))")
+          done <<< "$issue_numbers"
+          kind=$(TITLES="$titles" node --input-type=module -e "import {deriveReleaseKind} from './dist/release.js'; console.log(deriveReleaseKind(JSON.parse(process.env.TITLES)))")
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
-          [ "$kind" = none ] && exit 0
           latest=$(git tag --list 'v*' --sort=-version:refname | head -n1)
           latest=${latest#v}; [ -n "$latest" ] || latest=$(node -p "require('./package.json').version")
           version=$(node --input-type=module -e "import {nextVersion} from './dist/release.js'; console.log(nextVersion(process.argv[1], process.argv[2]))" "$latest" "$kind")
