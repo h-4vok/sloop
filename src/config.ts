@@ -519,6 +519,14 @@ function unknownKeys(value: unknown, allowed: unknown, path = '$'): ConfigDiagno
     return unknownKeys(child, allowed[key], childPath);
   });
 }
+function knownConfigValue(value: unknown, allowed: unknown): unknown {
+  if (!plainObject(value) || !plainObject(allowed)) return value;
+  const filtered: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(allowed)) {
+    if (Object.hasOwn(value, key)) filtered[key] = knownConfigValue(value[key], child);
+  }
+  return filtered;
+}
 function containerShapes(
   value: Record<string, unknown>,
   allowed: Record<string, unknown>,
@@ -619,7 +627,7 @@ export function parseConfig(value: unknown): SloopConfig {
   const diagnostics = [
     ...unknownKeys(value, allowed),
     ...containerShapes(value, allowed),
-    ...credentialDiagnostics(value),
+    ...credentialDiagnostics(knownConfigValue(value, allowed)),
   ];
   const output: Record<string, unknown> = {};
   for (const metadata of configRegistry) {

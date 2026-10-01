@@ -296,6 +296,12 @@ test('inherited property names are ignored as unknown keys at exact paths', () =
     assert.doesNotThrow(() => loadConfigText(source));
 });
 
+test('unknown credential-shaped subtrees are ignored after warning', () => {
+  assert.doesNotThrow(() =>
+    loadConfigText('schemaVersion: 1\nunknown:\n  token: ghp_1234567890example\n'),
+  );
+});
+
 test('credential-bearing values are rejected while ordinary public values remain fingerprinted', () => {
   for (const [remote, expectedPath] of [
     ['https://x-access-token:ghp_example@example.com/org/repo.git', '$.repository.remote'],
