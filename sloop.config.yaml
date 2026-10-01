@@ -109,6 +109,7 @@ skills:
     repository
   required:
     # Required Sloop skill names.
+    - product-lead
     - sloop-worker
     - sloop-qa
 health:

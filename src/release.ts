@@ -25,10 +25,11 @@ export function parseIssueReleaseKind(title: string): Exclude<ReleaseKind, 'none
 
 export function deriveReleaseKind(issueTitles: readonly string[]): Exclude<ReleaseKind, 'none'> {
   const rank = { patch: 1, minor: 2, major: 3 } as const;
-  return issueTitles.reduce<Exclude<ReleaseKind, 'none'>>((best, title) => {
+  const best = issueTitles.reduce<Exclude<ReleaseKind, 'none'> | null>((best, title) => {
     const kind = parseIssueReleaseKind(title);
-    return kind && rank[kind] > rank[best] ? kind : best;
-  }, 'minor');
+    return kind && (!best || rank[kind] > rank[best]) ? kind : best;
+  }, null);
+  return best ?? 'minor';
 }
 
 export function nextVersion(current: string, kind: ReleaseKind): string {

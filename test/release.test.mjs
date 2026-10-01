@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 import {
   parseIssueReleaseKind,
   deriveReleaseKind,
@@ -20,6 +21,8 @@ test('parses only exact issue release prefixes', () => {
 });
 
 test('derives the highest issue bump independent of order and defaults to minor', () => {
+  assert.equal(deriveReleaseKind(['[patch] fix']), 'patch');
+  assert.equal(deriveReleaseKind(['[patch] fix', 'unclassified']), 'patch');
   assert.equal(deriveReleaseKind(['[patch] fix', '[major] break', '[minor] feature']), 'major');
   assert.equal(deriveReleaseKind(['[major] break', '[patch] fix']), 'major');
   assert.equal(deriveReleaseKind(['fix', '[none] docs']), 'minor');
@@ -96,11 +99,28 @@ test('verifies an existing tag and release are idempotently consistent', () => {
     assert.throws(() => verifyReleaseState(changed, 'v0.1.2', 'abc123'));
 });
 
-test('workflow verifies completed release state before changing metadata', () => {
-  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
-  const publish = workflow.slice(workflow.indexOf('name: Publish release metadata'));
-  assert.ok(publish.indexOf('gh release view') < publish.indexOf('updateRepositoryMetadata'));
-  assert.match(publish, /without metadata mutation/);
+test('merged-PR workflow runs the tested API helper with the built-in token', () => {
+  const workflow = parseYaml(readFileSync('.github/workflows/release.yml', 'utf8'));
+  const steps = workflow.jobs.release.steps;
+  assert.deepEqual(workflow.on.pull_request.types, ['closed']);
+  assert.equal(workflow.jobs.release.if, 'github.event.pull_request.merged == true');
+  assert.equal(workflow.permissions.issues, 'read');
+  assert.equal(
+    steps.find((step) => step.name === 'Calculate release').run,
+    'node scripts/release-workflow.mjs calculate',
+  );
+  assert.equal(
+    steps.find((step) => step.name === 'Publish release metadata').run,
+    'node scripts/release-workflow.mjs publish',
+  );
+  assert.equal(
+    steps.find((step) => step.name === 'Calculate release').env.GITHUB_TOKEN,
+    '${{ github.token }}',
+  );
+  assert.equal(
+    steps.find((step) => step.name === 'Publish release metadata').env.GITHUB_TOKEN,
+    '${{ github.token }}',
+  );
 });
 
 test('repository metadata writer reads and updates only the release files through its file seam', () => {

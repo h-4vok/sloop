@@ -1,26 +1,36 @@
-import { parseReleaseKind, nextVersion, verifyReleaseState } from '../dist/release.js';
+import { deriveReleaseKind, nextVersion, verifyReleaseState } from '../dist/release.js';
+import { calculateRelease } from './release-workflow.mjs';
 
 const cases = [
-  ['[patch] fix', '0.1.1', '0.1.2'],
-  ['[minor] feature', '0.1.1', '0.2.0'],
-  ['[major] breaking', '0.9.9', '1.0.0'],
-  ['[none] docs', '0.1.1', null],
+  [['[patch] fix'], '0.1.1', '0.1.2'],
+  [['[minor] feature'], '0.1.1', '0.2.0'],
+  [['[major] breaking'], '0.9.9', '1.0.0'],
+  [['[none] docs'], '0.1.1', '0.2.0'],
+  [[], '0.1.1', '0.2.0'],
 ];
-for (const [title, current, expected] of cases) {
-  const kind = parseReleaseKind(title);
-  const result = kind === 'none' ? null : nextVersion(current, kind);
-  if (result !== expected) throw new Error(`${title}: expected ${expected}, got ${result}`);
-  console.log(`${title} => ${result ?? 'no release'}`);
+for (const [titles, current, expected] of cases) {
+  const result = nextVersion(current, deriveReleaseKind(titles));
+  if (result !== expected)
+    throw new Error(`${JSON.stringify(titles)}: expected ${expected}, got ${result}`);
+  console.log(`${JSON.stringify(titles)} => ${result}`);
 }
-for (const title of ['fix', '[patch] [minor] ambiguous']) {
-  try {
-    parseReleaseKind(title);
-    throw new Error(`${title}: accepted unexpectedly`);
-  } catch (error) {
-    if (!String(error.message).includes('exactly one')) throw error;
-    console.log(`${title} => rejected`);
-  }
-}
+
+const released = {
+  packageText: '{"version":"0.1.2"}\n',
+  changelog: '## 0.1.2 - 2026-10-01\n\n- Merged pull request #113.\n\n# Changelog\n',
+};
+const retry = await calculateRelease({
+  api: { closingIssueTitles: async () => ['[patch] fix'] },
+  number: 113,
+  body: '',
+  tags: ['v0.1.2', 'v0.1.1'],
+  readTagMetadata: (tag) => (tag === 'v0.1.2' ? released : null),
+  packageVersion: '0.1.2',
+});
+if (retry.version !== '0.1.2' || !retry.reused)
+  throw new Error(`retry advanced the release: ${JSON.stringify(retry)}`);
+console.log('retry matching PR => v0.1.2 reused');
+
 const state = {
   tagName: 'v0.1.2',
   tagTarget: 'abc123',

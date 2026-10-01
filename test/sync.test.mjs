@@ -23,7 +23,7 @@ test('sync creates canonical labels and all distributed skills', () => {
   const { root, calls, runner, config } = fixture();
   syncPrerequisites(root, config, { runner });
   assert.equal(calls.filter(([file, args]) => file === 'gh' && args[1] === 'create').length, 6);
-  for (const name of ['sloop-worker', 'sloop-qa'])
+  for (const name of ['product-lead', 'sloop-worker', 'sloop-qa'])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
 });
 
