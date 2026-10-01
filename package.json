@@ -2,6 +2,7 @@
   "name": "sloop",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "bin": {
     "sloop": "dist/cli.js"
