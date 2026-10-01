@@ -135,10 +135,11 @@ test('review feedback includes only matching QA review bodies for the requested 
     reviewFeedback(
       {
         number: 7,
+        headRefOid: 'abc',
         reviews: [
-          { body: '[QA/SDET Review] round=1 verdict=passed' },
-          { body: '[QA/SDET Review] round=2 verdict=blocked' },
-          { body: '[Staff Review] round=2 verdict=approved' },
+          { body: '[QA/SDET Review] round=1 verdict=passed', commitId: 'abc' },
+          { body: '[QA/SDET Review] round=2 verdict=blocked', commitId: 'abc' },
+          { body: '[Staff Review] round=2 verdict=approved', commitId: 'abc' },
         ],
       },
       '[QA/SDET Review]',
@@ -631,7 +632,7 @@ function harness(
   const reviews = [];
   let activeLogger;
   const pr = {
-    number: 14,
+    number: overrides.prNumber ?? 14,
     state: 'OPEN',
     baseRefName: 'main',
     headRefName: overrides.headRefName ?? 'codex/issue-1',
@@ -668,7 +669,7 @@ function harness(
 
   const roleOf = (spec) => {
     if (spec.input?.includes('Use the worker skill')) return 'worker';
-    if (spec.input?.includes('Use the qa-sdet skill')) return 'qa';
+    if (spec.input?.includes('Use the sloop-qa skill')) return 'qa';
     if (spec.input?.includes('Use the staff-reviewer skill')) return 'staff';
     if (spec.input?.includes('Use the Arbiter contract')) return 'arbiter';
     return 'unknown';
@@ -736,12 +737,13 @@ function harness(
         qaCount += 1;
         const verdict = qaVerdicts[qaCount - 1] ?? qaVerdicts.at(-1);
         if (publishEvidence.qa)
-          reviews.push({
+          (overrides.qaPublication === 'review' ? reviews : pr.comments).push({
             body:
               qaBodies?.[qaCount - 1] ??
               `[QA/SDET Review] round=${round} verdict=${verdict} commit=${pr.headRefOid}`,
             commitId: pr.headRefOid,
             submittedAt: `${qaCount}`,
+            createdAt: `${qaCount}`,
           });
         return 'QA completed';
       }
@@ -860,6 +862,240 @@ function harness(
     cfg: { ...baseConfig, ...overrides.config },
   };
 }
+
+// Reduced response from the failing PR #109 query: old GitHub reviews and a
+// current QA comment. No gh process or agent is launched by these tests.
+function qaCommentResponse() {
+  const head = '43bc61cc0c7b0476f668a6e4f3a920386497f329';
+  return {
+    number: 109,
+    state: 'OPEN',
+    baseRefName: 'main',
+    headRefName: 'codex/issue-100-6224',
+    headRefOid: head,
+    body: 'Closes #100',
+    mergeStateStatus: 'CLEAN',
+    mergeable: 'MERGEABLE',
+    reviews: [
+      {
+        body: '[QA/SDET Review] round=1 verdict=changes_requested',
+        commit: { oid: '58787024de7f99884f00d57480bc76edf66cb2a1' },
+        submittedAt: '2026-09-30T16:24:27Z',
+      },
+      {
+        body: '[QA/SDET Review] round=2 verdict=changes_requested',
+        commit: { oid: '497a24db1037c4a1da331b18d4ef0922a29031a7' },
+        submittedAt: '2026-09-30T16:33:03Z',
+      },
+    ],
+    comments: [
+      {
+        body: `[Worker] round=2 status=ready_for_review pr=109 base=main commit=${head}\n\n[Human Verification]\n1. Load configuration with an unknown key.\n2. Confirm it warns and loads successfully.`,
+        createdAt: '2026-10-01T08:47:27Z',
+      },
+      {
+        body: `[QA/SDET Review] round=2 verdict=passed\n\ncommit=${head}\n\n- [Q1] pass - Unknown keys warn and are ignored.`,
+        createdAt: '2026-10-01T08:48:42Z',
+      },
+    ],
+    statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+  };
+}
+
+test('gh response with a current QA comment selects passed instead of old GitHub reviews', () => {
+  // Arrange
+  const raw = qaCommentResponse();
+  const fake = githubHost(() => JSON.stringify(raw));
+  // Act: use the real gh adapter and the real dispatcher evidence selector.
+  const pr = pullRequest(109, '/repo', 'h-4vok/sloop', fake.host);
+  const feedback = reviewFeedback(pr, '[QA/SDET Review]', 2);
+  // Assert
+  assert.equal(feedback, raw.comments[1].body);
+  assert.ok(
+    fake.calls[0].args.includes('comments,statusCheckRollup') ||
+      fake.calls[0].args.some((arg) => arg.includes('reviews,comments')),
+  );
+  assert.deepEqual(fake.calls[0].args.slice(-2), ['--repo', 'h-4vok/sloop']);
+});
+
+test('recovery consumes current Worker and QA comments without rerunning agents or creating a branch', async () => {
+  // Arrange
+  const raw = qaCommentResponse();
+  const h = harness([{ number: 100, title: 'Unknown keys' }], {
+    prNumber: 109,
+    headRefName: raw.headRefName,
+    initialState: {
+      issue: 100,
+      pr: 109,
+      branch: raw.headRefName,
+      headSha: raw.headRefOid,
+      workerRunId: 'recovery-run',
+      status: 'worker_recovery_pending',
+      reviewRound: 2,
+      lastError: 'QA evidence missing',
+      lastErrorVerbose: 'QA evidence missing',
+    },
+  });
+  const fake = githubHost(() => JSON.stringify(raw));
+  h.deps.pullRequest = () => pullRequest(109, h.root, 'h-4vok/sloop', fake.host);
+  h.deps.run = async () => {
+    throw new Error('existing valid evidence must not rerun agents');
+  };
+  h.deps.prepareWorkerBranch = () => {
+    throw new Error('recovery must not create a branch');
+  };
+  // Act
+  const exit = await dispatch(h.cfg, h.deps);
+  // Assert
+  assert.equal(exit, 0);
+  assert.equal(h.state().status, 'ready_for_human_merge');
+  assert.equal(h.state().pr, 109);
+  assert.equal(h.state().branch, raw.headRefName);
+  assert.equal(h.state().lastQaFeedback, raw.comments[1].body);
+  assert.equal(h.state().lastError, undefined);
+  assert.equal(h.state().lastErrorVerbose, undefined);
+});
+
+for (const [condition, body] of [
+  ['another round', '[QA/SDET Review] round=1 verdict=passed commit=HEAD'],
+  ['another SHA', '[QA/SDET Review] round=2 verdict=passed commit=stale'],
+  ['missing SHA', '[QA/SDET Review] round=2 verdict=passed'],
+  ['missing verdict', '[QA/SDET Review] round=2 commit=HEAD'],
+  ['unknown verdict', '[QA/SDET Review] round=2 verdict=looks_good commit=HEAD'],
+  ['quoted marker', 'Copied: [QA/SDET Review] round=2 verdict=passed commit=HEAD'],
+]) {
+  test(`QA comment with ${condition} is not accepted as current evidence`, () => {
+    // Arrange
+    const raw = qaCommentResponse();
+    raw.comments[1].body = body.replace('HEAD', raw.headRefOid);
+    const fake = githubHost(() => JSON.stringify(raw));
+    // Act
+    const feedback = reviewFeedback(
+      pullRequest(109, '/repo', 'h-4vok/sloop', fake.host),
+      '[QA/SDET Review]',
+      2,
+    );
+    // Assert
+    assert.equal(feedback, '');
+  });
+}
+
+test('latest matching QA publication wins across comments and legacy reviews regardless of array order', () => {
+  // Arrange
+  const raw = qaCommentResponse();
+  const older = {
+    body: `[QA/SDET Review] round=2 verdict=blocked commit=${raw.headRefOid}`,
+    createdAt: '2026-10-01T08:48:00Z',
+  };
+  const newest = {
+    body: '[QA/SDET Review] round=2 verdict=changes_requested',
+    commit: { oid: raw.headRefOid },
+    submittedAt: '2026-10-01T08:49:00Z',
+  };
+  raw.comments.push(older);
+  raw.reviews.unshift(newest);
+  const fake = githubHost(() => JSON.stringify(raw));
+  // Act
+  const feedback = reviewFeedback(
+    pullRequest(109, '/repo', 'h-4vok/sloop', fake.host),
+    '[QA/SDET Review]',
+    2,
+  );
+  // Assert
+  assert.equal(feedback, newest.body);
+});
+
+test('legacy QA review with contradictory native and declared SHAs is rejected', () => {
+  // Arrange
+  const pr = {
+    headRefOid: 'abc123',
+    reviews: [{ body: '[QA/SDET Review] round=2 verdict=passed commit=stale', commitId: 'abc123' }],
+  };
+  // Act
+  const feedback = reviewFeedback(pr, '[QA/SDET Review]', 2);
+  // Assert
+  assert.equal(feedback, '');
+});
+
+test('dispatcher still accepts a legacy GitHub QA review', async () => {
+  // Arrange
+  const h = harness([{ number: 1, title: 'one' }], { qaPublication: 'review' });
+  // Act
+  const exit = await dispatch(h.cfg, h.deps);
+  // Assert
+  assert.equal(exit, 0);
+  assert.equal(h.state().status, 'ready_for_human_merge');
+});
+
+test('blocked QA comment requests changes and preserves feedback at the round cap', async () => {
+  // Arrange
+  const h = harness([{ number: 1, title: 'one' }], {
+    qaVerdicts: ['blocked'],
+    config: { maxReviewRounds: 1 },
+  });
+  // Act
+  await dispatch(h.cfg, h.deps);
+  // Assert
+  assert.equal(h.state().status, 'review_cap_pending');
+  assert.ok(h.saves.some((state) => state.status === 'qa_changes_requested'));
+  assert.match(h.state().lastQaFeedback, /verdict=blocked/);
+});
+
+test('QA comment is accepted when GitHub has no Pull Request Review objects', () => {
+  // Arrange
+  const raw = qaCommentResponse();
+  delete raw.reviews;
+  const fake = githubHost(() => JSON.stringify(raw));
+  // Act
+  const feedback = reviewFeedback(
+    pullRequest(109, '/repo', 'h-4vok/sloop', fake.host),
+    '[QA/SDET Review]',
+    2,
+  );
+  // Assert
+  assert.equal(feedback, raw.comments[1].body);
+});
+
+test('dispatcher rejects a QA comment for another SHA even when QA exits successfully', async () => {
+  // Arrange
+  const h = harness([{ number: 1, title: 'one' }], {
+    qaBodies: ['[QA/SDET Review] round=1 verdict=passed commit=stale'],
+    config: { evidenceTimeoutMs: 1, evidencePollIntervalMs: 1 },
+  });
+  let clock = 0;
+  h.deps.now = () => clock;
+  h.deps.sleep = async () => {
+    clock += 1;
+  };
+  // Act
+  await dispatch(h.cfg, h.deps);
+  // Assert
+  assert.equal(h.state().status, 'worker_recovery_pending');
+  assert.match(h.state().lastError, /round=1 commit=abc1/);
+  assert.match(h.state().lastError, /checked PR comments and GitHub reviews/);
+});
+
+test('HEAD changing during QA prevents acceptance of its passed comment', async () => {
+  // Arrange
+  const h = harness([{ number: 1, title: 'one' }]);
+  const originalRun = h.deps.run;
+  const originalPullRequest = h.deps.pullRequest;
+  let qaFinished = false;
+  h.deps.run = async (spec) => {
+    const result = await originalRun(spec);
+    if (spec.input?.includes('Use the sloop-qa skill')) qaFinished = true;
+    return result;
+  };
+  h.deps.pullRequest = async (...args) => {
+    const pr = await originalPullRequest(...args);
+    return qaFinished ? { ...pr, headRefOid: 'another-head' } : pr;
+  };
+  // Act
+  await dispatch(h.cfg, h.deps);
+  // Assert
+  assert.equal(h.state().status, 'worker_recovery_pending');
+  assert.match(h.state().lastError, /HEAD changed/);
+});
 
 test('post-preflight external adapter failures preserve exit 5', async () => {
   const h = harness([{ number: 1, title: 'one', body: 'acceptance criteria' }]);
@@ -1169,7 +1405,7 @@ test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => 
   assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
   assert.deepEqual(
     h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
-    ['worker', 'qa-sdet'],
+    ['worker', 'sloop-qa'],
   );
   assert.deepEqual(
     h.runs.map((run) => run.args.slice(-2)),
@@ -1182,8 +1418,13 @@ test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => 
   assert.match(h.runs[0].input, /exactly one \[Worker\] evidence comment/);
   assert.match(h.runs[0].input, /repository's own AGENTS\.md, scripts, and workflow instructions/);
   assert.doesNotMatch(h.runs[0].input, /npm run pr-checks|canonical gate/);
-  assert.equal(h.reviews[0].body.startsWith('[QA/SDET Review]'), true);
-  assert.equal(h.reviews.length, 1);
+  const published = await h.deps.pullRequest(14);
+  assert.equal(
+    published.comments.filter((comment) => comment.body.startsWith('[QA/SDET Review]')).length,
+    1,
+  );
+  assert.equal(h.reviews.length, 0);
+  assert.match(h.runs[1].input, /gh pr comment --body-file/);
   const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';
   assert.match(guide, /commit=abc1/);
   assert.match(guide, /Run the focused command/);
@@ -1335,8 +1576,8 @@ test('configured Codex Arbiter receives the output schema and returns its struct
     schema = JSON.parse(readFileSync(spec.args[schemaIndex + 1], 'utf8'));
     assert.deepEqual(schema.required, ['schema', 'context', 'producer', 'status', 'payload']);
     assert.equal(schema.oneOf, undefined);
-    assert.deepEqual(schema.properties.producer, { const: 'arbiter' });
-    assert.deepEqual(schema.$defs.arbiter.required, ['rationale', 'references']);
+    assert.deepEqual(schema.properties.producer, { type: 'string', const: 'arbiter' });
+    assert.deepEqual(schema.$defs.arbiter.required, ['rationale', 'references', 'decisions']);
     assert.equal(schema.$defs.arbiter.properties.decisions.items.additionalProperties, false);
     assert.deepEqual(schema.$defs.arbiter.properties.decisions.items.required, [
       'findingId',
@@ -1347,6 +1588,22 @@ test('configured Codex Arbiter receives the output schema and returns its struct
       'verification',
       'followUp',
     ]);
+    // Every object sent to Codex must be closed and require all its properties,
+    // even within nullable objects, arrays and local references.
+    const visit = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.$ref) assert.ok(node.$ref.startsWith('#/$defs/'));
+      if (node.properties) {
+        assert.equal(node.additionalProperties, false);
+        assert.deepEqual([...node.required].sort(), Object.keys(node.properties).sort());
+      }
+      if (node.enum || node.const) assert.ok(node.type);
+      for (const child of Object.values(node)) {
+        if (Array.isArray(child)) child.forEach(visit);
+        else visit(child);
+      }
+    };
+    visit(schema);
     const result = await originalRun(spec);
     writeFileSync(spec.args[outputIndex + 1], result);
     return 'Codex execution metadata is not the structured result';
@@ -1355,7 +1612,11 @@ test('configured Codex Arbiter receives the output schema and returns its struct
   await dispatch(h.cfg, h.deps);
 
   assert.ok(schema);
-  assert.match(prompt, /Do not use "version" in place of "schema"/);
+  assert.match(prompt, /Do not add fields or use "version" in place of "schema"/);
+  assert.match(prompt, /This is the first intervention: all four actions are allowed/);
+  assert.deepEqual(JSON.parse(prompt.split('Record:\n')[1]).openFindings, [
+    { id: 'Q1', owner: 'qa', summary: '- [Q1] fail - contract finding' },
+  ]);
   assert.match(prompt, /"run":"/);
   assert.equal(h.state().arbiterInterventions, 1);
   assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
@@ -1622,7 +1883,7 @@ test('QA changes return to Worker and QA is repeated', async () => {
   assert.deepEqual(h.counts(), { workerCount: 2, qaCount: 2, staffCount: 0 });
   assert.deepEqual(
     h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
-    ['worker', 'qa-sdet', 'worker', 'qa-sdet'],
+    ['worker', 'sloop-qa', 'worker', 'sloop-qa'],
   );
 });
 
@@ -2058,7 +2319,10 @@ test('status rejects unsupported flag combinations', () => {
       { cwd: h.root, encoding: 'utf8' },
     );
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /mixed, duplicate, unknown, or unsupported/);
+    assert.match(
+      result.stderr,
+      /mixed, duplicate, unknown, or unsupported|no longer supported; use `sloop status`/,
+    );
     assert.equal(result.stdout, '');
   }
 });

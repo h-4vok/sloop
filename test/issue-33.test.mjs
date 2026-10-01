@@ -413,7 +413,7 @@ function faultHarness({
         pr.headRefOid = 'abcdef2';
         return 'WORKER_RESULT pr=14 base=main';
       }
-      if (spec.input?.includes('Use the qa-sdet skill')) {
+      if (spec.input?.includes('Use the sloop-qa skill')) {
         reviews.push({
           body: '[QA/SDET Review] round=1 verdict=passed commit=abcdef2',
           commitId: 'abcdef2',

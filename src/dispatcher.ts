@@ -232,7 +232,7 @@ const skills = {
   claim: 'dispatcher',
   work: 'worker',
   recovery: 'dispatcher recovery',
-  qa: 'qa-sdet',
+  qa: 'sloop-qa',
 } as const;
 
 export function readState(file = stateFile): State {
@@ -936,7 +936,7 @@ function rolePrompt(
   if (role === 'worker')
     return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Follow the repository's own AGENTS.md, scripts, and workflow instructions for local verification. If CI feedback is supplied, resolve the reported failure in code when appropriate. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and verification are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
-    return `Use the qa-sdet skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish directly to the PR exactly one review beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
+    return `Use the sloop-qa skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish exactly one top-level PR comment using gh pr comment --body-file, beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
 }
 
@@ -1075,15 +1075,30 @@ function latestReview(
   pr: PullRequest,
   marker: '[QA/SDET Review]',
   round: number,
-  headSha?: string,
+  headSha = pr.headRefOid,
 ): Review | undefined {
-  return [...(pr.reviews ?? [])]
-    .filter(
-      (review) =>
+  return [
+    ...(pr.reviews ?? []),
+    ...(pr.comments ?? []).map((comment): Review => ({
+      body: comment.body,
+      submittedAt: comment.createdAt,
+    })),
+  ]
+    .filter((review) => {
+      const declaredCommit = review.body?.match(/\bcommit=([^\s\\]+)/i)?.[1];
+      const commitMatches = review.commitId
+        ? review.commitId === headSha && (!declaredCommit || hasCommit(review.body, headSha))
+        : Boolean(declaredCommit && hasCommit(review.body, headSha));
+      return Boolean(
+        headSha &&
+        commitMatches &&
         review.body?.trim().startsWith(marker) &&
         roundFromBody(review.body) === round &&
-        (!headSha || !review.commitId || headSha === review.commitId),
-    )
+        ['passed', 'approved', 'changes_requested', 'blocked'].includes(
+          reviewVerdict(review.body) ?? '',
+        ),
+      );
+    })
     .sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)))
     .at(-1);
 }
@@ -1173,13 +1188,7 @@ async function waitForCi(
 }
 
 export function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: number): string {
-  return (pr.reviews ?? [])
-    .filter(
-      (review) => review.body?.trim().startsWith(marker) && roundFromBody(review.body) === round,
-    )
-    .map((review) => review.body)
-    .filter(Boolean)
-    .join('\n\n');
+  return latestReview(pr, marker, round)?.body ?? '';
 }
 
 function withWorkerLifecycle(d: Deps, spec: Spec, issue: number, runId: string): Spec {
@@ -1339,6 +1348,9 @@ async function runReview(
 ): Promise<{ verdict?: string; body?: string; evidence: PullRequest }> {
   const marker = '[QA/SDET Review]';
   const pending: Status = 'qa_review_pending';
+  const expectedHead = evidence.headRefOid;
+  const existing = latestReview(evidence, marker, round, expectedHead);
+  if (existing) return { verdict: reviewVerdict(existing.body), body: existing.body, evidence };
   status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
   const configured = cfg.qaCommand;
   const logger = new RunLogger(
@@ -1368,12 +1380,23 @@ async function runReview(
     ),
   });
   logger.write('result', { role, output: allowlistedPublication(output) });
-  const latest = await waitForEvidence(d, cfg, prNumber, (candidate) =>
-    Boolean(latestReview(candidate, marker, round, candidate.headRefOid)),
+  const latest = await waitForEvidence(
+    d,
+    cfg,
+    prNumber,
+    (candidate) =>
+      candidate.headRefOid !== expectedHead ||
+      Boolean(latestReview(candidate, marker, round, expectedHead)),
   );
-  const review = latestReview(latest, marker, round, latest.headRefOid);
+  if (latest.headRefOid !== expectedHead)
+    throw new Error(
+      `QA evidence is stale: PR #${prNumber} HEAD changed from ${expectedHead} to ${latest.headRefOid}`,
+    );
+  const review = latestReview(latest, marker, round, expectedHead);
   if (!review)
-    throw new Error(`${role} exited successfully but did not publish ${marker} on PR #${prNumber}`);
+    throw new Error(
+      `${role} exited successfully but did not publish ${marker} evidence matching the current context on PR #${prNumber} for round=${round} commit=${expectedHead}; checked PR comments and GitHub reviews for marker, round, commit and verdict`,
+    );
   return { verdict: reviewVerdict(review.body), body: review.body, evidence: latest };
 }
 
@@ -1497,39 +1520,14 @@ function createStructuredArbiterOutput(
     const arbiterProperties = arbiter.properties as Record<string, Record<string, unknown>>;
     const decisions = arbiterProperties.decisions!;
     const decisionItems = decisions.items as Record<string, unknown>;
-    decisionItems.additionalProperties = false;
-    decisionItems.required = [
-      'findingId',
-      'owner',
-      'action',
-      'rationale',
-      'direction',
-      'verification',
-      'followUp',
-    ];
-    decisionItems.properties = {
-      findingId: { type: 'string' },
-      owner: { type: 'string' },
-      action: { enum: ['uphold', 'overrule', 'defer', 'escalate'] },
-      rationale: { type: 'string' },
-      direction: { type: ['string', 'null'] },
-      verification: { type: ['string', 'null'] },
-      followUp: {
-        type: ['object', 'null'],
-        additionalProperties: false,
-        required: ['title', 'acceptance', 'context'],
-        properties: {
-          title: { type: 'string' },
-          acceptance: { type: 'string' },
-          context: { type: 'string' },
-        },
-      },
-    };
+    // Codex strict output requires every declared property, including nullable
+    // action-specific fields. Keep their definitions in the canonical contract.
+    decisionItems.required = Object.keys(decisionItems.properties as Record<string, unknown>);
     envelope.$defs = { arbiter };
     delete envelope.oneOf;
     const properties = envelope.properties as Record<string, unknown>;
-    properties.producer = { const: 'arbiter' };
-    properties.status = { enum: ['uphold', 'overrule', 'defer', 'escalate'] };
+    properties.producer = { type: 'string', const: 'arbiter' };
+    properties.status = { type: 'string', enum: ['uphold', 'overrule', 'defer', 'escalate'] };
     properties.payload = { $ref: '#/$defs/arbiter' };
     writeFileSync(schemaPath, JSON.stringify(envelope));
     return {
@@ -1567,12 +1565,18 @@ async function invokeArbiter(
       .map((decision) => decision.findingId),
   );
   const ids = findingIds(feedback).filter((id) => !closed.has(id));
+  const findings: ArbiterFinding[] = ids.map((id) => ({
+    id,
+    owner: id.startsWith('Q') ? 'qa' : 'staff',
+    summary: feedback.split(/\r?\n/).find((line) => line.includes(`[${id}]`)) ?? id,
+  }));
   const record = JSON.stringify({
     issue,
     pr: evidence,
     round,
     state: current,
     qaFeedback: feedback,
+    openFindings: findings,
   });
   const appearances = Math.max(
     0,
@@ -1609,7 +1613,7 @@ async function invokeArbiter(
     sha: evidence.headRefOid ?? 'unknown',
     cursor: `arbiter-${round}`,
   };
-  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below and return only a JSON object that conforms exactly to the Sloop agent-output schema. The envelope must have exactly these top-level keys: schema, context, producer, status, payload. Set schema to "sloop.agent-output/v1", context to exactly ${JSON.stringify(expectedContext)}, producer to "arbiter", and status to one of "uphold", "overrule", "defer", or "escalate". Payload must contain rationale, references, and decisions. Each decision must contain findingId, owner, action, rationale, direction, and verification; include followUp when required by the selected action. Decide every open finding exactly once. The second intervention cannot use uphold. Do not use "version" in place of "schema". Record:\n${record}`;
+  const prompt = `Use the Arbiter contract for issue #${issue.number}: ${issue.title}. This is intervention ${(current.arbiterInterventions ?? 0) + 1}. Review the complete JSON record below and return only a JSON object that conforms exactly to the Sloop agent-output schema. The envelope must have exactly these top-level keys: schema, context, producer, status, payload. Set schema to "sloop.agent-output/v1", context to exactly ${JSON.stringify(expectedContext)}, producer to "arbiter", and status to one of "uphold", "overrule", "defer", or "escalate". Payload must contain a non-empty rationale, a non-empty array of reference strings, and decisions. Decide every entry in openFindings exactly once, preserving its id as findingId and its owner. Each decision must contain findingId, owner, action, rationale, direction, verification, and followUp. Choose each action from the evidence: uphold requires a concrete Worker direction and verification; overrule closes a finding that is not warranted by the contract; defer requires a followUp object with non-empty title, acceptance, and context; escalate requests human review. Use null for inapplicable direction, verification, and followUp fields. Every rationale must be non-empty; explain your reasoning against the issue and review evidence. ${(current.arbiterInterventions ?? 0) >= 1 ? 'This is the second intervention: uphold is not allowed; choose overrule, defer, or escalate.' : 'This is the first intervention: all four actions are allowed.'} Do not add fields or use "version" in place of "schema". Record:\n${record}`;
   const structured = createStructuredArbiterOutput(spec);
   let parsed;
   try {
@@ -1624,11 +1628,6 @@ async function invokeArbiter(
   } finally {
     if (structured) rmSync(structured.directory, { recursive: true, force: true });
   }
-  const findings: ArbiterFinding[] = ids.map((id) => ({
-    id,
-    owner: id.startsWith('Q') ? 'qa' : 'staff',
-    summary: id,
-  }));
   const next = applyArbiterDecisions(
     {
       interventions: current.arbiterInterventions ?? 0,
@@ -1712,13 +1711,29 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
     await pauseForReviewCap(cfg, d, issue, round);
     return;
   }
-  const needsWorker = ![
+  let needsWorker = ![
     'worker_ready_for_review',
     'ci_pending',
     'ci_failed',
     'qa_review_pending',
     'qa_approved',
   ].includes(current.status ?? 'queued');
+  if (needsWorker && current.status === 'worker_recovery_pending' && pr) {
+    const existing = await d.pullRequest(pr);
+    const worker = latestWorkerComment(existing, round, existing.headRefOid);
+    if (
+      existing.state?.toUpperCase() === 'OPEN' &&
+      existing.baseRefName === (cfg.baseBranch ?? 'main') &&
+      existing.headRefName === current.branch &&
+      worker?.body?.includes('status=ready_for_review') &&
+      humanReviewGuide(worker) &&
+      latestReview(existing, '[QA/SDET Review]', round)
+    ) {
+      d.save({ ...current, status: 'worker_ready_for_review', headSha: existing.headRefOid });
+      current = d.load();
+      needsWorker = false;
+    }
+  }
   if (needsWorker || current.status === 'ci_failed' || current.status === 'qa_changes_requested') {
     pr = await runWorker(cfg, d, issue, round, pr, current.taskContext ?? '', feedback);
     current = d.load();
@@ -1792,6 +1807,8 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
       status(d, issue.number, 'qa_approved', {
         headSha: evidence.headRefOid,
         lastQaFeedback: qa.body,
+        lastError: undefined,
+        lastErrorVerbose: undefined,
       });
     }
 

@@ -256,7 +256,7 @@ test('legacy dispatcher executable delegates through repository discovery', () =
       encoding: 'utf8',
     });
     assert.equal(result.status, 2);
-    assert.match(result.stderr, /not inside a Git repository/);
+    assert.match(result.stderr, /no longer supported; use `sloop status`/);
     assert.equal(result.stdout, '');
   } finally {
     rmSync(outside, { recursive: true, force: true });

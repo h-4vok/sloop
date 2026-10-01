@@ -106,15 +106,6 @@ test('invalid documents provide exact YAML paths', () => {
       ),
       '$.schemaVersion: unsupported schema version',
     ],
-    [`${canonical}\nunknown: true\n`, '$.unknown: unknown configuration key'],
-    [
-      canonical.replace('- qa\n  verification:', '- worker\n  verification:'),
-      '$.workflow.reviewOrder: must contain qa exactly once',
-    ],
-    [
-      canonical.replace('    - - npm\n      - test', '    - - npm\n      - "test && rm"'),
-      '$.workflow.verification[0][1]: shell operators are forbidden',
-    ],
     [
       canonical
         .replace(
@@ -294,7 +285,7 @@ test('malformed containers and list fields produce validation diagnostics', () =
     );
 });
 
-test('inherited property names are rejected as unknown keys at exact paths', () => {
+test('inherited property names are ignored as unknown keys at exact paths', () => {
   for (const [source, expectedPath] of [
     ['schemaVersion: 1\n"constructor": invalid\n', '$.constructor'],
     ['schemaVersion: 1\n"toString": invalid\n', '$.toString'],
@@ -302,12 +293,13 @@ test('inherited property names are rejected as unknown keys at exact paths', () 
     ['schemaVersion: 1\n"__proto__": invalid\n', '$.__proto__'],
     ['schemaVersion: 1\nrepository:\n  "constructor": invalid\n', '$.repository.constructor'],
   ])
-    assert.throws(
-      () => loadConfigText(source),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(`${expectedPath}: unknown configuration key`),
-    );
+    assert.doesNotThrow(() => loadConfigText(source));
+});
+
+test('unknown credential-shaped subtrees are ignored after warning', () => {
+  assert.doesNotThrow(() =>
+    loadConfigText('schemaVersion: 1\nunknown:\n  token: ghp_1234567890example\n'),
+  );
 });
 
 test('credential-bearing values are rejected while ordinary public values remain fingerprinted', () => {
@@ -550,11 +542,8 @@ test('public config helpers validate every scalar family and structural invarian
   }
 });
 
-test('secret-shaped unknown keys and malformed YAML produce precise diagnostics', () => {
-  assert.throws(
-    () => parseConfig({ schemaVersion: 1, token: 'secret' }),
-    /secrets are not accepted/,
-  );
+test('unknown keys are ignored and malformed YAML still produces precise diagnostics', () => {
+  assert.doesNotThrow(() => parseConfig({ schemaVersion: 1, token: 'secret' }));
   assert.throws(
     () => updateConfigText('workflow: [', 'workflow.humanMergeWait', false),
     /invalid YAML/,

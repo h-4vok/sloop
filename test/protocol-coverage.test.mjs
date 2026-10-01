@@ -13,6 +13,17 @@ import {
 } from '../src/remote-state.js';
 
 const context = { run: 'r', issue: 7, pr: 8, round: 1, sha: 'abcdef1', cursor: 'c' };
+const decisions = [
+  {
+    findingId: 'Q1',
+    owner: 'qa',
+    action: 'uphold',
+    rationale: 'Trim names.',
+    direction: 'Trim the input.',
+    verification: 'Check surrounding whitespace.',
+    followUp: null,
+  },
+];
 const guide = {
   summary: 'summary',
   steps: ['step'],
@@ -52,7 +63,7 @@ test('agent envelope accepts every producer contract and valid status family', (
     context,
     producer: 'arbiter',
     status: 'uphold',
-    payload: { rationale: 'rationale', references: ['Q1'] },
+    payload: { rationale: 'rationale', references: ['Q1'], decisions },
   };
   assert.equal(validateAgentEnvelope(worker, context).status, 'blocked');
   assert.equal(
@@ -72,7 +83,7 @@ test('agent envelope rejects each invalid contract boundary', () => {
     context,
     producer: 'arbiter',
     status: 'uphold',
-    payload: { rationale: 'r', references: ['Q1'] },
+    payload: { rationale: 'r', references: ['Q1'], decisions },
   };
   for (const value of [
     null,
@@ -80,8 +91,8 @@ test('agent envelope rejects each invalid contract boundary', () => {
     { ...base, context: { ...context, issue: 0 } },
     { ...base, producer: 'other' },
     { ...base, status: 'other' },
-    { ...base, payload: { rationale: '', references: ['Q1'] } },
-    { ...base, payload: { rationale: 'r', references: [] } },
+    { ...base, payload: { rationale: '', references: ['Q1'], decisions } },
+    { ...base, payload: { rationale: 'r', references: [], decisions } },
   ])
     assert.throws(() => validateAgentEnvelope(value, context), AgentContractError);
 });

@@ -51,16 +51,6 @@ workflow:
   reviewOrder:
     # Review roles in execution order.
     - qa
-  verification:
-    # Safe verification commands as argv arrays.
-    - - npm
-      - test
-    - - npm
-      - run
-      - build
-    - - npm
-      - run
-      - format:check
 agents:
   worker:
     argv:

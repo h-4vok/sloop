@@ -112,7 +112,7 @@ function context(value: unknown): RunContext {
   exactKeys(c, ['run', 'issue', 'pr', 'round', 'sha', 'cursor'], 'context', ['pr']);
   const issue = c.issue as number;
   const round = c.round as number;
-  if (!Number.isInteger(issue) || !Number.isInteger(round) || round < 1)
+  if (!Number.isInteger(issue) || issue < 1 || !Number.isInteger(round) || round < 1)
     throw new AgentContractError('wrong-context', 'invalid issue or round');
   if (c.pr !== undefined && (!Number.isSafeInteger(c.pr) || (c.pr as number) < 1))
     throw new AgentContractError('wrong-context');
@@ -200,10 +200,12 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
   } else {
     if (!['uphold', 'overrule', 'defer', 'escalate'].includes(e.status as string))
       throw new AgentContractError('contradictory');
-    exactKeys(payload, ['rationale', 'references', 'decisions'], 'payload', ['decisions']);
+    exactKeys(payload, ['rationale', 'references', 'decisions'], 'payload');
     nonEmpty(payload.rationale, 'rationale');
     strings(payload.references, 'references');
-    if (payload.decisions !== undefined) records(payload.decisions, 'decisions');
+    records(payload.decisions, 'decisions');
+    if (!(payload.decisions as unknown[]).length)
+      throw new AgentContractError('malformed', 'decisions must be non-empty');
   }
   return {
     schema: AGENT_OUTPUT_VERSION,
