@@ -232,7 +232,7 @@ const skills = {
   claim: 'dispatcher',
   work: 'worker',
   recovery: 'dispatcher recovery',
-  qa: 'qa-sdet',
+  qa: 'sloop-qa',
 } as const;
 
 export function readState(file = stateFile): State {
@@ -936,7 +936,7 @@ function rolePrompt(
   if (role === 'worker')
     return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Follow the repository's own AGENTS.md, scripts, and workflow instructions for local verification. If CI feedback is supplied, resolve the reported failure in code when appropriate. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and verification are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
-    return `Use the qa-sdet skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish directly to the PR exactly one review beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
+    return `Use the sloop-qa skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish exactly one top-level PR comment using gh pr comment --body-file, beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
 }
 
@@ -1075,15 +1075,30 @@ function latestReview(
   pr: PullRequest,
   marker: '[QA/SDET Review]',
   round: number,
-  headSha?: string,
+  headSha = pr.headRefOid,
 ): Review | undefined {
-  return [...(pr.reviews ?? [])]
-    .filter(
-      (review) =>
+  return [
+    ...(pr.reviews ?? []),
+    ...(pr.comments ?? []).map((comment): Review => ({
+      body: comment.body,
+      submittedAt: comment.createdAt,
+    })),
+  ]
+    .filter((review) => {
+      const declaredCommit = review.body?.match(/\bcommit=([^\s\\]+)/i)?.[1];
+      const commitMatches = review.commitId
+        ? review.commitId === headSha && (!declaredCommit || hasCommit(review.body, headSha))
+        : Boolean(declaredCommit && hasCommit(review.body, headSha));
+      return Boolean(
+        headSha &&
+        commitMatches &&
         review.body?.trim().startsWith(marker) &&
         roundFromBody(review.body) === round &&
-        (!headSha || !review.commitId || headSha === review.commitId),
-    )
+        ['passed', 'approved', 'changes_requested', 'blocked'].includes(
+          reviewVerdict(review.body) ?? '',
+        ),
+      );
+    })
     .sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)))
     .at(-1);
 }
@@ -1173,13 +1188,7 @@ async function waitForCi(
 }
 
 export function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: number): string {
-  return (pr.reviews ?? [])
-    .filter(
-      (review) => review.body?.trim().startsWith(marker) && roundFromBody(review.body) === round,
-    )
-    .map((review) => review.body)
-    .filter(Boolean)
-    .join('\n\n');
+  return latestReview(pr, marker, round)?.body ?? '';
 }
 
 function withWorkerLifecycle(d: Deps, spec: Spec, issue: number, runId: string): Spec {
@@ -1339,6 +1348,9 @@ async function runReview(
 ): Promise<{ verdict?: string; body?: string; evidence: PullRequest }> {
   const marker = '[QA/SDET Review]';
   const pending: Status = 'qa_review_pending';
+  const expectedHead = evidence.headRefOid;
+  const existing = latestReview(evidence, marker, round, expectedHead);
+  if (existing) return { verdict: reviewVerdict(existing.body), body: existing.body, evidence };
   status(d, issue.number, pending, { pr: prNumber, headSha: evidence.headRefOid });
   const configured = cfg.qaCommand;
   const logger = new RunLogger(
@@ -1368,12 +1380,23 @@ async function runReview(
     ),
   });
   logger.write('result', { role, output: allowlistedPublication(output) });
-  const latest = await waitForEvidence(d, cfg, prNumber, (candidate) =>
-    Boolean(latestReview(candidate, marker, round, candidate.headRefOid)),
+  const latest = await waitForEvidence(
+    d,
+    cfg,
+    prNumber,
+    (candidate) =>
+      candidate.headRefOid !== expectedHead ||
+      Boolean(latestReview(candidate, marker, round, expectedHead)),
   );
-  const review = latestReview(latest, marker, round, latest.headRefOid);
+  if (latest.headRefOid !== expectedHead)
+    throw new Error(
+      `QA evidence is stale: PR #${prNumber} HEAD changed from ${expectedHead} to ${latest.headRefOid}`,
+    );
+  const review = latestReview(latest, marker, round, expectedHead);
   if (!review)
-    throw new Error(`${role} exited successfully but did not publish ${marker} on PR #${prNumber}`);
+    throw new Error(
+      `${role} exited successfully but did not publish ${marker} evidence matching the current context on PR #${prNumber} for round=${round} commit=${expectedHead}; checked PR comments and GitHub reviews for marker, round, commit and verdict`,
+    );
   return { verdict: reviewVerdict(review.body), body: review.body, evidence: latest };
 }
 
@@ -1688,13 +1711,29 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
     await pauseForReviewCap(cfg, d, issue, round);
     return;
   }
-  const needsWorker = ![
+  let needsWorker = ![
     'worker_ready_for_review',
     'ci_pending',
     'ci_failed',
     'qa_review_pending',
     'qa_approved',
   ].includes(current.status ?? 'queued');
+  if (needsWorker && current.status === 'worker_recovery_pending' && pr) {
+    const existing = await d.pullRequest(pr);
+    const worker = latestWorkerComment(existing, round, existing.headRefOid);
+    if (
+      existing.state?.toUpperCase() === 'OPEN' &&
+      existing.baseRefName === (cfg.baseBranch ?? 'main') &&
+      existing.headRefName === current.branch &&
+      worker?.body?.includes('status=ready_for_review') &&
+      humanReviewGuide(worker) &&
+      latestReview(existing, '[QA/SDET Review]', round)
+    ) {
+      d.save({ ...current, status: 'worker_ready_for_review', headSha: existing.headRefOid });
+      current = d.load();
+      needsWorker = false;
+    }
+  }
   if (needsWorker || current.status === 'ci_failed' || current.status === 'qa_changes_requested') {
     pr = await runWorker(cfg, d, issue, round, pr, current.taskContext ?? '', feedback);
     current = d.load();
@@ -1768,6 +1807,8 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
       status(d, issue.number, 'qa_approved', {
         headSha: evidence.headRefOid,
         lastQaFeedback: qa.body,
+        lastError: undefined,
+        lastErrorVerbose: undefined,
       });
     }
 
