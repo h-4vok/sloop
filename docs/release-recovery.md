@@ -1,6 +1,6 @@
 # Release recovery
 
-Merged pull requests must begin with exactly `[patch]`, `[minor]`, `[major]`, or `[none]`. Use `[none]` for work that must not publish a release. The workflow runs build, tests, and formatting checks before changing metadata.
+Release classification comes from the titles of issues linked by the merged pull request, never from the PR title, branch, commit, or PR labels. Recognized issue titles begin exactly with lowercase `[patch]`, `[minor]`, or `[major]`; with multiple issues, the highest bump wins (`major > minor > patch`). If linked issues cannot be listed, the workflow extracts `Closes #N` references from the PR body and queries those issues. Missing, inaccessible, unclassified, or invalid issues produce the safe default `minor`. The workflow runs build, tests, and formatting checks before changing metadata.
 
 Retries reuse the calculated `vX.Y.Z` tag and GitHub Release. If an existing tag or release points at different content, stop and investigate rather than force-publishing. To recover a failed run, inspect the workflow log, correct the repository or release consistency issue, and rerun the workflow from GitHub; do not manually increment `package.json`.
 
@@ -11,4 +11,4 @@ npm test
 node scripts/release-dry-run.mjs
 ```
 
-Expected output includes patch, minor, major, and none results, rejected missing and ambiguous prefixes, `retry matching tag/release => reused`, and `retry inconsistent release => rejected`. This exercises the same compiled helpers used by the workflow. The workflow verifies the existing GitHub Release tag name and target (the normal `main` target or the exact tag commit) before reuse.
+The release bump is calculated with the same compiled helpers used by the workflow. SemVer calculation and the existing tag/release consistency checks remain unchanged: matching retries reuse the release, while inconsistent tag or release targets are rejected rather than forced.

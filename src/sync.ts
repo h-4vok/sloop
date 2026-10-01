@@ -15,7 +15,7 @@ const canonical = [
   ['Priority: P1', 'D93F0B', 'Medium configured Sloop selection priority'],
   ['Priority: P2', 'FBCA04', 'Lowest configured Sloop selection priority'],
 ] as const;
-const names = ['sloop-worker', 'sloop-qa'] as const;
+const names = ['product-lead', 'sloop-worker', 'sloop-qa'] as const;
 const defaultRunner: SyncRunner = (file, args, cwd) =>
   execFileSync(file, [...args], { cwd, encoding: 'utf8' });
 

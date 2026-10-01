@@ -16,15 +16,20 @@ export type ReleaseFiles = Readonly<{
 
 const productionReleaseFiles: ReleaseFiles = { readFile: readFileSync, writeFile: writeFileSync };
 
-export function parseReleaseKind(title: string): ReleaseKind {
-  const match = title.match(/^\[([^\]]+)\](?:\s|$)/);
+export function parseIssueReleaseKind(title: string): Exclude<ReleaseKind, 'none'> | null {
+  const match = title.match(/^\[(patch|minor|major)\](?:\s|$)/);
   const hasSecondPrefix = /^\[[^\]]+\]/.test(title.slice(match?.[0].length ?? 0).trimStart());
-  if (!match || hasSecondPrefix || !['patch', 'minor', 'major', 'none'].includes(match[1])) {
-    throw new Error(
-      'Merged PR title must begin with exactly one of [patch], [minor], [major], or [none].',
-    );
-  }
-  return match[1] as ReleaseKind;
+  if (hasSecondPrefix) return null;
+  return match ? (match[1] as Exclude<ReleaseKind, 'none'>) : null;
+}
+
+export function deriveReleaseKind(issueTitles: readonly string[]): Exclude<ReleaseKind, 'none'> {
+  const rank = { patch: 1, minor: 2, major: 3 } as const;
+  const best = issueTitles.reduce<Exclude<ReleaseKind, 'none'> | null>((best, title) => {
+    const kind = parseIssueReleaseKind(title);
+    return kind && (!best || rank[kind] > rank[best]) ? kind : best;
+  }, null);
+  return best ?? 'minor';
 }
 
 export function nextVersion(current: string, kind: ReleaseKind): string {
