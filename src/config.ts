@@ -29,7 +29,12 @@ export type FieldMetadata<T = unknown> = Readonly<{
   requiredReconciler: Reconciler;
 }>;
 
-export type RunnerConfig = Readonly<{ argv: readonly string[]; timeout: number; retries: number }>;
+export type RunnerConfig = Readonly<{
+  argv: readonly string[];
+  timeout: number;
+  retries: number;
+  sessions: boolean;
+}>;
 export type SloopConfig = Readonly<{
   schemaVersion: 1;
   repository: Readonly<{ remote: string; baseBranch: string; branchPrefix: string }>;
@@ -394,6 +399,13 @@ export const configRegistry = deepFreeze([
       `${role} runner timeout in milliseconds.`,
     ),
     f(`agents.${role}.retries`, 'integer', integerParser, 0, `${role} runner retry count.`),
+    f(
+      `agents.${role}.sessions`,
+      'boolean',
+      booleanParser,
+      false,
+      `${role} harness session capability; false means each invocation is fresh.`,
+    ),
   ]),
   f(
     'skills.scope',
