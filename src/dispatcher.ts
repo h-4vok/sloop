@@ -47,6 +47,7 @@ import {
   shouldInvokeArbiter,
   type ArbiterFinding,
 } from './arbiter-contracts.js';
+import { SessionStore, runHarnessTurn, type Harness, type HarnessContext } from './harness.js';
 
 export type Status =
   | 'queued'
@@ -147,7 +148,9 @@ export type PullRequest = {
   statusCheckRollup?: Check[];
 };
 
-type Command = string[] | { command: string; args: string[]; timeoutMs?: number; retries?: number };
+type Command =
+  | string[]
+  | { command: string; args: string[]; timeoutMs?: number; retries?: number; sessions?: boolean };
 export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
@@ -187,12 +190,14 @@ export type Deps = Workspace<State> &
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
     reconcileActiveRun?: (state: State) => ActiveRunReconciliation;
+    harness?: (role: string, spec: Spec, context: HarnessContext, logger: RunLogger) => Harness;
   };
 export type Spec = {
   command: string;
   args: string[];
   timeoutMs: number;
   retries: number;
+  sessions?: boolean;
   env?: NodeJS.ProcessEnv;
   input?: string;
   logInvocation?: boolean;
@@ -532,8 +537,50 @@ export function command(
     args: Array.isArray(value) ? value.slice(1) : value.args,
     timeoutMs: Array.isArray(value) ? 120000 : (value.timeoutMs ?? 120000),
     retries: Array.isArray(value) ? 0 : (value.retries ?? 0),
+    ...(!Array.isArray(value) && value.sessions === true ? { sessions: true } : {}),
     logInvocation: undefined,
   };
+}
+
+async function runRoleLogged(
+  d: Deps,
+  logger: RunLogger,
+  role: string,
+  issue: Issue,
+  run: string,
+  spec: Spec,
+  prompt: string,
+  progress = '',
+  qaUpdates = '',
+): Promise<string> {
+  const store = new SessionStore(join(d.root, '.sloop', 'sessions.json'));
+  const context: HarnessContext = {
+    run,
+    issue: issue.number,
+    role,
+    repository: d.runContext?.()?.originalRepository ?? d.root,
+    issueContext: `Issue #${issue.number}: ${issue.title}\n${issue.body ?? ''}`,
+    progress,
+    qaUpdates,
+  };
+  let output = '';
+  const harness = d.harness?.(role, spec, context, logger) ?? {
+    capabilities: { sessions: spec.sessions === true },
+    start: async (_context, turn) => {
+      output = await runLogged(d, logger, { ...spec, input: turn.prompt });
+      return { accepted: true, session: randomUUID() };
+    },
+    resume: async (_context, turn) => {
+      output = await runLogged(d, logger, {
+        ...spec,
+        input: turn.prompt,
+        env: { ...spec.env, SLOOP_SESSION: turn.session },
+      });
+      return { accepted: true, session: turn.session };
+    },
+  };
+  await runHarnessTurn(harness, store, { run, issue: issue.number, role }, context, prompt);
+  return output;
 }
 
 export function runCommand(spec: Spec | undefined, cwd = defaultRoot): Promise<string> {
@@ -1257,9 +1304,12 @@ async function runWorker(
     d.load().reviewCap?.steer,
   );
   logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
-  const output = await runLogged(
+  const output = await runRoleLogged(
     d,
     logger,
+    'worker',
+    issue,
+    runId,
     withWorkerLifecycle(
       d,
       {
@@ -1284,6 +1334,19 @@ async function runWorker(
       issue.number,
       runId,
     ),
+    rolePrompt(
+      issue,
+      'worker',
+      pr,
+      round,
+      context,
+      feedback,
+      d.load().headSha,
+      runId,
+      initialPrBody,
+    ),
+    context,
+    feedback,
   );
   logger.write('result', { role: 'worker', output: allowlistedPublication(output) });
   const metadata = workerMetadata(output, pr);
@@ -1366,9 +1429,16 @@ async function runReview(
   const spec = roleCommand(configured, issue.number, cfg);
   if (!spec) throw new Error(`${role} command is required`);
   logger.write('prompt', { role, round });
-  const output = await runLogged(d, logger, {
-    ...spec,
-    input: rolePrompt(
+  const output = await runRoleLogged(
+    d,
+    logger,
+    role,
+    issue,
+    d.load().workerRunId ?? `review-${round}`,
+    {
+      ...spec,
+    },
+    rolePrompt(
       issue,
       role,
       prNumber,
@@ -1378,7 +1448,7 @@ async function runReview(
       evidence.headRefOid,
       d.load().workerRunId ?? 'dispatcher-run',
     ),
-  });
+  );
   logger.write('result', { role, output: allowlistedPublication(output) });
   const latest = await waitForEvidence(
     d,
@@ -1617,10 +1687,18 @@ async function invokeArbiter(
   const structured = createStructuredArbiterOutput(spec);
   let parsed;
   try {
-    const output = await runLogged(d, logger, {
-      ...(structured?.spec ?? spec),
-      input: prompt,
-    });
+    const output = await runRoleLogged(
+      d,
+      logger,
+      'arbiter',
+      issue,
+      current.workerRunId ?? `arbiter-${round}`,
+      {
+        ...(structured?.spec ?? spec),
+      },
+      prompt,
+      current.lastQaFeedback ?? '',
+    );
     parsed = validateAgentEnvelope(
       JSON.parse(structured ? readFileSync(structured.outputPath, 'utf8') : output.trim()),
       expectedContext,

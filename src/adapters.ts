@@ -240,6 +240,7 @@ function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config
     args: [...value.argv.slice(1)],
     timeoutMs: value.timeout,
     retries: value.retries,
+    sessions: value.sessions,
   });
   return {
     baseBranch: config.repository.baseBranch,
