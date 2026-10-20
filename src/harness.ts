@@ -88,10 +88,11 @@ export async function runHarnessTurn(
   context: HarnessContext,
   prompt: string,
   warn: (message: string) => void = console.warn,
+  initialPrompt = prompt,
 ): Promise<HarnessResult> {
   const saved = harness.capabilities.sessions ? await store.get(key) : undefined;
   if (!saved || !harness.capabilities.sessions) {
-    const result = await harness.start(context, { prompt });
+    const result = await harness.start(context, { prompt: initialPrompt });
     if (result.session && harness.capabilities.sessions) await store.set(key, result.session);
     return result;
   }

@@ -552,6 +552,7 @@ async function runRoleLogged(
   prompt: string,
   progress = '',
   qaUpdates = '',
+  initialPrompt = prompt,
 ): Promise<string> {
   const store = new SessionStore(join(d.root, '.sloop', 'sessions.json'));
   const context: HarnessContext = {
@@ -579,7 +580,15 @@ async function runRoleLogged(
       return { accepted: true, session: turn.session };
     },
   };
-  await runHarnessTurn(harness, store, { run, issue: issue.number, role }, context, prompt);
+  await runHarnessTurn(
+    harness,
+    store,
+    { run, issue: issue.number, role },
+    context,
+    prompt,
+    console.warn,
+    initialPrompt,
+  );
   return output;
 }
 
@@ -987,6 +996,11 @@ function rolePrompt(
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
 }
 
+function roleUpdate(role: 'worker' | 'qa', context: string, feedback: string): string {
+  const label = role === 'worker' ? 'New worker task or recovery update' : 'New QA review update';
+  return `${label}:\n${[context, feedback].filter(Boolean).join('\n\n') || '(no new update; inspect the current checkout and PR)'}`;
+}
+
 function appendWorkerRoundContext(
   root: string,
   issue: number,
@@ -1334,6 +1348,9 @@ async function runWorker(
       issue.number,
       runId,
     ),
+    roleUpdate('worker', context, feedback),
+    context,
+    feedback,
     rolePrompt(
       issue,
       'worker',
@@ -1345,8 +1362,6 @@ async function runWorker(
       runId,
       initialPrBody,
     ),
-    context,
-    feedback,
   );
   logger.write('result', { role: 'worker', output: allowlistedPublication(output) });
   const metadata = workerMetadata(output, pr);
@@ -1438,6 +1453,9 @@ async function runReview(
     {
       ...spec,
     },
+    roleUpdate('qa', d.load().taskContext ?? '', d.load().lastQaFeedback ?? ''),
+    '',
+    '',
     rolePrompt(
       issue,
       role,
