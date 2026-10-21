@@ -48,6 +48,7 @@ import {
 } from '../src/dispatcher.js';
 import { parseDispatcherCommand } from '../src/runtime.js';
 import { issueLabelNames } from '../src/issue-selection.js';
+import { artifactKey, runManifestMarker } from '../src/remote-state.js';
 
 test('additional rounds mean future rounds from the current round', () => {
   assert.equal(maxRoundsForUserBudget(3, 9, 2), 10);
@@ -1528,6 +1529,140 @@ test('review cap pauses before a replacement Worker is launched', async () => {
   assert.equal(h.state().reviewRound, 2);
   assert.equal(h.counts().workerCount, 1);
   assert.deepEqual(h.state().reviewCap.outstandingFindingIds, []);
+});
+
+test('stale remote run restores explicit HITL round and existing PR branch before Worker and QA', async () => {
+  // Arrange
+  const h = harness([{ number: 1, title: 'one' }], {
+    prNumber: 14,
+    headRefName: 'codex/issue-1',
+    initialState: {
+      issue: 1,
+      pr: 14,
+      branch: 'codex/issue-1-40ae',
+      workerRunId: 'replacement-run',
+      status: 'worker_recovery_pending',
+      reviewRound: 1,
+    },
+    qaVerdicts: ['passed'],
+  });
+  const original = {
+    protocol: 1,
+    runId: 'original-run',
+    issue: 1,
+    pr: 14,
+    branch: 'codex/issue-1',
+    baseSha: '1234567',
+    configFingerprint: 'config-v1',
+    phase: 'complete',
+    reviewRound: 4,
+    contextCursor: '',
+    artifacts: [artifactKey('run', { issue: 1, runId: 'original-run' })],
+  };
+  let current = {
+    protocol: 1,
+    runId: 'replacement-run',
+    issue: 1,
+    pr: 14,
+    branch: 'codex/issue-1-40ae',
+    baseSha: '1234567',
+    configFingerprint: 'config-v1',
+    phase: 'review',
+    reviewRound: 1,
+    contextCursor: '',
+    artifacts: [artifactKey('run', { issue: 1, runId: 'replacement-run' })],
+  };
+  const comments = [
+    { body: runManifestMarker(original), createdAt: '2026-10-20T10:00:00Z' },
+    {
+      body: '[HITL Review Cap] round=4 cap=3 sha=abc0 outstanding=Q1,Q2. Resolve with additional rounds.',
+      createdAt: '2026-10-20T10:01:00Z',
+    },
+    {
+      body: '[HITL Review Cap] action=resume issue=#1 pr=#14 round=4 sha=abc0 waived=none additionalRounds=4 steer=Fix Q1 and Q2, then request QA.',
+      createdAt: '2026-10-20T10:02:00Z',
+    },
+  ];
+  const published = [];
+  let claimCount = 0;
+  h.deps.remote = {
+    snapshot: () => ({
+      issue: 1,
+      pr: 14,
+      prState: 'OPEN',
+      branch: 'codex/issue-1',
+      sha: 'abc0',
+      manifest: current,
+      markers: [`sloop/v1/run/${current.runId}`],
+      comments,
+      now: Date.now(),
+      leaseOwner: 'this-dispatcher',
+    }),
+    reconcile: (_issue, key) => original.artifacts.includes(key),
+    claim: () => {
+      claimCount += 1;
+    },
+    publish: (_issue, manifest) => {
+      current = manifest;
+      published.push(manifest);
+    },
+  };
+  const checkedOut = [];
+  h.deps.checkoutWorkerBranch = (branch) => checkedOut.push(branch);
+  const prepared = [];
+  h.deps.prepareWorkerBranch = (issue) => {
+    prepared.push(issue);
+    return { branch: workerBranchName(issue), mainBaseSha: 'new-base' };
+  };
+
+  // Act
+  await dispatch(h.cfg, h.deps);
+
+  // Assert
+  const workerInput =
+    h.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
+  const qaInput = h.runs.find((run) => run.input?.includes('Use the sloop-qa skill'))?.input ?? '';
+  assert.equal(claimCount, 0);
+  assert.deepEqual(prepared, []);
+  assert.deepEqual(checkedOut, ['codex/issue-1']);
+  assert.match(workerInput, /review round 4/);
+  assert.match(workerInput, /Fix Q1 and Q2, then request QA/);
+  assert.match(qaInput, /review round 4/);
+  assert.equal(h.counts().workerCount, 1);
+  assert.equal(h.counts().qaCount, 1);
+  assert.equal(h.state().branch, 'codex/issue-1');
+  assert.equal(h.state().reviewRound, 4);
+  assert.equal(h.state().reviewCap.additionalRounds, 2);
+  assert.equal(h.state().reviewCap.steer, 'Fix Q1 and Q2, then request QA.');
+  assert.ok(published.some((manifest) => manifest.phase === 'blocked'));
+});
+
+test('branch mismatch stops before Worker executes', async () => {
+  // Arrange
+  const h = harness([{ number: 1, title: 'one' }], {
+    prNumber: 14,
+    headRefName: 'codex/issue-1',
+    initialState: {
+      issue: 1,
+      pr: 14,
+      branch: 'codex/issue-1-40ae',
+      status: 'worker_recovery_pending',
+      reviewRound: 2,
+    },
+  });
+  h.deps.checkoutWorkerBranch = () => {};
+
+  // Act
+  const result = await dispatch(h.cfg, h.deps);
+
+  // Assert
+  assert.equal(result, 4);
+  assert.equal(h.counts().workerCount, 0);
+  assert.equal(h.counts().qaCount, 0);
+  assert.match(
+    h.state().lastError,
+    /refusing to launch Worker.*must use worker branch codex\/issue-1-40ae; found codex\/issue-1/,
+  );
 });
 
 test('configured Arbiter upholds a finding and adds a Worker round', async () => {

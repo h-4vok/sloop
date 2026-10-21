@@ -11,7 +11,7 @@ export type RemoteSnapshot = Readonly<{
   prBaseBranch?: string;
   labels?: readonly string[];
   markers?: readonly string[];
-  comments?: readonly { marker?: string; body?: string }[];
+  comments?: readonly { marker?: string; body?: string; createdAt?: string; id?: number }[];
   checks?: readonly { name: string; status: string; conclusion?: string }[];
   reviews?: readonly { state: string }[];
   inlineThreads?: readonly { resolved: boolean }[];

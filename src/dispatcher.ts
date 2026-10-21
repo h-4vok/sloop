@@ -17,7 +17,12 @@ import { RunLogger, applyRunRetention, runDirectory } from './run-log.js';
 import { allowlistedPublication, publicationBody } from './publication.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import { withEphemeralMutexAsync } from './mutex.js';
-import { artifactKey, projectRemoteState } from './remote-state.js';
+import {
+  artifactKey,
+  parseRunManifestMarker,
+  projectRemoteState,
+  validateRunManifest,
+} from './remote-state.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 import type {
   AgentRunner,
@@ -37,7 +42,7 @@ import type {
   ActiveRunReconciliation,
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './runtime.js';
-import type { RunManifest, WorkflowProjection } from './remote-state.js';
+import type { RemoteSnapshot, RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
 import { validateAgentEnvelope, type RunContext as AgentRunContext } from './agent-runner.js';
 import {
@@ -47,6 +52,7 @@ import {
   shouldInvokeArbiter,
   type ArbiterFinding,
 } from './arbiter-contracts.js';
+import { SessionStore, runHarnessTurn, type Harness, type HarnessContext } from './harness.js';
 
 export type Status =
   | 'queued'
@@ -147,7 +153,9 @@ export type PullRequest = {
   statusCheckRollup?: Check[];
 };
 
-type Command = string[] | { command: string; args: string[]; timeoutMs?: number; retries?: number };
+type Command =
+  | string[]
+  | { command: string; args: string[]; timeoutMs?: number; retries?: number; sessions?: boolean };
 export type Config = {
   baseBranch?: string;
   workerCommand?: Command;
@@ -187,12 +195,14 @@ export type Deps = Workspace<State> &
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
     reconcileActiveRun?: (state: State) => ActiveRunReconciliation;
+    harness?: (role: string, spec: Spec, context: HarnessContext, logger: RunLogger) => Harness;
   };
 export type Spec = {
   command: string;
   args: string[];
   timeoutMs: number;
   retries: number;
+  sessions?: boolean;
   env?: NodeJS.ProcessEnv;
   input?: string;
   logInvocation?: boolean;
@@ -532,8 +542,59 @@ export function command(
     args: Array.isArray(value) ? value.slice(1) : value.args,
     timeoutMs: Array.isArray(value) ? 120000 : (value.timeoutMs ?? 120000),
     retries: Array.isArray(value) ? 0 : (value.retries ?? 0),
+    ...(!Array.isArray(value) && value.sessions === true ? { sessions: true } : {}),
     logInvocation: undefined,
   };
+}
+
+async function runRoleLogged(
+  d: Deps,
+  logger: RunLogger,
+  role: string,
+  issue: Issue,
+  run: string,
+  spec: Spec,
+  prompt: string,
+  progress = '',
+  qaUpdates = '',
+  initialPrompt = prompt,
+): Promise<string> {
+  const store = new SessionStore(join(d.root, '.sloop', 'sessions.json'));
+  const context: HarnessContext = {
+    run,
+    issue: issue.number,
+    role,
+    repository: d.runContext?.()?.originalRepository ?? d.root,
+    issueContext: `Issue #${issue.number}: ${issue.title}\n${issue.body ?? ''}`,
+    progress,
+    qaUpdates,
+  };
+  let output = '';
+  const harness = d.harness?.(role, spec, context, logger) ?? {
+    capabilities: { sessions: spec.sessions === true },
+    start: async (_context, turn) => {
+      output = await runLogged(d, logger, { ...spec, input: turn.prompt });
+      return { accepted: true, session: randomUUID() };
+    },
+    resume: async (_context, turn) => {
+      output = await runLogged(d, logger, {
+        ...spec,
+        input: turn.prompt,
+        env: { ...spec.env, SLOOP_SESSION: turn.session },
+      });
+      return { accepted: true, session: turn.session };
+    },
+  };
+  await runHarnessTurn(
+    harness,
+    store,
+    { run, issue: issue.number, role },
+    context,
+    prompt,
+    console.warn,
+    initialPrompt,
+  );
+  return output;
 }
 
 export function runCommand(spec: Spec | undefined, cwd = defaultRoot): Promise<string> {
@@ -839,6 +900,7 @@ function ensureRemoteClaim(
   if (!current) throw new Error('remote authority is required for dispatcher lifecycle');
   assertRemoteLeaseAvailable(current.projection);
   const owner = remoteOwner(d, issue);
+  const recoveryPhase = recoveryManifest?.phase === 'blocked' ? 'working' : recoveryManifest?.phase;
   const manifest = recoveryManifest
     ? remoteManifest(
         cfg,
@@ -846,7 +908,7 @@ function ensureRemoteClaim(
         issue,
         recoveryManifest.runId,
         key,
-        recoveryManifest.phase,
+        recoveryPhase!,
         owner,
         recoveryManifest,
       )
@@ -855,6 +917,15 @@ function ensureRemoteClaim(
     const existing = current.projection.manifest;
     const existingKey = existing.artifacts.includes(key) || d.remote.reconcile(issue, key);
     if (existingKey) {
+      if (recoveryManifest) {
+        try {
+          d.remote.publish(issue, manifest);
+        } catch (error) {
+          if (!d.remote.reconcile(issue, key)) throw error;
+        }
+        hydrateFromRemote(d, manifest);
+        return manifest;
+      }
       const refreshed = remoteManifest(
         cfg,
         d,
@@ -901,7 +972,7 @@ function publishRemoteManifest(
     previous.runId,
     key,
     phase,
-    phase === 'complete' ? undefined : remoteOwner(d, issue),
+    ['claimed', 'working', 'review'].includes(phase) ? remoteOwner(d, issue) : undefined,
     previous,
   );
   try {
@@ -938,6 +1009,11 @@ function rolePrompt(
   if (role === 'qa')
     return `Use the sloop-qa skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish exactly one top-level PR comment using gh pr comment --body-file, beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
+}
+
+function roleUpdate(role: 'worker' | 'qa', context: string, feedback: string): string {
+  const label = role === 'worker' ? 'New worker task or recovery update' : 'New QA review update';
+  return `${label}:\n${[context, feedback].filter(Boolean).join('\n\n') || '(no new update; inspect the current checkout and PR)'}`;
 }
 
 function appendWorkerRoundContext(
@@ -1225,6 +1301,18 @@ async function runWorker(
   if (cfg.baseBranch !== undefined && cfg.baseBranch !== 'main')
     throw new Error(`Worker PR baseBranch must be main; found ${cfg.baseBranch}`);
   if (!cfg.workerCommand) throw new Error('workerCommand is required');
+  if (pr) {
+    const evidence = await d.pullRequest(pr);
+    if (evidence.state?.toUpperCase() !== 'OPEN' || !evidence.headRefName)
+      throw new Error(`PR #${pr} has no recoverable open head branch`);
+    const expectedBranch = d.load().branch;
+    if (expectedBranch && evidence.headRefName !== expectedBranch)
+      throw new Error(
+        `refusing to launch Worker for PR #${pr}: PR #${pr} must use worker branch ${expectedBranch}; found ${evidence.headRefName}`,
+      );
+    if (!expectedBranch)
+      d.save({ ...d.load(), branch: evidence.headRefName, headSha: evidence.headRefOid });
+  }
   const runId = randomUUID();
   const logger = new RunLogger(runDirectory(d.root, issue.number, runId));
   d.setRunLogger?.(logger);
@@ -1257,9 +1345,12 @@ async function runWorker(
     d.load().reviewCap?.steer,
   );
   logger.write('prompt', { role: 'worker', round, feedback: allowlistedPublication(feedback) });
-  const output = await runLogged(
+  const output = await runRoleLogged(
     d,
     logger,
+    'worker',
+    issue,
+    runId,
     withWorkerLifecycle(
       d,
       {
@@ -1283,6 +1374,20 @@ async function runWorker(
       },
       issue.number,
       runId,
+    ),
+    roleUpdate('worker', context, feedback),
+    context,
+    feedback,
+    rolePrompt(
+      issue,
+      'worker',
+      pr,
+      round,
+      context,
+      feedback,
+      d.load().headSha,
+      runId,
+      initialPrBody,
     ),
   );
   logger.write('result', { role: 'worker', output: allowlistedPublication(output) });
@@ -1366,9 +1471,19 @@ async function runReview(
   const spec = roleCommand(configured, issue.number, cfg);
   if (!spec) throw new Error(`${role} command is required`);
   logger.write('prompt', { role, round });
-  const output = await runLogged(d, logger, {
-    ...spec,
-    input: rolePrompt(
+  const output = await runRoleLogged(
+    d,
+    logger,
+    role,
+    issue,
+    d.load().workerRunId ?? `review-${round}`,
+    {
+      ...spec,
+    },
+    roleUpdate('qa', d.load().taskContext ?? '', d.load().lastQaFeedback ?? ''),
+    '',
+    '',
+    rolePrompt(
       issue,
       role,
       prNumber,
@@ -1378,7 +1493,7 @@ async function runReview(
       evidence.headRefOid,
       d.load().workerRunId ?? 'dispatcher-run',
     ),
-  });
+  );
   logger.write('result', { role, output: allowlistedPublication(output) });
   const latest = await waitForEvidence(
     d,
@@ -1617,10 +1732,18 @@ async function invokeArbiter(
   const structured = createStructuredArbiterOutput(spec);
   let parsed;
   try {
-    const output = await runLogged(d, logger, {
-      ...(structured?.spec ?? spec),
-      input: prompt,
-    });
+    const output = await runRoleLogged(
+      d,
+      logger,
+      'arbiter',
+      issue,
+      current.workerRunId ?? `arbiter-${round}`,
+      {
+        ...(structured?.spec ?? spec),
+      },
+      prompt,
+      current.lastQaFeedback ?? '',
+    );
     parsed = validateAgentEnvelope(
       JSON.parse(structured ? readFileSync(structured.outputPath, 'utf8') : output.trim()),
       expectedContext,
@@ -1950,6 +2073,146 @@ function activeRunForHitl(state: State): Required<Pick<State, 'issue' | 'pr'>> &
   return state as Required<Pick<State, 'issue' | 'pr'>> & State;
 }
 
+type HitlResumeDirective = {
+  issue: number;
+  pr: number;
+  round: number;
+  sha: string;
+  waivedFindingIds: string[];
+  additionalRounds: number;
+  steer: string;
+};
+
+function hitlResumeDirective(
+  snapshot: RemoteSnapshot,
+  issue: number,
+  pr: number,
+): HitlResumeDirective | undefined {
+  const candidates = (snapshot.comments ?? []).flatMap(({ body, createdAt, id }, index) => {
+    const match = body?.match(
+      /^\[HITL Review Cap\] action=resume issue=#(\d+) pr=#(\d+) round=(\d+) sha=(\S+) waived=(\S+) additionalRounds=(\d+) steer=(.*)$/m,
+    );
+    if (!match || Number(match[1]) !== issue || Number(match[2]) !== pr) return [];
+    return [
+      {
+        index,
+        createdAt: createdAt ? Date.parse(createdAt) : undefined,
+        id,
+        value: {
+          issue,
+          pr,
+          round: Number(match[3]),
+          sha: match[4],
+          waivedFindingIds: match[5] === 'none' ? [] : match[5].split(','),
+          additionalRounds: Number(match[6]),
+          steer: match[7],
+        },
+      },
+    ];
+  });
+  return candidates
+    .sort(
+      (a, b) =>
+        a.value.round - b.value.round ||
+        (a.createdAt ?? a.id ?? a.index) - (b.createdAt ?? b.id ?? b.index),
+    )
+    .at(-1)?.value;
+}
+
+function restoreHitlResume(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  snapshot: RemoteSnapshot,
+  manifest: RunManifest | undefined,
+): RunManifest | undefined {
+  const current = d.load();
+  if (
+    current.status !== 'worker_recovery_pending' ||
+    current.issue !== issue ||
+    !current.pr ||
+    !d.remote ||
+    snapshot.pr !== current.pr ||
+    snapshot.prState?.toUpperCase() !== 'OPEN' ||
+    !snapshot.branch
+  )
+    return undefined;
+  const directive = hitlResumeDirective(snapshot, issue, current.pr);
+  if (!directive || directive.round < (current.reviewRound ?? 1)) return undefined;
+  if (
+    manifest &&
+    manifest.phase !== 'complete' &&
+    manifest.reviewRound >= directive.round &&
+    manifest.branch === snapshot.branch &&
+    current.branch === snapshot.branch
+  )
+    return undefined;
+
+  const history = (snapshot.comments ?? [])
+    .map(({ body }) => (body ? parseRunManifestMarker(body, issue) : undefined))
+    .filter(
+      (candidate): candidate is RunManifest =>
+        Boolean(candidate) &&
+        candidate!.pr === current.pr &&
+        candidate!.branch === snapshot.branch &&
+        candidate!.reviewRound <= directive.round,
+    )
+    .sort((a, b) => b.reviewRound - a.reviewRound);
+  const previous = history[0] ?? manifest;
+  if (!previous) return undefined;
+  const baseMaxRounds = cfg.maxReviewRounds ?? 10;
+  const outstandingFindingIds =
+    current.reviewCap?.outstandingFindingIds ??
+    (snapshot.comments ?? [])
+      .flatMap(({ body }) => {
+        const match = body?.match(
+          new RegExp(
+            `^\\[HITL Review Cap\\] round=${directive.round}\\b.*? outstanding=([^\\s.]+)`,
+            'm',
+          ),
+        );
+        return match ? [match[1]] : [];
+      })
+      .at(-1)
+      ?.split(',') ??
+    [];
+  const reviewCap = {
+    capRound: baseMaxRounds,
+    decisionSha: directive.sha,
+    outstandingFindingIds: outstandingFindingIds.filter((id) => id !== 'none'),
+    additionalRounds: Math.max(
+      0,
+      maxRoundsForUserBudget(baseMaxRounds, directive.round, directive.additionalRounds) -
+        baseMaxRounds,
+    ),
+    waivedFindingIds: directive.waivedFindingIds,
+    steer: directive.steer,
+  };
+  d.save({
+    ...current,
+    issue,
+    pr: current.pr,
+    branch: snapshot.branch,
+    headSha: snapshot.sha,
+    workerRunId: previous.runId,
+    reviewRound: directive.round,
+    reviewCap,
+    status: 'worker_recovery_pending',
+    lastError: undefined,
+    lastErrorVerbose: undefined,
+    updatedAt: d.now(),
+  });
+  const key = previous.artifacts[0] ?? artifactKey('run', { issue, runId: previous.runId });
+  const restored = remoteManifest(cfg, d, issue, previous.runId, key, 'blocked', undefined, {
+    ...previous,
+    pr: current.pr,
+    branch: snapshot.branch,
+    reviewRound: directive.round,
+  });
+  d.remote.publish(issue, restored);
+  return restored;
+}
+
 function hitlComment(state: State, action: string): string {
   const cap = state.reviewCap!;
   return `[HITL Review Cap] action=${action} issue=#${state.issue} pr=#${state.pr} round=${state.reviewRound} sha=${cap.decisionSha ?? 'unknown'} waived=${cap.waivedFindingIds.join(',') || 'none'} additionalRounds=${cap.additionalRounds} steer=${cap.steer}`;
@@ -1983,6 +2246,7 @@ export function resolveReviewCap(
   cwd = defaultRoot,
   repository?: string,
   host: DispatcherHost = {},
+  remote?: RemoteAuthority,
 ): void {
   const stored = readState(statePath);
   const steer = options.steer.trim();
@@ -2038,7 +2302,29 @@ export function resolveReviewCap(
     return;
   }
 
-  const current = activeRunForHitl(stored);
+  let current = activeRunForHitl(stored);
+  const remoteSnapshot = remote?.snapshot(current.issue);
+  const remoteManifest =
+    remoteSnapshot?.manifest && validateRunManifest(remoteSnapshot.manifest, current.issue)
+      ? remoteSnapshot.manifest
+      : undefined;
+  if (remoteSnapshot) {
+    if (!remoteManifest) throw new Error('review-cap resume requires a valid remote run manifest');
+    if (
+      remoteSnapshot.pr !== current.pr ||
+      remoteSnapshot.prState?.toUpperCase() !== 'OPEN' ||
+      !remoteSnapshot.branch
+    )
+      throw new Error('review-cap resume could not reconcile the same open PR and head branch');
+    current = {
+      ...current,
+      branch: remoteSnapshot.branch,
+      headSha: remoteSnapshot.sha ?? current.headSha,
+      reviewRound: Math.max(current.reviewRound ?? 1, remoteManifest?.reviewRound ?? 1),
+    };
+    if (remoteManifest && remoteManifest.pr !== current.pr)
+      throw new Error('review-cap resume remote manifest belongs to a different PR');
+  }
 
   const reviewCap = current.reviewCap ?? {
     capRound: current.reviewRound ?? 1,
@@ -2074,6 +2360,8 @@ export function resolveReviewCap(
   if (additionalRounds === 0 && !allWaived)
     throw new Error('findings remain; waive them explicitly or grant additional rounds');
   const pr = pullRequest(current.pr, cwd, repository, host);
+  if (remoteSnapshot && pr.headRefName !== remoteSnapshot.branch)
+    throw new Error('review-cap resume PR head changed while reconciling remote state');
   if (additionalRounds === 0 && !prHealthyForHumanMerge(pr, cfg))
     throw new Error(
       'PR must have green required checks and be clean/mergeable before a no-round waiver',
@@ -2095,6 +2383,16 @@ export function resolveReviewCap(
     repository,
     host,
   );
+  if (remote && remoteManifest) {
+    remote.publish(current.issue, {
+      ...remoteManifest,
+      pr: current.pr,
+      branch: current.branch!,
+      phase: 'blocked',
+      lease: undefined,
+      reviewRound: current.reviewRound ?? remoteManifest.reviewRound ?? 1,
+    });
+  }
 }
 
 export function linkIssueToActiveRun(
@@ -2249,9 +2547,19 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
       try {
         let runLogger: RunLogger | undefined;
         await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
-          const remote = remoteProjection(d, issue.number);
-          const remoteManifest = remote?.projection.manifest;
+          let remote = remoteProjection(d, issue.number);
+          let remoteManifest = remote?.projection.manifest;
+          const restoredResume = remote
+            ? restoreHitlResume(cfg, d, issue.number, remote.snapshot, remoteManifest)
+            : undefined;
+          if (restoredResume) {
+            remoteManifest = restoredResume;
+            remote = remoteProjection(d, issue.number) ?? remote;
+            recovery = true;
+            existingIssue = issue.number;
+          }
           if (remoteManifest && remoteManifest.phase !== 'complete') {
+            if (!remote) throw new Error('remote projection is required for a remote manifest');
             assertRemoteLeaseAvailable(remote.projection);
             // A claimed manifest may not have a branch yet, but it can still
             // represent recovery when it already points at an existing PR.
@@ -2355,8 +2663,21 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           }
           try {
             await processIssue(cfg, d, issue);
-            if (claimed && d.load().status !== 'human_review_required')
-              publishRemoteManifest(cfg, d, issue.number, 'complete', claimed);
+            if (claimed) {
+              const finalStatus = d.load().status;
+              const phase: RunManifest['phase'] =
+                finalStatus === 'review_cap_pending'
+                  ? 'blocked'
+                  : [
+                        'ready_for_human_merge',
+                        'human_review_required',
+                        'abandoned',
+                        'done',
+                      ].includes(finalStatus ?? '')
+                    ? 'complete'
+                    : 'working';
+              if (phase !== 'working') publishRemoteManifest(cfg, d, issue.number, phase, claimed);
+            }
           } finally {
             const facts = d.workspaceAdapter?.recover(
               issue.number,
