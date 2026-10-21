@@ -176,19 +176,12 @@ test('argv uses bounded direct-process profiles', () => {
     );
 });
 
-test('argv allows Codex configuration overrides', () => {
-  const parser = configRegistry.find(({ path }) => path === 'agents.worker.argv').parser;
-  const command = [
-    'codex',
-    'exec',
-    '--sandbox',
-    'danger-full-access',
-    '--model',
-    'gpt-5.6-luna',
-    '-c',
-    'model_reasoning_effort=low',
-  ];
-  assert.deepEqual(parser(command, '$.agents.worker.argv'), command);
+test('typed Codex configuration preserves shared options', () => {
+  const config = loadConfigText(canonical);
+  assert.equal(config.agents.worker.harness, 'codex');
+  assert.equal(config.agents.worker.model, 'gpt-5.6-luna');
+  assert.equal(config.agents.worker.sandbox, 'workspace-write');
+  assert.equal(config.agents.worker.reasoningEffort, 'low');
 });
 
 test('argv rejects env split-string command dispatch', () => {

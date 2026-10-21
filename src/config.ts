@@ -30,10 +30,12 @@ export type FieldMetadata<T = unknown> = Readonly<{
 }>;
 
 export type RunnerConfig = Readonly<{
-  argv: readonly string[];
+  harness: 'codex';
+  model: string;
+  sandbox: 'read-only' | 'workspace-write';
+  reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   timeout: number;
   retries: number;
-  sessions: boolean;
 }>;
 export type SloopConfig = Readonly<{
   schemaVersion: 1;
@@ -376,20 +378,26 @@ export const configRegistry = deepFreeze([
   }),
   ...(['worker', 'qa', 'arbiter'] as const).flatMap((role) => [
     f(
-      `agents.${role}.argv`,
-      'argv',
-      argvParser,
-      [
-        'codex',
-        'exec',
-        '--sandbox',
-        role === 'arbiter' ? 'read-only' : 'danger-full-access',
-        '--model',
-        'gpt-5.6-luna',
-        '-c',
-        'model_reasoning_effort=low',
-      ],
-      `${role} runner argv; never evaluated by a shell.`,
+      `agents.${role}.harness`,
+      'enum',
+      enumParser(['codex'] as const),
+      'codex',
+      `${role} harness adapter.`,
+    ),
+    f(`agents.${role}.model`, 'string', stringParser, 'gpt-5.6-luna', `${role} model.`),
+    f(
+      `agents.${role}.sandbox`,
+      'enum',
+      enumParser(['read-only', 'workspace-write'] as const),
+      role === 'arbiter' ? 'read-only' : 'workspace-write',
+      `${role} sandbox policy.`,
+    ),
+    f(
+      `agents.${role}.reasoningEffort`,
+      'enum',
+      enumParser(['minimal', 'low', 'medium', 'high', 'xhigh'] as const),
+      'low',
+      `${role} reasoning effort.`,
     ),
     f(
       `agents.${role}.timeout`,
@@ -399,13 +407,6 @@ export const configRegistry = deepFreeze([
       `${role} runner timeout in milliseconds.`,
     ),
     f(`agents.${role}.retries`, 'integer', integerParser, 0, `${role} runner retry count.`),
-    f(
-      `agents.${role}.sessions`,
-      'boolean',
-      booleanParser,
-      false,
-      `${role} harness session capability; false means each invocation is fresh.`,
-    ),
   ]),
   f(
     'skills.scope',

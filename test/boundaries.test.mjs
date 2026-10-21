@@ -181,8 +181,11 @@ test('production adapters root agent execution and use the validated YAML config
   });
   assert.equal(output, process.cwd());
   assert.equal(dependencies.loadConfig().baseBranch, config.repository.baseBranch);
-  assert.deepEqual(
-    dependencies.loadConfig().workerCommand.args,
-    config.agents.worker.argv.slice(1),
-  );
+  assert.deepEqual(dependencies.loadConfig().workerCommand, {
+    command: 'codex',
+    args: [],
+    timeoutMs: config.agents.worker.timeout,
+    retries: config.agents.worker.retries,
+    sessions: true,
+  });
 });
