@@ -47,10 +47,10 @@ export type CodexHarnessOptions = Readonly<{
   reasoningEffort: string;
   timeoutMs: number;
   log?: (source: 'stdout' | 'stderr', chunk: string) => void;
+  spawn?: typeof spawn;
 }>;
 
 /** The only component that knows Codex CLI syntax and its session protocol. */
-/* c8 ignore start -- exercised through the live Codex process boundary. */
 export class CodexHarness implements Harness {
   readonly capabilities = { sessions: true } as const;
   constructor(private readonly options: CodexHarnessOptions) {}
@@ -78,7 +78,10 @@ export class CodexHarness implements Harness {
       prompt,
     ];
     return new Promise((resolve, reject) => {
-      const child = spawn('codex', args, { cwd: this.options.cwd, shell: false });
+      const child = (this.options.spawn ?? spawn)('codex', args, {
+        cwd: this.options.cwd,
+        shell: false,
+      });
       let stdout = '',
         stderr = '',
         started = false,
@@ -119,7 +122,6 @@ export class CodexHarness implements Harness {
     });
   }
 }
-/* c8 ignore stop */
 
 function keyOf(key: SessionKey): string {
   if (!key.run.trim() || !Number.isSafeInteger(key.issue) || key.issue < 1 || !key.role.trim())
