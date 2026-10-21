@@ -320,7 +320,8 @@ export function productionDependencies(
   const reclaim = join(lock, 'reclaiming');
   const writeOwner = (file: string, owner: LockOwner): void =>
     writeFileSync(file, JSON.stringify(owner, null, 2) + '\n');
-  return {
+  let remoteAuthority!: NonNullable<Deps['remote']>;
+  const dependencies: Deps = {
     root,
     remoteRequired: true,
     /* c8 ignore start -- exercised through the live GitHub adapter contract. */
@@ -442,7 +443,8 @@ export function productionDependencies(
     },
     recoverLock: () => recoverStaleLock(root, defaultProcessAlive),
     reset: () => writeState(resetRunState(readState(state), defaultProcessAlive), state),
-    resolveReviewCap: (args, config) => resolveReviewCap(args, config, state, root, repository),
+    resolveReviewCap: (args, config) =>
+      resolveReviewCap(args, config, state, root, repository, {}, remoteAuthority),
     linkIssue: (issue) => linkIssueToActiveRun(issue, state, root, repository),
     prepareRecovery: (issue, requestedPr, config) => {
       const current = readState(state);
@@ -612,7 +614,7 @@ export function productionDependencies(
           const value = JSON.parse(raw) as {
             state?: string;
             labels?: { name: string }[];
-            comments?: { body: string }[];
+            comments?: { body: string; createdAt?: string; id?: number }[];
           };
           const comments = value.comments ?? [];
           const issueManifests = comments
@@ -626,7 +628,7 @@ export function productionDependencies(
             baseRefName?: string;
             headRefName?: string;
             headRefOid?: string;
-            comments?: { body: string }[];
+            comments?: { body: string; createdAt?: string; id?: number }[];
             reviews?: { state: string }[];
             statusCheckRollup?: { name: string; status: string; conclusion?: string }[];
           } = {};
@@ -687,7 +689,11 @@ export function productionDependencies(
             prState: prData.state,
             prMergedAt: prData.mergedAt,
             prBaseBranch: prData.baseRefName,
-            comments: allComments.map((comment) => ({ body: comment.body })),
+            comments: allComments.map((comment) => ({
+              body: comment.body,
+              ...(comment.createdAt ? { createdAt: comment.createdAt } : {}),
+              ...(comment.id ? { id: comment.id } : {}),
+            })),
             markers,
             manifest: selected,
             branch: prData.headRefName ?? selected?.branch,
@@ -819,4 +825,6 @@ export function productionDependencies(
       }
     },
   };
+  remoteAuthority = dependencies.remote!;
+  return dependencies;
 }
