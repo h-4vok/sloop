@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -49,6 +50,7 @@ const context = {
   progress: 'progress',
   qaUpdates: 'qa updates',
 };
+const codexCliPath = createRequire(import.meta.url).resolve('@openai/codex/bin/codex.js');
 
 test('CodexHarness starts with typed CLI options, extracts the session, and logs raw output', async () => {
   const calls = [];
@@ -65,8 +67,9 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   const result = await harness.start(context, { prompt: 'do the work' });
 
   assert.deepEqual(result, { accepted: true, session: 'session-start' });
-  assert.equal(calls[0].file, 'codex');
+  assert.equal(calls[0].file, process.execPath);
   assert.deepEqual(calls[0].args, [
+    codexCliPath,
     'exec',
     '--json',
     '--sandbox',
@@ -119,6 +122,7 @@ test('CodexHarness resumes the supplied opaque session and accepts a replacement
 
   assert.deepEqual(result, { accepted: true, session: 'session-next' });
   assert.deepEqual(calls[0].args, [
+    codexCliPath,
     'exec',
     'resume',
     'session-old',

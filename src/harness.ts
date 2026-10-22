@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { codexCliInvocation } from './codex-cli.js';
 
 export type HarnessRole = 'worker' | 'qa' | 'staff' | 'arbiter' | (string & {});
 export type HarnessCapabilities = Readonly<{
@@ -78,7 +79,8 @@ export class CodexHarness implements Harness {
       prompt,
     ];
     return new Promise((resolve, reject) => {
-      const child = (this.options.spawn ?? spawn)('codex', args, {
+      const invocation = codexCliInvocation(args);
+      const child = (this.options.spawn ?? spawn)(invocation.command, invocation.args, {
         cwd: this.options.cwd,
         shell: false,
         // Codex appends piped stdin to a positional prompt and waits for EOF.

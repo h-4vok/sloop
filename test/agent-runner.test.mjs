@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { mkdtemp, readFile as readFileFromFs } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +13,7 @@ import {
 } from '../src/agent-runner.js';
 
 const context = { run: 'run-36', issue: 36, pr: 77, round: 2, sha: 'abc123', cursor: 'cursor' };
+const codexCliPath = createRequire(import.meta.url).resolve('@openai/codex/bin/codex.js');
 const guide = {
   summary: 'verify',
   steps: ['run'],
@@ -146,16 +148,16 @@ test('Codex runner builds separated structured-output argv and captures a result
     },
   });
   assert.equal((await runner.run('prompt', context)).status, 'ready');
-  assert.equal(seen[0], 'codex');
+  assert.equal(seen[0], process.execPath);
   assert.deepEqual(seen[1].slice(0, 8), [
+    codexCliPath,
     'exec',
     '--cd',
     process.cwd(),
     '--sandbox',
     'read-only',
     '--output-schema',
-    seen[1][6],
-    '--output-last-message',
+    seen[1][7],
   ]);
   assert.ok(seen[1].includes('prompt'));
 });
@@ -185,7 +187,7 @@ test('non-interactive Codex structured-output smoke uses declared paths and one 
     log: (source, chunk) => events.push([source, chunk]),
   });
   const result = await runner.run('non-interactive smoke prompt', context);
-  assert.equal(executable, 'codex');
+  assert.equal(executable, process.execPath);
   assert.equal(result.schema, 'sloop.agent-output/v1');
   assert.equal(result.status, 'ready');
   assert.equal(events[1][0], 'stdout');
@@ -349,7 +351,7 @@ test('Codex runner applies its default sandbox', async () => {
     },
   });
   await runner.run('default sandbox', { ...context, pr: undefined });
-  assert.equal(args[4], 'workspace-write');
+  assert.equal(args[5], 'workspace-write');
 });
 
 test('runner reports non-Error launch failures and rethrows durable write failures', async () => {

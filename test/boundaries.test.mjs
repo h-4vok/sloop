@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { productionDependencies } from '../src/adapters.js';
+
 import { loadConfigText, canonicalConfigYaml } from '../src/config.js';
 import { CliFailure } from '../src/dispatcher.js';
 import { runManifestMarker } from '../src/remote-state.js';
+
+const codexCliPath = createRequire(import.meta.url).resolve('@openai/codex/bin/codex.js');
 
 test('production assembly supplies every typed external-concern boundary', () => {
   const dependencies = productionDependencies(
@@ -218,6 +222,7 @@ test('production adapter passes explicit full access to the Codex harness', asyn
   );
 
   assert.deepEqual(result, { accepted: true, session: 'full-access-session' });
-  assert.equal(calls[0].file, 'codex');
+  assert.equal(calls[0].file, process.execPath);
+  assert.equal(calls[0].args[0], codexCliPath);
   assert.equal(calls[0].args[calls[0].args.indexOf('--sandbox') + 1], 'danger-full-access');
 });

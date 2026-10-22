@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { codexCliInvocation } from './codex-cli.js';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -418,6 +419,7 @@ export class CodexAgentRunner extends ArbitraryCommandRunner {
     if (options.model) args.push('--model', options.model);
     if (options.reasoningEffort)
       args.push('--config', `model_reasoning_effort=${options.reasoningEffort}`);
-    super('codex', args, options);
+    const invocation = codexCliInvocation(args);
+    super(invocation.command, invocation.args, options);
   }
 }
