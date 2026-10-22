@@ -81,7 +81,11 @@ const exactWorkspace = (root: string, entry: Registered): boolean => {
 };
 const cleanWorktree = (entry: Registered) =>
   git(['status', '--porcelain=v1'], entry.executionRoot) === '';
-const serenaMetadata = new Set(['.serena/.gitignore', '.serena/project.yml']);
+const serenaMetadata = new Set([
+  '.serena/.gitignore',
+  '.serena/project.yml',
+  '.serena/project.local.yml',
+]);
 const onlyGeneratedSerenaMetadata = (entry: Registered): string[] | undefined => {
   const status = git(['status', '--porcelain=v1', '--untracked-files=all'], entry.executionRoot);
   const lines = status ? status.split(/\r?\n/) : [];
@@ -94,13 +98,19 @@ const onlyGeneratedSerenaMetadata = (entry: Registered): string[] | undefined =>
     const names = readdirSync(directory).sort();
     const expected = names.map((name) => `.serena/${name}`);
     if (
-      names.some((name) => !['.gitignore', 'project.yml'].includes(name)) ||
+      names.some(
+        (name) => !['.gitignore', 'project.yml', 'project.local.yml', 'memories'].includes(name),
+      ) ||
       lines.some((line) => !expected.includes(line.slice(3)))
     )
       return undefined;
     for (const name of names) {
-      const info = lstatSync(resolve(directory, name));
-      if (!info.isFile() || info.isSymbolicLink()) return undefined;
+      const path = resolve(directory, name);
+      const info = lstatSync(path);
+      if (name === 'memories') {
+        if (!info.isDirectory() || info.isSymbolicLink() || readdirSync(path).length !== 0)
+          return undefined;
+      } else if (!info.isFile() || info.isSymbolicLink()) return undefined;
     }
   } catch {
     return lines.length === 0 && !existsSync(directory) ? [] : undefined;
@@ -112,7 +122,10 @@ const removeGeneratedSerenaMetadata = (entry: Registered): boolean => {
   if (paths === undefined) return false;
   if (!paths.length) return true;
   const directory = resolve(entry.executionRoot, '.serena');
-  for (const path of paths) unlinkSync(resolve(entry.executionRoot, path));
+  for (const path of paths) {
+    if (path === '.serena/memories') rmdirSync(resolve(entry.executionRoot, path));
+    else unlinkSync(resolve(entry.executionRoot, path));
+  }
   rmdirSync(directory);
   return true;
 };

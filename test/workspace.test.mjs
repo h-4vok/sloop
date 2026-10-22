@@ -144,8 +144,13 @@ test('worker recovery retains dispatch ownership, refreshes a pushed head, and c
   git(facts.executionRoot, 'push', '-u', 'origin', facts.branch);
   const pushedHead = git(facts.executionRoot, 'rev-parse', 'HEAD');
   mkdirSync(join(facts.executionRoot, '.serena'));
-  writeFileSync(join(facts.executionRoot, '.serena', '.gitignore'), 'project.yml\n');
+  mkdirSync(join(facts.executionRoot, '.serena', 'memories'));
+  writeFileSync(
+    join(facts.executionRoot, '.serena', '.gitignore'),
+    'project.yml\nproject.local.yml\nmemories/\n',
+  );
   writeFileSync(join(facts.executionRoot, '.serena', 'project.yml'), 'project: sloop\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'project.local.yml'), 'local: true\n');
 
   const recovered = recoverWorkspace({
     ...opts,
@@ -161,6 +166,7 @@ test('worker recovery retains dispatch ownership, refreshes a pushed head, and c
   assert.deepEqual(registration.ownership, facts.ownership);
   cleanupWorkspace(recovered, root);
   assert.equal(existsSync(facts.executionRoot), false);
+  assert.equal(existsSync(join(facts.executionRoot, '.serena')), false);
   assert.equal(listWorkspaces(root).length, 0);
 });
 
@@ -189,13 +195,25 @@ test('recovery and cleanup preserve unknown untracked files and reject unmatched
     undefined,
   );
   mkdirSync(join(facts.executionRoot, '.serena'));
-  writeFileSync(join(facts.executionRoot, '.serena', '.gitignore'), 'project.yml\n');
+  mkdirSync(join(facts.executionRoot, '.serena', 'memories'));
+  writeFileSync(
+    join(facts.executionRoot, '.serena', '.gitignore'),
+    'project.yml\nproject.local.yml\nmemories/\n',
+  );
   writeFileSync(join(facts.executionRoot, '.serena', 'project.yml'), 'project: sloop\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'project.local.yml'), 'local: true\n');
   writeFileSync(join(facts.executionRoot, '.serena', 'user.txt'), 'keep me\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'memories', 'keep.md'), 'keep this too\n');
 
   assert.throws(() => cleanupWorkspace(facts, root), /untracked or modified files/);
   assert.equal(readFileSync(join(facts.executionRoot, '.serena', 'user.txt'), 'utf8'), 'keep me\n');
   assert.equal(existsSync(join(facts.executionRoot, '.serena', '.gitignore')), true);
+  assert.equal(existsSync(join(facts.executionRoot, '.serena', 'project.local.yml')), true);
+  assert.equal(existsSync(join(facts.executionRoot, '.serena', 'memories')), true);
+  assert.equal(
+    readFileSync(join(facts.executionRoot, '.serena', 'memories', 'keep.md'), 'utf8'),
+    'keep this too\n',
+  );
   assert.equal(listWorkspaces(root).length, 1);
 });
 
