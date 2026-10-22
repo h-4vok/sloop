@@ -64,7 +64,7 @@ agents:
       workspace-write
     reasoningEffort:
       # worker reasoning effort.
-      low
+      high
     timeout:
       # worker runner timeout in milliseconds.
       10m
@@ -83,7 +83,7 @@ agents:
       workspace-write
     reasoningEffort:
       # qa reasoning effort.
-      low
+      high
     timeout:
       # qa runner timeout in milliseconds.
       10m
