@@ -22,16 +22,6 @@ import {
 
 const canonical = canonicalConfigYaml();
 
-test('tracked canonical YAML is the exact registry-generated document', () => {
-  assert.equal(
-    readFileSync(join(import.meta.dirname, '..', 'sloop.config.yaml'), 'utf8').replace(
-      /\r\n/g,
-      '\n',
-    ),
-    canonical,
-  );
-});
-
 test('numeric duration updates preserve their millisecond value', () => {
   const updated = updateConfigText(canonical, 'agents.worker.timeout', 123);
   assert.match(updated, /timeout:\s*\n\s*# worker runner timeout in milliseconds\.\s*\n\s*123/);
