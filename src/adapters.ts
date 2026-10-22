@@ -5,6 +5,7 @@ import type { LockOwner, RunContext, RunEventLogger, WorkspaceAdapter } from './
 import type { Deps } from './dispatcher.js';
 import type { SloopConfig } from './config.js';
 import { CodexHarness } from './harness.js';
+import type { CodexHarnessOptions } from './harness.js';
 import { CliFailure } from './dispatcher.js';
 import {
   checkoutWorkerBranch,
@@ -56,6 +57,7 @@ const nativeAdapterExec: AdapterExec = execFileSync;
 
 export type ProductionAdapterOptions = Readonly<{
   execFileSync?: AdapterExec;
+  codexSpawn?: CodexHarnessOptions['spawn'];
 }>;
 
 function adapterGh(
@@ -336,6 +338,7 @@ export function productionDependencies(
         reasoningEffort: roleConfig.reasoningEffort,
         timeoutMs: spec.timeoutMs,
         log: (source, chunk) => logger.write(`harness-${source}`, { chunk }),
+        spawn: options.codexSpawn,
       });
     },
     /* c8 ignore start -- exercised through the live GitHub adapter contract. */

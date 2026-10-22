@@ -182,6 +182,21 @@ test('typed Codex configuration preserves shared options', () => {
   assert.equal(config.agents.worker.model, 'gpt-5.6-luna');
   assert.equal(config.agents.worker.sandbox, 'workspace-write');
   assert.equal(config.agents.worker.reasoningEffort, 'low');
+  assert.equal(config.agents.qa.sandbox, 'workspace-write');
+  assert.equal(config.agents.arbiter.sandbox, 'read-only');
+});
+
+test('sandbox configuration accepts explicit full access and rejects unknown policies', () => {
+  const fullAccess = loadConfigText(canonical.replaceAll('workspace-write', 'danger-full-access'));
+  assert.equal(fullAccess.agents.worker.sandbox, 'danger-full-access');
+  assert.equal(fullAccess.agents.qa.sandbox, 'danger-full-access');
+  assert.equal(fullAccess.agents.arbiter.sandbox, 'read-only');
+  assert.throws(
+    () => loadConfigText(canonical.replace('workspace-write', 'unrestricted')),
+    (error) =>
+      error instanceof ConfigValidationError &&
+      error.message.includes('expected one of: read-only, workspace-write, danger-full-access'),
+  );
 });
 
 test('argv rejects env split-string command dispatch', () => {

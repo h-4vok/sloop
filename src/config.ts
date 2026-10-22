@@ -32,7 +32,7 @@ export type FieldMetadata<T = unknown> = Readonly<{
 export type RunnerConfig = Readonly<{
   harness: 'codex';
   model: string;
-  sandbox: 'read-only' | 'workspace-write';
+  sandbox: 'read-only' | 'workspace-write' | 'danger-full-access';
   reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   timeout: number;
   retries: number;
@@ -388,9 +388,10 @@ export const configRegistry = deepFreeze([
     f(
       `agents.${role}.sandbox`,
       'enum',
-      enumParser(['read-only', 'workspace-write'] as const),
+      enumParser(['read-only', 'workspace-write', 'danger-full-access'] as const),
       role === 'arbiter' ? 'read-only' : 'workspace-write',
       `${role} sandbox policy.`,
+      { choices: ['read-only', 'workspace-write', 'danger-full-access'] },
     ),
     f(
       `agents.${role}.reasoningEffort`,

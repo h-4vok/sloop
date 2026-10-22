@@ -43,7 +43,7 @@ export interface Harness {
 export type CodexHarnessOptions = Readonly<{
   cwd: string;
   model: string;
-  sandbox: 'read-only' | 'workspace-write';
+  sandbox: 'read-only' | 'workspace-write' | 'danger-full-access';
   reasoningEffort: string;
   timeoutMs: number;
   log?: (source: 'stdout' | 'stderr', chunk: string) => void;
