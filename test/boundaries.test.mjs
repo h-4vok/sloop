@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { mkdtempSync, readFileSync } from 'node:fs';
@@ -181,8 +182,42 @@ test('production adapters root agent execution and use the validated YAML config
   });
   assert.equal(output, process.cwd());
   assert.equal(dependencies.loadConfig().baseBranch, config.repository.baseBranch);
-  assert.deepEqual(
-    dependencies.loadConfig().workerCommand.args,
-    config.agents.worker.argv.slice(1),
+  assert.deepEqual(dependencies.loadConfig().workerCommand, {
+    command: 'codex',
+    args: [],
+    timeoutMs: config.agents.worker.timeout,
+    retries: config.agents.worker.retries,
+    sessions: true,
+  });
+});
+
+test('production adapter passes explicit full access to the Codex harness', async () => {
+  const config = loadConfigText(
+    canonicalConfigYaml().replaceAll('workspace-write', 'danger-full-access'),
   );
+  const calls = [];
+  const dependencies = productionDependencies(process.cwd(), config, 'h-4vok/sloop', {
+    codexSpawn(file, args, options) {
+      calls.push({ file, args, options });
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {};
+      queueMicrotask(() => {
+        child.stdout.emit('data', '{"type":"thread.started","thread_id":"full-access-session"}\n');
+        child.emit('close', 0);
+      });
+      return child;
+    },
+  });
+  const harness = dependencies.harness('worker', { timeoutMs: 1_000 }, {}, { write: () => {} });
+
+  const result = await harness.start(
+    { issue: 1, role: 'worker', run: 'run-a', repository: 'owner/repo', issueContext: 'test' },
+    { prompt: 'continue' },
+  );
+
+  assert.deepEqual(result, { accepted: true, session: 'full-access-session' });
+  assert.equal(calls[0].file, 'codex');
+  assert.equal(calls[0].args[calls[0].args.indexOf('--sandbox') + 1], 'danger-full-access');
 });

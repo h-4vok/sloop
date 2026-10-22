@@ -1,6 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 export type WorkspaceFacts = Readonly<{
@@ -71,6 +81,54 @@ const exactWorkspace = (root: string, entry: Registered): boolean => {
 };
 const cleanWorktree = (entry: Registered) =>
   git(['status', '--porcelain=v1'], entry.executionRoot) === '';
+const serenaMetadata = new Set([
+  '.serena/.gitignore',
+  '.serena/project.yml',
+  '.serena/project.local.yml',
+]);
+const onlyGeneratedSerenaMetadata = (entry: Registered): string[] | undefined => {
+  const status = git(['status', '--porcelain=v1', '--untracked-files=all'], entry.executionRoot);
+  const lines = status ? status.split(/\r?\n/) : [];
+  if (!lines.every((line) => line.startsWith('?? ') && serenaMetadata.has(line.slice(3))))
+    return undefined;
+  const directory = resolve(entry.executionRoot, '.serena');
+  try {
+    const directoryInfo = lstatSync(directory);
+    if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) return undefined;
+    const names = readdirSync(directory).sort();
+    const expected = names.map((name) => `.serena/${name}`);
+    if (
+      names.some(
+        (name) => !['.gitignore', 'project.yml', 'project.local.yml', 'memories'].includes(name),
+      ) ||
+      lines.some((line) => !expected.includes(line.slice(3)))
+    )
+      return undefined;
+    for (const name of names) {
+      const path = resolve(directory, name);
+      const info = lstatSync(path);
+      if (name === 'memories') {
+        if (!info.isDirectory() || info.isSymbolicLink() || readdirSync(path).length !== 0)
+          return undefined;
+      } else if (!info.isFile() || info.isSymbolicLink()) return undefined;
+    }
+  } catch {
+    return lines.length === 0 && !existsSync(directory) ? [] : undefined;
+  }
+  return readdirSync(directory).map((name) => `.serena/${name}`);
+};
+const removeGeneratedSerenaMetadata = (entry: Registered): boolean => {
+  const paths = onlyGeneratedSerenaMetadata(entry);
+  if (paths === undefined) return false;
+  if (!paths.length) return true;
+  const directory = resolve(entry.executionRoot, '.serena');
+  for (const path of paths) {
+    if (path === '.serena/memories') rmdirSync(resolve(entry.executionRoot, path));
+    else unlinkSync(resolve(entry.executionRoot, path));
+  }
+  rmdirSync(directory);
+  return true;
+};
 
 /* c8 ignore start -- exercised through real Git repositories by integration callers. */
 export function reconcileBranch(
@@ -200,23 +258,59 @@ export function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefine
   const file = o.stateFile ?? resolve(o.repositoryRoot, '.sloop/state.json');
   const root = resolve(o.repositoryRoot);
   const parent = resolve(root, o.worktreeRoot ?? '.sloop/worktrees');
-  const found = read(file).find(
+  const entries = read(file);
+  const found = entries.find(
     (x) =>
       x.repositoryRoot === root &&
-      x.ownership.runId === o.runId &&
+      x.workspaceRoot === root &&
       x.ownership.issue === o.issue &&
       x.ownership.protocol === 'sloop-workspace-v1' &&
-      (o.worktreeRoot === undefined || inside(parent, x.executionRoot)) &&
-      (o.worktreeRoot === undefined || (existsSync(x.executionRoot) && exactWorkspace(root, x))),
+      (x.ownership.runId === o.runId || (o.branch !== undefined && x.branch === o.branch)) &&
+      inside(parent, x.executionRoot) &&
+      existsSync(x.executionRoot) &&
+      (o.branch === undefined || x.branch === o.branch),
   );
-  if (found && found.headSha) return found;
+  if (found && found.headSha) {
+    if (exactWorkspace(root, found)) return found;
+    const live = registeredWorktree(root, found);
+    if (
+      !live ||
+      live.branch !== found.branch ||
+      live.head !== git(['rev-parse', `${found.branch}^{commit}`], root) ||
+      !inside(parent, found.executionRoot) ||
+      !onlyGeneratedSerenaMetadata(found)
+    )
+      return undefined;
+    try {
+      git(['merge-base', '--is-ancestor', found.baseSha, live.head], root);
+      git(['merge-base', '--is-ancestor', found.headSha, live.head], root);
+    } catch {
+      return undefined;
+    }
+    const refreshed = { ...found, headSha: live.head };
+    write(
+      file,
+      entries.map((entry) => (entry === found ? refreshed : entry)),
+    );
+    return refreshed;
+  }
 
   // Remote manifests are the durable authority. Reconstruct a worktree from
   // Git when the local workspace registry was lost with state.json.
   if (!o.branch || o.branch === 'pending') return undefined;
   const live = worktrees(root).find((entry) => entry.branch === o.branch);
-  if (!live) return undefined;
+  if (
+    !live ||
+    !inside(parent, live.path) ||
+    live.head !== git(['rev-parse', `${o.branch}^{commit}`], root)
+  )
+    return undefined;
   const baseSha = git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root);
+  try {
+    git(['merge-base', '--is-ancestor', baseSha, live.head], root);
+  } catch {
+    return undefined;
+  }
   return {
     workspaceRoot: root,
     executionRoot: live.path,
@@ -291,7 +385,8 @@ export function cleanupWorkspace(
         candidate.branch === facts.branch &&
         candidate.head === facts.headSha,
     );
-    if (!live || !cleanWorktree({ ...facts, repositoryRoot: root }))
+    const entry = { ...facts, repositoryRoot: root };
+    if (!live || !removeGeneratedSerenaMetadata(entry) || !cleanWorktree(entry))
       throw new Error('remote-owned workspace could not be verified');
     git(['worktree', 'remove', facts.executionRoot], root);
     return;
@@ -300,6 +395,8 @@ export function cleanupWorkspace(
   if (!inside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
   if (!exactWorkspace(root, entry))
     throw new Error('workspace registration or facts could not be verified');
+  if (!removeGeneratedSerenaMetadata(entry))
+    throw new Error('workspace is dirty (untracked or modified files); refusing cleanup');
   if (!cleanWorktree(entry)) throw new Error('workspace is dirty; refusing cleanup');
   git(['worktree', 'remove', entry.executionRoot], root);
   write(

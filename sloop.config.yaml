@@ -53,65 +53,62 @@ workflow:
     - qa
 agents:
   worker:
-    argv:
-      # worker runner argv; never evaluated by a shell.
-      - codex
-      - exec
-      - --sandbox
-      - danger-full-access
-      - --model
-      - gpt-5.6-luna
-      - -c
-      - model_reasoning_effort=low
+    harness:
+      # worker harness adapter.
+      codex
+    model:
+      # worker model.
+      gpt-5.6-luna
+    sandbox:
+      # worker sandbox policy.
+      workspace-write
+    reasoningEffort:
+      # worker reasoning effort.
+      high
     timeout:
       # worker runner timeout in milliseconds.
       10m
     retries:
       # worker runner retry count.
       0
-    sessions:
-      # worker harness session capability; false means each invocation is fresh.
-      false
   qa:
-    argv:
-      # qa runner argv; never evaluated by a shell.
-      - codex
-      - exec
-      - --sandbox
-      - danger-full-access
-      - --model
-      - gpt-5.6-luna
-      - -c
-      - model_reasoning_effort=low
+    harness:
+      # qa harness adapter.
+      codex
+    model:
+      # qa model.
+      gpt-5.6-luna
+    sandbox:
+      # qa sandbox policy.
+      workspace-write
+    reasoningEffort:
+      # qa reasoning effort.
+      high
     timeout:
       # qa runner timeout in milliseconds.
       10m
     retries:
       # qa runner retry count.
       0
-    sessions:
-      # qa harness session capability; false means each invocation is fresh.
-      false
   arbiter:
-    argv:
-      # arbiter runner argv; never evaluated by a shell.
-      - codex
-      - exec
-      - --sandbox
-      - read-only
-      - --model
-      - gpt-5.6-luna
-      - -c
-      - model_reasoning_effort=low
+    harness:
+      # arbiter harness adapter.
+      codex
+    model:
+      # arbiter model.
+      gpt-5.6-luna
+    sandbox:
+      # arbiter sandbox policy.
+      read-only
+    reasoningEffort:
+      # arbiter reasoning effort.
+      low
     timeout:
       # arbiter runner timeout in milliseconds.
       10m
     retries:
       # arbiter runner retry count.
       0
-    sessions:
-      # arbiter harness session capability; false means each invocation is fresh.
-      false
 skills:
   scope:
     # Installation scope for required skills.

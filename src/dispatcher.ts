@@ -96,6 +96,7 @@ export type State = {
   workerStartedAt?: number;
   workerHeartbeatAt?: number;
   workerRecoveryCount?: number;
+  preparedRecovery?: boolean;
   linkedClosingIssues?: number[];
   reviewCap?: {
     capRound: number;
@@ -585,7 +586,7 @@ async function runRoleLogged(
       return { accepted: true, session: turn.session };
     },
   };
-  await runHarnessTurn(
+  const result = await runHarnessTurn(
     harness,
     store,
     { run, issue: issue.number, role },
@@ -594,6 +595,7 @@ async function runRoleLogged(
     console.warn,
     initialPrompt,
   );
+  if (result.output !== undefined) output = result.output;
   return output;
 }
 
@@ -877,8 +879,42 @@ function hydrateFromRemote(d: Deps, manifest: RunManifest): void {
     workerRunId: manifest.runId,
     reviewRound: manifest.reviewRound,
     status: manifest.phase === 'review' ? 'worker_ready_for_review' : 'worker_recovery_pending',
+    preparedRecovery: undefined,
     updatedAt: d.now(),
   });
+}
+
+async function preparedRecoveryPullRequest(
+  d: Deps,
+  cfg: Config,
+  issue: number,
+  manifest: RunManifest,
+): Promise<PullRequest | undefined> {
+  const state = d.load();
+  if (!state.preparedRecovery || state.issue !== issue || !state.pr) return undefined;
+  const preparedPr = state.pr;
+  const fail = (reason: string): never => {
+    throw new Error(`prepared recovery PR #${preparedPr} failed validation: ${reason}`);
+  };
+  const evidence = await d.pullRequest(preparedPr);
+  if (evidence.number !== preparedPr)
+    return fail('PR identity does not match local recovery state');
+  if (evidence.state?.toUpperCase() !== 'OPEN') return fail('PR is not open');
+  if (evidence.baseRefName !== (cfg.baseBranch ?? 'main'))
+    return fail(`PR base must be ${cfg.baseBranch ?? 'main'}`);
+  if (!state.branch || evidence.headRefName !== state.branch)
+    return fail('PR head branch does not match the persisted recovery branch');
+  if (manifest.branch !== 'pending' && manifest.branch !== state.branch)
+    return fail('remote manifest branch does not match the persisted recovery branch');
+  if (manifest.pr !== undefined && manifest.pr !== preparedPr)
+    return fail('remote manifest PR identity conflicts with local recovery state');
+  if (!evidence.headRefOid) return fail('PR has no recoverable head commit');
+  const closesIssue = new RegExp(
+    `^\\s*(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+#${issue}\\b\\s*$`,
+    'im',
+  ).test(evidence.body ?? '');
+  if (!closesIssue) return fail(`PR body does not associate it with issue #${issue}`);
+  return evidence;
 }
 
 function assertRemoteLeaseAvailable(projection: WorkflowProjection): void {
@@ -1973,6 +2009,7 @@ export function prepareRecovery(
     workerStartedAt: staleAt,
     workerHeartbeatAt: staleAt,
     workerRecoveryCount: state.workerRecoveryCount ?? 0,
+    preparedRecovery: true,
     reviewRound: state.reviewRound ?? 1,
     completedIssues: (state.completedIssues ?? []).filter((number) => number !== issue),
     lastError: undefined,
@@ -2561,11 +2598,36 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
           if (remoteManifest && remoteManifest.phase !== 'complete') {
             if (!remote) throw new Error('remote projection is required for a remote manifest');
             assertRemoteLeaseAvailable(remote.projection);
+            const preparedPr = remoteManifest.pr
+              ? undefined
+              : await preparedRecoveryPullRequest(d, cfg, issue.number, remoteManifest);
+            const hydrationManifest = preparedPr
+              ? {
+                  ...remoteManifest,
+                  pr: preparedPr.number,
+                  branch:
+                    remoteManifest.branch === 'pending'
+                      ? preparedPr.headRefName!
+                      : remoteManifest.branch,
+                }
+              : remoteManifest;
             // A claimed manifest may not have a branch yet, but it can still
             // represent recovery when it already points at an existing PR.
-            recovery = remoteManifest.branch !== 'pending' || Boolean(remoteManifest.pr);
+            recovery =
+              remoteManifest.branch !== 'pending' ||
+              Boolean(remoteManifest.pr) ||
+              Boolean(preparedPr);
             existingIssue = issue.number;
-            hydrateFromRemote(d, remoteManifest);
+            hydrateFromRemote(d, hydrationManifest);
+            if (preparedPr) {
+              d.save({
+                ...d.load(),
+                pr: preparedPr.number,
+                branch: preparedPr.headRefName,
+                headSha: preparedPr.headRefOid,
+                mainBaseSha: preparedPr.baseRefOid ?? d.load().mainBaseSha,
+              });
+            }
             if (remoteManifest.pr) {
               const evidence = await d.pullRequest(remoteManifest.pr);
               if (evidence.state?.toUpperCase() !== 'OPEN' || !evidence.headRefName)

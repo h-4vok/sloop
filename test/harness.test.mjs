@@ -1,14 +1,44 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   ResumeAmbiguousError,
+  CodexHarness,
   ResumeRejectedError,
   SessionStore,
   runHarnessTurn,
 } from '../src/harness.js';
+
+function codexProcess({ stdout = [], stderr = [], code = 0 } = {}) {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {};
+  queueMicrotask(() => {
+    for (const chunk of stdout) child.stdout.emit('data', chunk);
+    for (const chunk of stderr) child.stderr.emit('data', chunk);
+    child.emit('close', code);
+  });
+  return child;
+}
+
+function codexHarness(response, calls, logs = []) {
+  return new CodexHarness({
+    cwd: 'fixture-repository',
+    model: 'gpt-5-codex',
+    sandbox: 'workspace-write',
+    reasoningEffort: 'high',
+    timeoutMs: 1000,
+    log: (source, chunk) => logs.push([source, chunk]),
+    spawn: (file, args, options) => {
+      calls.push({ file, args, options });
+      return codexProcess(response);
+    },
+  });
+}
 
 const context = {
   issue: 114,
@@ -19,6 +49,111 @@ const context = {
   progress: 'progress',
   qaUpdates: 'qa updates',
 };
+
+test('CodexHarness starts with typed CLI options, extracts the session, and logs raw output', async () => {
+  const calls = [];
+  const logs = [];
+  const harness = codexHarness(
+    {
+      stdout: ['{"type":"thread.started","thread_id":"session-start"}\n', '{"type":"message"}\n'],
+      stderr: ['diagnostic\n'],
+    },
+    calls,
+    logs,
+  );
+
+  const result = await harness.start(context, { prompt: 'do the work' });
+
+  assert.deepEqual(result, { accepted: true, session: 'session-start' });
+  assert.equal(calls[0].file, 'codex');
+  assert.deepEqual(calls[0].args, [
+    'exec',
+    '--json',
+    '--sandbox',
+    'workspace-write',
+    '--model',
+    'gpt-5-codex',
+    '--config',
+    'model_reasoning_effort=high',
+    'do the work',
+  ]);
+  assert.deepEqual(logs, [
+    ['stdout', '{"type":"thread.started","thread_id":"session-start"}\n'],
+    ['stdout', '{"type":"message"}\n'],
+    ['stderr', 'diagnostic\n'],
+  ]);
+  assert.equal(calls[0].options.cwd, 'fixture-repository');
+  assert.equal(calls[0].options.shell, false);
+  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
+});
+
+test('CodexHarness returns completed agent messages as the turn output', async () => {
+  const calls = [];
+  const harness = codexHarness(
+    {
+      stdout: [
+        '{"type":"thread.started","thread_id":"session-start"}\n',
+        '{"type":"item.completed","item":{"type":"agent_message","text":"WORKER_RESULT pr=35 base=main"}}\n',
+      ],
+    },
+    calls,
+  );
+
+  const result = await harness.start(context, { prompt: 'finish the work' });
+
+  assert.deepEqual(result, {
+    accepted: true,
+    session: 'session-start',
+    output: 'WORKER_RESULT pr=35 base=main',
+  });
+});
+
+test('CodexHarness resumes the supplied opaque session and accepts a replacement', async () => {
+  const calls = [];
+  const harness = codexHarness(
+    { stdout: ['{"type":"thread.started","thread_id":"session-next"}\n'] },
+    calls,
+  );
+
+  const result = await harness.resume(context, { prompt: 'continue', session: 'session-old' });
+
+  assert.deepEqual(result, { accepted: true, session: 'session-next' });
+  assert.deepEqual(calls[0].args, [
+    'exec',
+    'resume',
+    'session-old',
+    '--json',
+    '--model',
+    'gpt-5-codex',
+    '--config',
+    'model_reasoning_effort=high',
+    'continue',
+  ]);
+  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
+});
+
+test('CodexHarness rejects successful output without a session ID', async () => {
+  const harness = codexHarness({ stdout: ['{"type":"message"}\n'] }, []);
+
+  await assert.rejects(
+    () => harness.start(context, { prompt: 'missing id' }),
+    /Codex completed without a valid session ID for issue #114/,
+  );
+});
+
+test('CodexHarness distinguishes pre-turn rejection from an ambiguous started failure', async () => {
+  const rejected = codexHarness({ stderr: ['invalid session\n'], code: 1 }, []);
+  await assert.rejects(
+    () => rejected.resume(context, { prompt: 'retry me', session: 'rejected' }),
+    ResumeRejectedError,
+  );
+
+  const ambiguous = codexHarness({ stdout: ['{"type":"started"}\n'], code: 1 }, []);
+  await assert.rejects(
+    () => ambiguous.start(context, { prompt: 'do not retry' }),
+    ResumeAmbiguousError,
+  );
+});
 
 test('starts once, resumes the same run issue role, and isolates other keys', async () => {
   const root = await mkdtemp(join(tmpdir(), 'sloop-harness-'));

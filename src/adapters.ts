@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import type { LockOwner, RunContext, RunEventLogger, WorkspaceAdapter } from './core/boundaries.js';
 import type { Deps } from './dispatcher.js';
 import type { SloopConfig } from './config.js';
+import { CodexHarness } from './harness.js';
+import type { CodexHarnessOptions } from './harness.js';
 import { CliFailure } from './dispatcher.js';
 import {
   checkoutWorkerBranch,
@@ -55,6 +57,7 @@ const nativeAdapterExec: AdapterExec = execFileSync;
 
 export type ProductionAdapterOptions = Readonly<{
   execFileSync?: AdapterExec;
+  codexSpawn?: CodexHarnessOptions['spawn'];
 }>;
 
 function adapterGh(
@@ -236,11 +239,11 @@ export function productionConfigReconciler(
 /** Assemble concrete production adapters outside the dispatcher core. */
 function dispatcherConfig(config: SloopConfig): import('./dispatcher.js').Config {
   const runner = (value: SloopConfig['agents']['worker']) => ({
-    command: value.argv[0],
-    args: [...value.argv.slice(1)],
+    command: 'codex',
+    args: [],
     timeoutMs: value.timeout,
     retries: value.retries,
-    sessions: value.sessions,
+    sessions: true,
   });
   return {
     baseBranch: config.repository.baseBranch,
@@ -324,6 +327,20 @@ export function productionDependencies(
   const dependencies: Deps = {
     root,
     remoteRequired: true,
+    harness: (role, spec, _context, logger) => {
+      const roleConfig = validatedConfig.agents[role as keyof typeof validatedConfig.agents];
+      if (!roleConfig || roleConfig.harness !== 'codex')
+        throw new Error(`unsupported harness for role ${role}`);
+      return new CodexHarness({
+        cwd: executionRoot,
+        model: roleConfig.model,
+        sandbox: roleConfig.sandbox,
+        reasoningEffort: roleConfig.reasoningEffort,
+        timeoutMs: spec.timeoutMs,
+        log: (source, chunk) => logger.write(`harness-${source}`, { chunk }),
+        spawn: options.codexSpawn,
+      });
+    },
     /* c8 ignore start -- exercised through the live GitHub adapter contract. */
     reconcileActiveRun: (current) => {
       try {

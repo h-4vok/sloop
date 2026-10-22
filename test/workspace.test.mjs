@@ -124,6 +124,99 @@ test('recovery and cleanup fail closed for fake or dirty registered targets', as
   assert.equal(listWorkspaces(root).length, 1);
 });
 
+test('worker recovery retains dispatch ownership, refreshes a pushed head, and cleans Serena metadata', async () => {
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
+    await workspace();
+  const root = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  git(remote, 'init', '--bare');
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '-u', 'origin', 'main');
+  const opts = options(root, {
+    runId: 'dispatch-12345678',
+    worktreeRoot: join(root, 'isolated'),
+  });
+  const facts = prepareWorktreeWorkspace(opts);
+
+  writeFileSync(join(facts.executionRoot, 'worker.txt'), 'completed work\n');
+  git(facts.executionRoot, 'add', 'worker.txt');
+  git(facts.executionRoot, 'commit', '-m', 'complete worker turn');
+  git(facts.executionRoot, 'push', '-u', 'origin', facts.branch);
+  const pushedHead = git(facts.executionRoot, 'rev-parse', 'HEAD');
+  mkdirSync(join(facts.executionRoot, '.serena'));
+  mkdirSync(join(facts.executionRoot, '.serena', 'memories'));
+  writeFileSync(
+    join(facts.executionRoot, '.serena', '.gitignore'),
+    'project.yml\nproject.local.yml\nmemories/\n',
+  );
+  writeFileSync(join(facts.executionRoot, '.serena', 'project.yml'), 'project: sloop\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'project.local.yml'), 'local: true\n');
+
+  const recovered = recoverWorkspace({
+    ...opts,
+    runId: 'worker-87654321',
+    branch: facts.branch,
+  });
+
+  assert.equal(recovered.headSha, pushedHead);
+  assert.deepEqual(recovered.ownership, facts.ownership);
+  const registration = JSON.parse(readFileSync(join(root, '.sloop', 'state.json'), 'utf8'))
+    .workspaces[0];
+  assert.equal(registration.headSha, pushedHead);
+  assert.deepEqual(registration.ownership, facts.ownership);
+  cleanupWorkspace(recovered, root);
+  assert.equal(existsSync(facts.executionRoot), false);
+  assert.equal(existsSync(join(facts.executionRoot, '.serena')), false);
+  assert.equal(listWorkspaces(root).length, 0);
+});
+
+test('recovery and cleanup preserve unknown untracked files and reject unmatched ownership', async () => {
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
+    await workspace();
+  const root = repo();
+  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  git(remote, 'init', '--bare');
+  git(root, 'remote', 'add', 'origin', remote);
+  git(root, 'push', '-u', 'origin', 'main');
+  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(opts);
+  const stateFile = join(root, '.sloop', 'state.json');
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  state.workspaces[0].headSha = 'not-a-commit';
+  writeFileSync(stateFile, JSON.stringify(state));
+  assert.equal(
+    recoverWorkspace({ ...opts, runId: 'worker-other', branch: facts.branch }),
+    undefined,
+  );
+  state.workspaces[0].headSha = facts.headSha;
+  writeFileSync(stateFile, JSON.stringify(state));
+  assert.equal(
+    recoverWorkspace({ ...opts, runId: 'worker-other', branch: 'sloop/32-other' }),
+    undefined,
+  );
+  mkdirSync(join(facts.executionRoot, '.serena'));
+  mkdirSync(join(facts.executionRoot, '.serena', 'memories'));
+  writeFileSync(
+    join(facts.executionRoot, '.serena', '.gitignore'),
+    'project.yml\nproject.local.yml\nmemories/\n',
+  );
+  writeFileSync(join(facts.executionRoot, '.serena', 'project.yml'), 'project: sloop\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'project.local.yml'), 'local: true\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'user.txt'), 'keep me\n');
+  writeFileSync(join(facts.executionRoot, '.serena', 'memories', 'keep.md'), 'keep this too\n');
+
+  assert.throws(() => cleanupWorkspace(facts, root), /untracked or modified files/);
+  assert.equal(readFileSync(join(facts.executionRoot, '.serena', 'user.txt'), 'utf8'), 'keep me\n');
+  assert.equal(existsSync(join(facts.executionRoot, '.serena', '.gitignore')), true);
+  assert.equal(existsSync(join(facts.executionRoot, '.serena', 'project.local.yml')), true);
+  assert.equal(existsSync(join(facts.executionRoot, '.serena', 'memories')), true);
+  assert.equal(
+    readFileSync(join(facts.executionRoot, '.serena', 'memories', 'keep.md'), 'utf8'),
+    'keep this too\n',
+  );
+  assert.equal(listWorkspaces(root).length, 1);
+});
+
 test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } = await workspace();
   const root = repo();

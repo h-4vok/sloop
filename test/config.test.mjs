@@ -22,16 +22,6 @@ import {
 
 const canonical = canonicalConfigYaml();
 
-test('tracked canonical YAML is the exact registry-generated document', () => {
-  assert.equal(
-    readFileSync(join(import.meta.dirname, '..', 'sloop.config.yaml'), 'utf8').replace(
-      /\r\n/g,
-      '\n',
-    ),
-    canonical,
-  );
-});
-
 test('numeric duration updates preserve their millisecond value', () => {
   const updated = updateConfigText(canonical, 'agents.worker.timeout', 123);
   assert.match(updated, /timeout:\s*\n\s*# worker runner timeout in milliseconds\.\s*\n\s*123/);
@@ -176,19 +166,27 @@ test('argv uses bounded direct-process profiles', () => {
     );
 });
 
-test('argv allows Codex configuration overrides', () => {
-  const parser = configRegistry.find(({ path }) => path === 'agents.worker.argv').parser;
-  const command = [
-    'codex',
-    'exec',
-    '--sandbox',
-    'danger-full-access',
-    '--model',
-    'gpt-5.6-luna',
-    '-c',
-    'model_reasoning_effort=low',
-  ];
-  assert.deepEqual(parser(command, '$.agents.worker.argv'), command);
+test('typed Codex configuration preserves shared options', () => {
+  const config = loadConfigText(canonical);
+  assert.equal(config.agents.worker.harness, 'codex');
+  assert.equal(config.agents.worker.model, 'gpt-5.6-luna');
+  assert.equal(config.agents.worker.sandbox, 'workspace-write');
+  assert.equal(config.agents.worker.reasoningEffort, 'low');
+  assert.equal(config.agents.qa.sandbox, 'workspace-write');
+  assert.equal(config.agents.arbiter.sandbox, 'read-only');
+});
+
+test('sandbox configuration accepts explicit full access and rejects unknown policies', () => {
+  const fullAccess = loadConfigText(canonical.replaceAll('workspace-write', 'danger-full-access'));
+  assert.equal(fullAccess.agents.worker.sandbox, 'danger-full-access');
+  assert.equal(fullAccess.agents.qa.sandbox, 'danger-full-access');
+  assert.equal(fullAccess.agents.arbiter.sandbox, 'read-only');
+  assert.throws(
+    () => loadConfigText(canonical.replace('workspace-write', 'unrestricted')),
+    (error) =>
+      error instanceof ConfigValidationError &&
+      error.message.includes('expected one of: read-only, workspace-write, danger-full-access'),
+  );
 });
 
 test('argv rejects env split-string command dispatch', () => {

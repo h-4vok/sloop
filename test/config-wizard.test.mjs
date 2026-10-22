@@ -213,6 +213,25 @@ test('wizard retries invalid enum values without restarting init', async () => {
   assert.match(io.text(), /Leave empty to use "checkout" as default/);
 });
 
+test('sandbox wizard exposes and persists the explicit danger-full-access option', async () => {
+  const { root, file } = fixture();
+  const io = scriptedIO(['danger-full-access', 'y', 'n']);
+  const logs = [];
+  const log = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  try {
+    assert.equal(
+      await runConfigCommand(root, ['--init', '--wizard', 'agents.worker.sandbox'], undefined, io),
+      0,
+    );
+  } finally {
+    console.log = log;
+  }
+  assert.match(io.text(), /options: read-only, workspace-write, danger-full-access/);
+  assert.match(logs.join('\n'), /agents\.worker\.sandbox: workspace-write -> danger-full-access/);
+  assert.match(readFileSync(file, 'utf8'), /sandbox:[\s\S]*?\n\s+danger-full-access/);
+});
+
 test('workspace worktree root explains its mode dependency', async () => {
   const { root } = fixture();
   const io = scriptedIO(['worktree', '.sloop/worktrees', 'n']);

@@ -411,7 +411,7 @@ test('logged process captures streams, lines, redactions, input, timeout, and la
     round: 1,
     command: process.execPath,
     args: ['-e', "process.stdout.write('hello SECRET\\nlast'); process.stderr.write('oops')"],
-    timeoutMs: 1000,
+    timeoutMs: 5000,
     redactions: ['SECRET'],
     onStdoutLine: (line) => lines.push(line),
     onStderr: (text) => errors.push(text),

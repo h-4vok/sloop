@@ -327,11 +327,11 @@ const faultConfig = {
 function faultManifest(overrides = {}) {
   const runId = overrides.runId ?? 'fault-run';
   const key = artifactKey('run', { issue: 33, runId });
+  const { omitPr = false, ...manifestOverrides } = overrides;
   return {
     protocol: 1,
     runId,
     issue: 33,
-    pr: 14,
     branch: 'codex/issue-33-fault',
     baseSha: 'abcdef1',
     configFingerprint: 'config-fingerprint',
@@ -339,7 +339,8 @@ function faultManifest(overrides = {}) {
     reviewRound: 1,
     contextCursor: 'cursor',
     artifacts: [key],
-    ...(overrides.lease ? { lease: overrides.lease } : {}),
+    ...(omitPr ? {} : { pr: 14 }),
+    ...(manifestOverrides.lease ? { lease: manifestOverrides.lease } : {}),
   };
 }
 
@@ -348,9 +349,11 @@ function faultHarness({
   outage = false,
   ambiguous = false,
   crashAfterClaim = false,
+  initialState = {},
+  pullRequestEvidence = {},
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'sloop-fault-'));
-  let state = {};
+  let state = structuredClone(initialState);
   let remote = remoteManifest;
   let claimCount = 0;
   let publishCount = 0;
@@ -359,13 +362,14 @@ function faultHarness({
   let crashTriggered = false;
   const comments = [];
   const reviews = [];
+  const events = [];
   const pr = {
     number: 14,
     state: 'OPEN',
     baseRefName: 'main',
     headRefName: 'codex/issue-33-fault',
     headRefOid: 'abcdef1',
-    body: 'Summary',
+    body: 'Summary\n\nCloses #33',
     mergeStateStatus: 'CLEAN',
     mergeable: 'MERGEABLE',
     comments,
@@ -406,6 +410,7 @@ function faultHarness({
     comment: (issue, body) => comments.push({ issue, body }),
     run: async (spec) => {
       if (spec.input?.includes('Use the worker skill')) {
+        events.push({ type: 'worker' });
         spec.onStart?.(7002);
         comments.push({
           body: `[Worker] round=1 status=ready_for_review pr=14 base=main commit=abcdef2\n\n[Human Verification]\n\`\`\`json\n{"summary":"fault","steps":["run"],"expected":["pass"],"isolation":"temp","limitations":["none"],"checklist":["pass"]}\n\`\`\``,
@@ -423,7 +428,10 @@ function faultHarness({
       }
       return 'ok';
     },
-    pullRequest: () => structuredClone(pr),
+    pullRequest: (number) => {
+      events.push({ type: 'pullRequest', number });
+      return structuredClone({ ...pr, ...pullRequestEvidence });
+    },
     updatePullRequestBody: (_number, body) => {
       pr.body = body;
     },
@@ -497,6 +505,7 @@ function faultHarness({
     counts: () => ({ claimCount, publishCount, prepareCount }),
     remote: () => remote,
     published: () => publishedManifests,
+    events: () => events,
   };
 }
 
@@ -521,6 +530,62 @@ test('dispatcher recovers a remote marker after crash before local acknowledgeme
   assert.equal(await dispatch(faultConfig, second.deps), 0);
   assert.equal(second.counts().claimCount, 0);
   assert.equal(second.counts().prepareCount, 1);
+});
+
+test('dispatcher preserves a verified explicitly prepared PR when the remote manifest has none', async () => {
+  const h = faultHarness({
+    remoteManifest: faultManifest({ omitPr: true }),
+    initialState: {
+      issue: 33,
+      pr: 14,
+      branch: 'codex/issue-33-fault',
+      headSha: 'abcdef1',
+      status: 'worker_recovery_pending',
+      preparedRecovery: true,
+      workerRunId: 'prepared-recovery-run',
+    },
+  });
+
+  assert.equal(await dispatch(faultConfig, h.deps), 0);
+  assert.equal(h.deps.load().pr, 14);
+  assert.equal(h.deps.load().branch, 'codex/issue-33-fault');
+  assert.equal(h.deps.load().preparedRecovery, undefined);
+  assert.ok(
+    h.events().findIndex((event) => event.type === 'pullRequest') <
+      h.events().findIndex((event) => event.type === 'worker'),
+  );
+});
+
+test('dispatcher rejects an unverified prepared PR before hydration or Worker execution', async () => {
+  const invalidEvidence = [
+    { state: 'CLOSED' },
+    { baseRefName: 'release' },
+    { headRefName: 'codex/other-branch' },
+    { body: 'Summary\n\nCloses #99' },
+    { number: 15 },
+  ];
+
+  for (const evidence of invalidEvidence) {
+    const h = faultHarness({
+      remoteManifest: faultManifest({ omitPr: true }),
+      initialState: {
+        issue: 33,
+        pr: 14,
+        branch: 'codex/issue-33-fault',
+        status: 'worker_recovery_pending',
+        preparedRecovery: true,
+      },
+      pullRequestEvidence: evidence,
+    });
+
+    assert.equal(await dispatch(faultConfig, h.deps), 4);
+    assert.equal(h.deps.load().pr, 14);
+    assert.equal(h.deps.load().preparedRecovery, true);
+    assert.equal(
+      h.events().some((event) => event.type === 'worker'),
+      false,
+    );
+  }
 });
 
 test('dispatcher reclaims an expired remote lease and preserves the artifact identity', async () => {
