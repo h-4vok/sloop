@@ -17,7 +17,7 @@ export type HarnessContext = Readonly<{
   qaUpdates?: string;
 }>;
 export type HarnessTurn = Readonly<{ prompt: string; session?: string }>;
-export type HarnessResult = Readonly<{ session?: string; accepted: boolean }>;
+export type HarnessResult = Readonly<{ session?: string; accepted: boolean; output?: string }>;
 
 export class ResumeRejectedError extends Error {
   readonly phase = 'before-turn' as const;
@@ -107,12 +107,22 @@ export class CodexHarness implements Harness {
       });
       child.on('close', (code) => {
         clearTimeout(timer);
+        const messages: string[] = [];
         for (const line of stdout.split(/\r?\n/)) {
           try {
             const value = JSON.parse(line) as Record<string, unknown>;
             if (value.type === 'thread.started' && typeof value.thread_id === 'string')
               session = value.thread_id;
             else if (typeof value.session_id === 'string') session = value.session_id;
+            const item = value.item;
+            if (
+              value.type === 'item.completed' &&
+              typeof item === 'object' &&
+              item !== null &&
+              (item as Record<string, unknown>).type === 'agent_message' &&
+              typeof (item as Record<string, unknown>).text === 'string'
+            )
+              messages.push((item as Record<string, string>).text);
           } catch {}
         }
         if (code !== 0)
@@ -125,7 +135,11 @@ export class CodexHarness implements Harness {
           return reject(
             new Error(`Codex completed without a valid session ID for issue #${context.issue}`),
           );
-        resolve({ accepted: true, session });
+        resolve({
+          accepted: true,
+          session,
+          ...(messages.length > 0 ? { output: messages.join('\n') } : {}),
+        });
       });
     });
   }

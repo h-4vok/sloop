@@ -586,7 +586,7 @@ async function runRoleLogged(
       return { accepted: true, session: turn.session };
     },
   };
-  await runHarnessTurn(
+  const result = await runHarnessTurn(
     harness,
     store,
     { run, issue: issue.number, role },
@@ -595,6 +595,7 @@ async function runRoleLogged(
     console.warn,
     initialPrompt,
   );
+  if (result.output !== undefined) output = result.output;
   return output;
 }
 

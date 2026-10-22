@@ -87,6 +87,27 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
 });
 
+test('CodexHarness returns completed agent messages as the turn output', async () => {
+  const calls = [];
+  const harness = codexHarness(
+    {
+      stdout: [
+        '{"type":"thread.started","thread_id":"session-start"}\n',
+        '{"type":"item.completed","item":{"type":"agent_message","text":"WORKER_RESULT pr=35 base=main"}}\n',
+      ],
+    },
+    calls,
+  );
+
+  const result = await harness.start(context, { prompt: 'finish the work' });
+
+  assert.deepEqual(result, {
+    accepted: true,
+    session: 'session-start',
+    output: 'WORKER_RESULT pr=35 base=main',
+  });
+});
+
 test('CodexHarness resumes the supplied opaque session and accepts a replacement', async () => {
   const calls = [];
   const harness = codexHarness(
