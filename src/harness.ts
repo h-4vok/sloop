@@ -66,11 +66,11 @@ export class CodexHarness implements Harness {
     command: string[],
     prompt: string,
   ): Promise<HarnessResult> {
+    const isResume = command[1] === 'resume';
     const args = [
       ...command,
       '--json',
-      '--sandbox',
-      this.options.sandbox,
+      ...(isResume ? [] : ['--sandbox', this.options.sandbox]),
       '--model',
       this.options.model,
       '--config',
@@ -81,6 +81,9 @@ export class CodexHarness implements Harness {
       const child = (this.options.spawn ?? spawn)('codex', args, {
         cwd: this.options.cwd,
         shell: false,
+        // Codex appends piped stdin to a positional prompt and waits for EOF.
+        // Ignore stdin so each invocation receives only the explicit turn prompt.
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '',
         stderr = '',
@@ -98,13 +101,18 @@ export class CodexHarness implements Harness {
         stderr += text;
         this.options.log?.('stderr', text);
       });
-      child.on('error', reject);
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
       child.on('close', (code) => {
         clearTimeout(timer);
         for (const line of stdout.split(/\r?\n/)) {
           try {
             const value = JSON.parse(line) as Record<string, unknown>;
-            if (typeof value.session_id === 'string') session = value.session_id;
+            if (value.type === 'thread.started' && typeof value.thread_id === 'string')
+              session = value.thread_id;
+            else if (typeof value.session_id === 'string') session = value.session_id;
           } catch {}
         }
         if (code !== 0)

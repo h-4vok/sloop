@@ -55,7 +55,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   const logs = [];
   const harness = codexHarness(
     {
-      stdout: ['{"type":"message"}\n', '{"session_id":"session-start"}\n'],
+      stdout: ['{"type":"thread.started","thread_id":"session-start"}\n', '{"type":"message"}\n'],
       stderr: ['diagnostic\n'],
     },
     calls,
@@ -78,22 +78,37 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
     'do the work',
   ]);
   assert.deepEqual(logs, [
+    ['stdout', '{"type":"thread.started","thread_id":"session-start"}\n'],
     ['stdout', '{"type":"message"}\n'],
-    ['stdout', '{"session_id":"session-start"}\n'],
     ['stderr', 'diagnostic\n'],
   ]);
   assert.equal(calls[0].options.cwd, 'fixture-repository');
   assert.equal(calls[0].options.shell, false);
+  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
 });
 
 test('CodexHarness resumes the supplied opaque session and accepts a replacement', async () => {
   const calls = [];
-  const harness = codexHarness({ stdout: ['{"session_id":"session-next"}\n'] }, calls);
+  const harness = codexHarness(
+    { stdout: ['{"type":"thread.started","thread_id":"session-next"}\n'] },
+    calls,
+  );
 
   const result = await harness.resume(context, { prompt: 'continue', session: 'session-old' });
 
   assert.deepEqual(result, { accepted: true, session: 'session-next' });
-  assert.deepEqual(calls[0].args.slice(0, 4), ['exec', 'resume', 'session-old', '--json']);
+  assert.deepEqual(calls[0].args, [
+    'exec',
+    'resume',
+    'session-old',
+    '--json',
+    '--model',
+    'gpt-5-codex',
+    '--config',
+    'model_reasoning_effort=high',
+    'continue',
+  ]);
+  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
 });
 
 test('CodexHarness rejects successful output without a session ID', async () => {
