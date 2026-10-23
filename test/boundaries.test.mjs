@@ -1,8 +1,9 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { productionDependencies } from '../src/adapters.js';
 
@@ -10,13 +11,34 @@ import { loadConfigText, canonicalConfigYaml } from '../src/config.js';
 import { CliFailure } from '../src/dispatcher.js';
 import { runManifestMarker } from '../src/remote-state.js';
 
-function forwardedArgs(stdin, args) {
+function decodeForwardedArguments(stdin, args) {
   if (stdin === undefined) return args;
   const lines = stdin.split('\n');
   const [countLine] = lines;
   const encodedArgs = lines.slice(1, Number(countLine) + 1);
   assert.equal(Number(countLine), encodedArgs.length);
   return encodedArgs.map((encoded) => Buffer.from(encoded, 'base64').toString('utf8'));
+}
+
+function createMockFollowUpIssueHarness(hasFollowUpIssue) {
+  const calls = [];
+  const key = 'sloop/arbiter/follow-up/41/Q1';
+  const execute = (_file, args) => {
+    calls.push([...args]);
+    if (args[0] === 'issue' && args[1] === 'list')
+      return hasFollowUpIssue
+        ? JSON.stringify([{ number: 88, body: `Idempotency key: ${key}` }])
+        : '[]';
+    return 'https://github.com/h-4vok/sloop/issues/99';
+  };
+  const dependencies = productionDependencies(
+    createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-arbiter-issue-')),
+    loadConfigText(canonicalConfigYaml()),
+    'h-4vok/sloop',
+    { execFileSync: execute },
+  );
+
+  return { calls, dependencies, key };
 }
 
 test('production assembly supplies every typed external-concern boundary', () => {
@@ -62,6 +84,7 @@ test('production assembly supplies every typed external-concern boundary', () =>
     RunEventSink: ['onReclaim'],
   };
 
+
   for (const [boundary, members] of Object.entries(methods))
     for (const member of members)
       assert.equal(typeof dependencies[member], 'function', `${boundary}.${member} is required`);
@@ -78,7 +101,7 @@ test('production adapters sanitize every GitHub body and marker publication path
     return '';
   };
   const dependencies = productionDependencies(
-    mkdtempSync(join(tmpdir(), 'sloop-adapter-test-')),
+    createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-test-')),
     loadConfigText(canonicalConfigYaml()),
     'h-4vok/sloop',
     { execFileSync: execute },
@@ -90,12 +113,14 @@ test('production adapters sanitize every GitHub body and marker publication path
     JSON.stringify({ nested: { accessToken: 'nested-secret', raw: 'local-only' } }),
   ].join('\n');
 
+
   dependencies.comment(33, body);
   dependencies.prComment(76, body);
   dependencies.updatePullRequestBody(76, body);
   dependencies.remote.claim(33, 'owner', '2026-09-10T00:00:00.000Z');
 
   const publications = calls.filter((call) => call.args.includes('--body') || call.body);
+
   assert.equal(publications.length, 4);
   const published = publications
     .map((call) => call.body ?? call.args[call.args.indexOf('--body') + 1])
@@ -109,26 +134,19 @@ test('production adapters sanitize every GitHub body and marker publication path
   assert.match(published, /sloop\/v1\/lease\/33\/owner\//);
 });
 
-test('production adapters reconcile idempotent Arbiter follow-up issues', () => {
-  const calls = [];
-  let existing = true;
-  const key = 'sloop/arbiter/follow-up/41/Q1';
-  const execute = (_file, args) => {
-    calls.push([...args]);
-    if (args[0] === 'issue' && args[1] === 'list')
-      return existing ? JSON.stringify([{ number: 88, body: `Idempotency key: ${key}` }]) : '[]';
-    return 'https://github.com/h-4vok/sloop/issues/99';
-  };
-  const dependencies = productionDependencies(
-    mkdtempSync(join(tmpdir(), 'sloop-arbiter-issue-')),
-    loadConfigText(canonicalConfigYaml()),
-    'h-4vok/sloop',
-    { execFileSync: execute },
-  );
-  const body = `Idempotency key: ${key}\n\nFollow-up`;
-  assert.equal(dependencies.createIssue('follow-up', body), 88);
-  existing = false;
-  assert.equal(dependencies.createIssue('follow-up', body), 99);
+test('production adapters reuse an existing Arbiter follow-up issue', () => {
+  const { calls, dependencies, key } = createMockFollowUpIssueHarness(true);
+  const issueNumber = dependencies.createIssue('follow-up', `Idempotency key: ${key}\n\nFollow-up`);
+
+  assert.equal(issueNumber, 88);
+  assert.equal(calls.filter((args) => args[0] === 'issue' && args[1] === 'create').length, 0);
+});
+
+test('production adapters create a missing Arbiter follow-up issue', () => {
+  const { calls, dependencies, key } = createMockFollowUpIssueHarness(false);
+  const issueNumber = dependencies.createIssue('follow-up', `Idempotency key: ${key}\n\nFollow-up`);
+
+  assert.equal(issueNumber, 99);
   assert.equal(calls.filter((args) => args[0] === 'issue' && args[1] === 'create').length, 1);
 });
 
@@ -162,7 +180,7 @@ test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
     throw new Error(`unexpected gh command: ${args.join(' ')}`);
   };
   const dependencies = productionDependencies(
-    mkdtempSync(join(tmpdir(), 'sloop-adapter-test-')),
+    createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-test-')),
     loadConfigText(canonicalConfigYaml()),
     'h-4vok/sloop',
     { execFileSync: execute },
@@ -170,17 +188,22 @@ test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
 
   const snapshot = dependencies.remote.snapshot(33);
   const apiCall = calls.find((call) => call.args[0] === 'api');
+
   assert.ok(apiCall);
   assert.equal(apiCall.args.includes('--repo'), false);
   assert.deepEqual(snapshot.inlineThreads, [{ resolved: false }]);
 });
 
 test('typed CLI failures preserve stable busy and external exit classes', () => {
-  assert.equal(new CliFailure(3, 'owned').exitCode, 3);
-  assert.equal(new CliFailure(5, 'HTTP 503: Service Unavailable').exitCode, 5);
+  const exitCodes = [
+    new CliFailure(3, 'owned').exitCode,
+    new CliFailure(5, 'HTTP 503: Service Unavailable').exitCode,
+  ];
+
+  assert.deepEqual(exitCodes, [3, 5]);
 });
 
-test('production adapters root agent execution and use the validated YAML configuration', async () => {
+test('production adapters run agent commands from the repository root', async () => {
   const config = loadConfigText(canonicalConfigYaml());
   const dependencies = productionDependencies(process.cwd(), config, 'h-4vok/sloop');
   const output = await dependencies.run({
@@ -190,9 +213,17 @@ test('production adapters root agent execution and use the validated YAML config
     retries: 0,
     logInvocation: false,
   });
+
   assert.equal(output, process.cwd());
-  assert.equal(dependencies.loadConfig().baseBranch, config.repository.baseBranch);
-  assert.deepEqual(dependencies.loadConfig().workerCommand, {
+});
+
+test('production adapters load the validated YAML agent configuration', () => {
+  const config = loadConfigText(canonicalConfigYaml());
+  const dependencies = productionDependencies(process.cwd(), config, 'h-4vok/sloop');
+  const loadedConfig = dependencies.loadConfig();
+
+  assert.equal(loadedConfig.baseBranch, config.repository.baseBranch);
+  assert.deepEqual(loadedConfig.workerCommand, {
     command: 'codex',
     args: [],
     timeoutMs: config.agents.worker.timeout,
@@ -231,6 +262,6 @@ test('production adapter passes explicit full access to the Codex harness', asyn
   assert.deepEqual(result, { accepted: true, session: 'full-access-session' });
   assert.equal(calls[0].file, process.platform === 'win32' ? 'powershell.exe' : 'codex');
   assert.equal(calls[0].options.shell, false);
-  const codexArgs = forwardedArgs(calls[0].child.input, calls[0].args);
+  const codexArgs = decodeForwardedArguments(calls[0].child.input, calls[0].args);
   assert.equal(codexArgs[codexArgs.indexOf('--sandbox') + 1], 'danger-full-access');
 });

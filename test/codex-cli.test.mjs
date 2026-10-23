@@ -1,6 +1,7 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { test } from 'vitest';
@@ -54,7 +55,7 @@ test(
   'Windows bridge preserves empty and special arguments at the global CLI process boundary',
   { skip: process.platform !== 'win32' },
   async (t) => {
-    const fixtureDir = await mkdtemp(join(tmpdir(), 'sloop-global-codex-'));
+    const fixtureDir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-global-codex-'));
     t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await copyFile(process.execPath, join(fixtureDir, 'codex.exe'));
 
@@ -104,7 +105,7 @@ test(
   'Windows bridge preserves literal percent and shell metacharacters through the global PowerShell shim',
   { skip: process.platform !== 'win32' },
   async (t) => {
-    const fixtureDir = await mkdtemp(join(tmpdir(), 'sloop-global-codex-ps1-'));
+    const fixtureDir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-global-codex-ps1-'));
     t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await writeFile(
       join(fixtureDir, 'codex.ps1'),
@@ -162,7 +163,7 @@ test(
   'Windows PowerShell shim fallback rejects empty arguments instead of dropping them',
   { skip: process.platform !== 'win32' },
   async (t) => {
-    const fixtureDir = await mkdtemp(join(tmpdir(), 'sloop-global-codex-empty-'));
+    const fixtureDir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-global-codex-empty-'));
     t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await writeFile(join(fixtureDir, 'codex.ps1'), "Write-Output 'shim was invoked'\n", 'utf8');
 

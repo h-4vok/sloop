@@ -23,17 +23,27 @@
 - **Const-First Policy:** Use `const` by default for all declarations. Use `let` *only* when local reassignment is strictly necessary. `var` is completely banned.
 - **Strict Immutability:** Enforce `readonly` modifiers on arrays and object properties wherever mutation is not intended.
 
-## 6. Naming Conventions & Domain Language
+## 6. Code Layout & Visual Separation
+- **Vertical Spacing:** Separate declarations and cohesive blocks that address different concepts or problems with a blank line. Keep statements that belong to the same block together, and use spacing to make changes in responsibility clear.
+
+## 7. Naming Conventions & Domain Language
 - **Domain Language:** Names must reflect the actual business domain of the project (e.g., `issue`, `pr`, `dispatch`, `worker`, `qa`). Avoid vague or generic names like `data`, `process`, `handle`, or `run`.
 - **Booleans:** Must be prefixed with semantic action/state identifiers: `is`, `has`, `should`, `can` (e.g., `isValid`, `hasPermission`).
 - **Functions & Methods:** Must follow an imperative `Verb + Noun` structure that clearly describes the action and target (e.g., `fetchIssueData`, `validateWorkflowState`).
 - **Collections / Arrays:** Must be pluralized or explicitly suffixed (e.g., `activeSessions`, `errorList`).
 
-## 7. Modern Unit Testing Standard
+## 8. Modern Unit Testing Standard
 - **Test Runner (Vitest):** Use **Vitest** as the official test runner for its extreme speed, native TypeScript/ESM support, and instant feedback loop.
-- **AAA Pattern (Arrange, Act, Assert):** Every test must explicitly separate its phases using blank lines:
-  1. *Arrange:* Setup mocks, initial state, and injected dependencies.
-  2. *Act:* Execute the function or method under test.
-  3. *Assert:* Verify observable outcomes against expected results.
+- **AAA Pattern (Arrange, Act, Assert):** Every test must explicitly separate its phases using blank lines. Keep setup together, leave a blank line before the action, and leave another blank line before assertions. When a phase has distinct concepts, separate those with blank lines too.
+  1. *Arrange:* Set up named inputs, mock responses, initial state, and injected dependencies.
+  2. *Act:* Call the behavior under test and assign its result to a descriptive variable.
+  3. *Assert:* Compare the result with the expected outcome.
+- **Named Test Values:** Give arrays and objects that represent test inputs, mock responses, or expected objects descriptive `const` names before passing them to a function or assertion. Use names such as `dispatcherArgs`, `mockIssueResponse`, and `expectedCommand`. Keep primitive expected values (such as a number, string, or boolean) inline when that stays clear.
+- **Readable Calls:** Break multi-step expressions into named intermediate values. For example, create a manifest, pass it to the marker builder, and store the marker in separate statements. Keep a simple, familiar expression inline when its meaning is obvious (for example, joining a temporary directory with a fixed suffix).
+- **Explicit Mocks:** Name mocks and their returned fixtures for the boundary and behavior they represent, such as `mockGitHubCommand`, `mockPullRequestResponse`, or `mockReviewThreadsResponse`. Avoid opaque abbreviations such as `h` or `deps`, and avoid making readers infer what a callback branch or response fixture represents.
+- **Mock Clarity:** When a mock routes several commands or returns a complex protocol response, make each route and response understandable from its names. Add a brief comment to explain the scenario or protocol relationship only when names and structure are not enough. Comments should explain why a complex fixture exists, not narrate obvious code. If the setup still takes substantial effort to understand, split the test into smaller behavior-focused tests.
+- **Comment Spacing:** Put a blank line before and after a comment block that introduces or explains a separate concept, including when the comment is followed by only a short piece of code. Keep the comment close enough to make its subject clear.
+- **Integration-Style Setup:** When a test creates real temporary repositories, processes, or filesystem state, explain the purpose of that setup if it is not obvious. Separate the fixture setup, the state change that creates the condition, the action under test, and the assertions into visually distinct blocks.
 - **Test Naming:** Describe the exact condition and expected behavior (e.g., `it('should reject stale lock ownership when process is dead')`).
+- **Single Behavior:** Each test should establish one behavior under one relevant condition. Split independent behavior variants into separate tests, even when their setup is similar. Use parameterized tests when multiple values exercise the same behavior and assertion.
 - **Isolation:** Tests must be deterministic, fast, and completely free of real network calls or unmocked disk I/O side effects.

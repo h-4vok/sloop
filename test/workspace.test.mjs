@@ -1,23 +1,24 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const workspace = () => import('../src/workspace.ts');
-const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
-const repo = () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-workspace-'));
-  git(root, 'init', '-b', 'main');
-  git(root, 'config', 'user.email', 'test@example.com');
-  git(root, 'config', 'user.name', 'Sloop Test');
+const loadWorkspaceModule = () => import('../src/workspace.ts');
+const runGitCommand = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+const createRepository = () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-workspace-'));
+  runGitCommand(root, 'init', '-b', 'main');
+  runGitCommand(root, 'config', 'user.email', 'test@example.com');
+  runGitCommand(root, 'config', 'user.name', 'Sloop Test');
   writeFileSync(join(root, 'README.md'), 'base\n');
-  git(root, 'add', '.');
-  git(root, 'commit', '-m', 'base');
+  runGitCommand(root, 'add', '.');
+  runGitCommand(root, 'commit', '-m', 'base');
   return root;
 };
-const options = (root, extra = {}) => ({
+const createWorkspaceOptions = (root, extra = {}) => ({
   repositoryRoot: root,
   remote: 'origin',
   baseBranch: 'main',
@@ -28,31 +29,33 @@ const options = (root, extra = {}) => ({
 });
 
 test('checkout preparation uses the configured base SHA and rejects dirty trees', async () => {
-  const { prepareCheckoutWorkspace } = await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const facts = prepareCheckoutWorkspace(options(root));
-  assert.equal(facts.baseSha, git(root, 'rev-parse', 'origin/main'));
+  const { prepareCheckoutWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const facts = prepareCheckoutWorkspace(createWorkspaceOptions(root));
+
+  assert.equal(facts.baseSha, runGitCommand(root, 'rev-parse', 'origin/main'));
   assert.equal(facts.headSha, facts.baseSha);
   assert.match(facts.branch, /^sloop\/32-[0-9a-f]{4}$/);
   writeFileSync(join(root, 'dirty.txt'), 'do not discard');
-  assert.throws(() => prepareCheckoutWorkspace(options(root, { issue: 33 })), /dirty\.txt/);
+  assert.throws(() => prepareCheckoutWorkspace(createWorkspaceOptions(root, { issue: 33 })), /dirty\.txt/);
 });
 
 test('worktree preparation persists facts, supports recovery, listing, and cleanup', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, listWorkspaces, cleanupWorkspace } =
-    await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
+    await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
   const customRoot = join(root, 'isolated');
-  const opts = options(root, { worktreeRoot: customRoot });
+  const opts = createWorkspaceOptions(root, { worktreeRoot: customRoot });
   const facts = prepareWorktreeWorkspace(opts);
+
   assert.equal(resolve(facts.executionRoot).startsWith(resolve(customRoot)), true);
   assert.notEqual(facts.executionRoot, facts.workspaceRoot);
   assert.equal(readFileSync(join(root, 'README.md'), 'utf8'), 'base\n');
@@ -66,20 +69,20 @@ test('worktree preparation persists facts, supports recovery, listing, and clean
 
 test('recovery and cleanup use the persisted base when the remote advances', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
-    await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+    await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const opts = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
   const facts = prepareWorktreeWorkspace(opts);
 
-  git(root, 'checkout', 'main');
+  runGitCommand(root, 'checkout', 'main');
   writeFileSync(join(root, 'advanced.txt'), 'advanced\n');
-  git(root, 'add', 'advanced.txt');
-  git(root, 'commit', '-m', 'advance remote base');
-  git(root, 'push', 'origin', 'main');
+  runGitCommand(root, 'add', 'advanced.txt');
+  runGitCommand(root, 'commit', '-m', 'advance remote base');
+  runGitCommand(root, 'push', 'origin', 'main');
 
   assert.equal(recoverWorkspace(opts).baseSha, facts.baseSha);
   cleanupWorkspace(facts, root);
@@ -87,14 +90,15 @@ test('recovery and cleanup use the persisted base when the remote advances', asy
 });
 
 test('branch collisions regenerate a unique name and clear removes only owned worktrees', async () => {
-  const { prepareWorktreeWorkspace, clearWorkspaces, listWorkspaces } = await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const first = prepareWorktreeWorkspace(options(root));
-  const second = prepareWorktreeWorkspace(options(root, { runId: 'run-87654321' }));
+  const { prepareWorktreeWorkspace, clearWorkspaces, listWorkspaces } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const first = prepareWorktreeWorkspace(createWorkspaceOptions(root));
+  const second = prepareWorktreeWorkspace(createWorkspaceOptions(root, { runId: 'run-87654321' }));
+
   assert.notEqual(second.branch, first.branch);
   assert.equal(listWorkspaces(root).length, 2);
   clearWorkspaces(root);
@@ -103,19 +107,20 @@ test('branch collisions regenerate a unique name and clear removes only owned wo
 
 test('recovery and cleanup fail closed for fake or dirty registered targets', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
-    await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+    await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const opts = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
   const facts = prepareWorktreeWorkspace(opts);
   const stateFile = join(root, '.sloop', 'state.json');
   const state = JSON.parse(readFileSync(stateFile, 'utf8'));
   state.workspaces[0].executionRoot = join(root, 'isolated', 'fake');
   mkdirSync(state.workspaces[0].executionRoot, { recursive: true });
   writeFileSync(stateFile, JSON.stringify(state));
+
   assert.equal(recoverWorkspace(opts), undefined);
   state.workspaces[0].executionRoot = facts.executionRoot;
   writeFileSync(stateFile, JSON.stringify(state));
@@ -126,23 +131,23 @@ test('recovery and cleanup fail closed for fake or dirty registered targets', as
 
 test('worker recovery retains dispatch ownership, refreshes a pushed head, and cleans Serena metadata', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
-    await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const opts = options(root, {
+    await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const opts = createWorkspaceOptions(root, {
     runId: 'dispatch-12345678',
     worktreeRoot: join(root, 'isolated'),
   });
   const facts = prepareWorktreeWorkspace(opts);
 
   writeFileSync(join(facts.executionRoot, 'worker.txt'), 'completed work\n');
-  git(facts.executionRoot, 'add', 'worker.txt');
-  git(facts.executionRoot, 'commit', '-m', 'complete worker turn');
-  git(facts.executionRoot, 'push', '-u', 'origin', facts.branch);
-  const pushedHead = git(facts.executionRoot, 'rev-parse', 'HEAD');
+  runGitCommand(facts.executionRoot, 'add', 'worker.txt');
+  runGitCommand(facts.executionRoot, 'commit', '-m', 'complete worker turn');
+  runGitCommand(facts.executionRoot, 'push', '-u', 'origin', facts.branch);
+  const pushedHead = runGitCommand(facts.executionRoot, 'rev-parse', 'HEAD');
   mkdirSync(join(facts.executionRoot, '.serena'));
   mkdirSync(join(facts.executionRoot, '.serena', 'memories'));
   writeFileSync(
@@ -172,18 +177,19 @@ test('worker recovery retains dispatch ownership, refreshes a pushed head, and c
 
 test('recovery and cleanup preserve unknown untracked files and reject unmatched ownership', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
-    await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+    await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const opts = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
   const facts = prepareWorktreeWorkspace(opts);
   const stateFile = join(root, '.sloop', 'state.json');
   const state = JSON.parse(readFileSync(stateFile, 'utf8'));
   state.workspaces[0].headSha = 'not-a-commit';
   writeFileSync(stateFile, JSON.stringify(state));
+
   assert.equal(
     recoverWorkspace({ ...opts, runId: 'worker-other', branch: facts.branch }),
     undefined,
@@ -218,41 +224,60 @@ test('recovery and cleanup preserve unknown untracked files and reject unmatched
 });
 
 test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {
-  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } = await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const opts = options(root, { worktreeRoot: join(root, 'isolated') });
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const opts = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
   const facts = prepareWorktreeWorkspace(opts);
   const stateFile = join(root, '.sloop', 'state.json');
   writeFileSync(stateFile, '{"workspaces":[]}\n');
+
   assert.deepEqual(recoverWorkspace({ ...opts, branch: facts.branch }), facts);
   cleanupWorkspace(facts, root);
   assert.equal(existsSync(facts.executionRoot), false);
 });
 
 test('clear retains registrations whose Git ancestry cannot be verified', async () => {
-  const { prepareWorktreeWorkspace, clearWorkspaces, listWorkspaces } = await workspace();
-  const root = repo();
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
-  const facts = prepareWorktreeWorkspace(options(root, { worktreeRoot: join(root, 'isolated') }));
-  const stateFile = join(root, '.sloop', 'state.json');
-  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
-  state.workspaces[0].baseSha = 'not-a-commit';
-  writeFileSync(stateFile, JSON.stringify(state));
-  clearWorkspaces(root);
-  assert.equal(listWorkspaces(root).length, 1);
-  assert.equal(existsSync(facts.executionRoot), true);
+  const workspaceModule = await loadWorkspaceModule();
+  const repositoryRoot = createRepository();
+  const remoteRepository = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+
+  // Arrange a registered worktree with a valid local remote before invalidating its base commit.
+
+  runGitCommand(remoteRepository, 'init', '--bare');
+  runGitCommand(repositoryRoot, 'remote', 'add', 'origin', remoteRepository);
+  runGitCommand(repositoryRoot, 'push', '-u', 'origin', 'main');
+
+  const worktreeRoot = join(repositoryRoot, 'isolated');
+  const workspaceOptions = createWorkspaceOptions(repositoryRoot, { worktreeRoot });
+  const workspaceFacts = workspaceModule.prepareWorktreeWorkspace(workspaceOptions);
+  const stateFile = join(repositoryRoot, '.sloop', 'state.json');
+  const stateJson = readFileSync(stateFile, 'utf8');
+  const persistedState = JSON.parse(stateJson);
+  const registeredWorkspace = persistedState.workspaces[0];
+  registeredWorkspace.baseSha = 'not-a-commit';
+
+  writeFileSync(stateFile, JSON.stringify(persistedState));
+
+  // Act: cleanup cannot prove ancestry, so it must preserve the registered worktree.
+
+  workspaceModule.clearWorkspaces(repositoryRoot);
+
+  // Assert: both the registration and its execution directory remain available.
+
+  const remainingWorkspaces = workspaceModule.listWorkspaces(repositoryRoot);
+  const isExecutionRootPresent = existsSync(workspaceFacts.executionRoot);
+
+  assert.equal(remainingWorkspaces.length, 1);
+  assert.equal(isExecutionRootPresent, true);
 });
 
 test('worktree parser ignores incomplete records and clear preserves unsafe registrations', async () => {
-  const { clearWorkspaces, listWorkspaces } = await workspace();
-  const root = repo();
+  const { clearWorkspaces, listWorkspaces } = await loadWorkspaceModule();
+  const root = createRepository();
   const stateFile = join(root, '.sloop', 'state.json');
   const outside = join(tmpdir(), 'sloop-outside-target');
   mkdirSync(join(root, '.sloop'), { recursive: true });
@@ -282,5 +307,6 @@ test('worktree parser ignores incomplete records and clear preserves unsafe regi
     }),
   );
   clearWorkspaces(root, stateFile);
+
   assert.equal(listWorkspaces(root, stateFile).length, 2);
 });

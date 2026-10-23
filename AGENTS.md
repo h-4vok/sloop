@@ -37,3 +37,10 @@ All unit tests must be:
 7. Clear Naming: describe the behavior and relevant condition.
 8. Test One Thing: keep each test focused on one behavior.
 9. Avoid Implementation Details: assert public contracts and externally visible effects.
+10. Readable Setup: name input arrays, expected objects, mock functions, and mock response fixtures so their purpose is clear at the call site. Use descriptive domain names such as `dispatcherArgs`, `mockIssueResponse`, and `expectedCommand`; do not use opaque abbreviations such as `h` or `deps`.
+11. Staged Calls: split nested, multi-step transformations into named values so each statement has one clear job. Simple, familiar expressions can remain inline when their meaning is obvious.
+12. Mock Clarity: make command routing and returned responses understandable from names and structure. Add a short comment when a mock's scenario or protocol relationship needs explanation; if the setup remains hard to follow, split the test.
+13. AAA Spacing: leave a blank line between Arrange, Act, and Assert, and between different concepts within a phase.
+14. One Behavior: split independent behavior variants into separate tests. Parameterize cases when they share one behavior and the same verification.
+15. Comment Spacing: put a blank line before and after a comment block that introduces a separate concept, even when it is followed by only a short piece of code. Keep the comment close enough to identify what it explains.
+16. Integration-Style Setup: explain non-obvious temporary repository, process, or filesystem setup, and visually separate fixture creation, condition setup, the action under test, and assertions.

@@ -1,13 +1,14 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
 import { syncPrerequisites, migrateSkillNames } from '../src/sync.js';
 
-function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-sync-'));
+function createSyncFixture() {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-sync-'));
   writeFileSync(join(root, 'sloop.config.yaml'), canonicalConfigYaml());
   const calls = [];
   const runner = (file, args) => {
@@ -19,26 +20,41 @@ function fixture() {
   return { root, calls, runner, config: loadConfigText(canonicalConfigYaml()) };
 }
 
-test('sync creates canonical labels and all distributed skills', () => {
-  const { root, calls, runner, config } = fixture();
+test('sync creates canonical GitHub labels', () => {
+  const { root, calls, runner, config } = createSyncFixture();
+
   syncPrerequisites(root, config, { runner });
+
   assert.equal(calls.filter(([file, args]) => file === 'gh' && args[1] === 'create').length, 6);
+});
+
+test('sync installs each distributed Sloop skill', () => {
+  const { root, runner, config } = createSyncFixture();
+
+  syncPrerequisites(root, config, { runner });
+
   for (const name of ['product-lead', 'sloop-worker', 'sloop-qa'])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
 });
 
-test('sync overwrites official skills but preserves unrelated skills and is idempotent for labels', () => {
-  const { root, runner, config } = fixture();
+test('sync replaces an official skill and preserves unrelated skills', () => {
+  const { root, runner, config } = createSyncFixture();
   mkdirSync(join(root, '.codex', 'skills', 'sloop-worker'), { recursive: true });
   mkdirSync(join(root, '.codex', 'skills', 'custom'), { recursive: true });
   writeFileSync(join(root, '.codex', 'skills', 'sloop-worker', 'SKILL.md'), 'old');
   writeFileSync(join(root, '.codex', 'skills', 'custom', 'SKILL.md'), 'keep');
+
   syncPrerequisites(root, config, { runner });
+
   assert.match(
     readFileSync(join(root, '.codex', 'skills', 'sloop-worker', 'SKILL.md'), 'utf8'),
     /sloop-worker/,
   );
   assert.equal(readFileSync(join(root, '.codex', 'skills', 'custom', 'SKILL.md'), 'utf8'), 'keep');
+});
+
+test('sync does not recreate labels that already exist', () => {
+  const { root, config } = createSyncFixture();
   const calls = [];
   syncPrerequisites(root, config, {
     runner: (file, args) => {
@@ -50,26 +66,41 @@ test('sync overwrites official skills but preserves unrelated skills and is idem
           : '';
     },
   });
-  assert.equal(calls.filter(([file, args]) => file === 'gh' && args[1] === 'create').length, 0);
+
+  const createLabelCalls = calls.filter(([file, args]) => file === 'gh' && args[1] === 'create');
+
+  assert.equal(createLabelCalls.length, 0);
 });
 
-test('legacy names migrate and sync refuses them until init', () => {
+test('sync migrates legacy skill names in configuration text', () => {
   const text = canonicalConfigYaml()
     .replaceAll('sloop-worker', 'worker')
     .replaceAll('sloop-qa', 'qa-sdet');
-  assert.match(migrateSkillNames(text), /sloop-worker/);
-  const config = loadConfigText(text);
-  assert.throws(
-    () =>
-      syncPrerequisites(mkdtempSync(join(tmpdir(), 'sloop-sync-')), config, { runner: () => '' }),
-    /run sloop config init/,
-  );
+
+  const migratedText = migrateSkillNames(text);
+
+  assert.match(migratedText, /sloop-worker/);
 });
 
-test('existing label metadata is preserved and partial failures leave earlier work intact', () => {
-  const { root, config } = fixture();
-  let creates = 0;
-  const runner = (file, args) => {
+test('sync rejects legacy skill names until config init runs', () => {
+  const text = canonicalConfigYaml()
+    .replaceAll('sloop-worker', 'worker')
+    .replaceAll('sloop-qa', 'qa-sdet');
+  const config = loadConfigText(text);
+  const syncLegacyConfig = () =>
+    syncPrerequisites(
+      createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-sync-')),
+      config,
+      { runner: () => '' },
+    );
+
+  assert.throws(syncLegacyConfig, /run sloop config init/);
+});
+
+test('sync stops at the first label creation error', () => {
+  const { root, config } = createSyncFixture();
+  let createAttempts = 0;
+  const runGitHubCommand = (file, args) => {
     if (file === 'git') return 'https://github.com/example/repo';
     if (args[1] === 'list') {
       const name = args[args.indexOf('--search') + 1];
@@ -77,63 +108,81 @@ test('existing label metadata is preserved and partial failures leave earlier wo
         ? JSON.stringify([{ name, color: 'abc123', description: 'custom' }])
         : '[]';
     }
-    creates++;
+    createAttempts++;
     if (args[1] === 'create') throw new Error('permission denied');
     return '';
   };
-  assert.throws(() => syncPrerequisites(root, config, { runner }), /permission denied/);
-  assert.equal(creates, 1);
+  const syncLabels = () => syncPrerequisites(root, config, { runner: runGitHubCommand });
+
+  assert.throws(syncLabels, /permission denied/);
+  assert.equal(createAttempts, 1);
   assert.equal(existsSync(join(root, '.codex', 'skills')), false);
 });
 
-test('unsafe destination is rejected before filesystem effects', () => {
-  const { root, config, runner } = fixture();
-  const unsafe = { ...config, skills: { ...config.skills, scope: 'repository' } };
-  assert.doesNotThrow(() => syncPrerequisites(root, unsafe, { runner }));
+test('sync accepts repository-scoped skill configuration', () => {
+  const { root, config, runner } = createSyncFixture();
+  const repositoryScopedConfig = { ...config, skills: { ...config.skills, scope: 'repository' } };
+  const syncWithRepositoryScope = () => syncPrerequisites(root, repositoryScopedConfig, { runner });
+
+  assert.doesNotThrow(syncWithRepositoryScope);
 });
 
-test('sync rejects non-GitHub remotes, skips noncanonical labels, and supports injected output', () => {
-  const { root, config } = fixture();
-  assert.throws(
-    () => syncPrerequisites(root, config, { runner: () => 'https://example.test/repo' }),
-    /not a GitHub repository/,
-  );
-  const output = [];
+test('sync rejects a remote outside GitHub', () => {
+  const { root, config } = createSyncFixture();
+  const syncWithExternalRemote = () =>
+    syncPrerequisites(root, config, { runner: () => 'https://example.test/repo' });
+
+  assert.throws(syncWithExternalRemote, /not a GitHub repository/);
+});
+
+test('sync omits custom label keys from canonical output', () => {
+  const { root, config } = createSyncFixture();
+  const outputMessages = [];
   const custom = {
     ...config,
     github: { ...config.github, labels: { ...config.github.labels, priority: ['custom'] } },
   };
-  syncPrerequisites(root, custom, {
-    runner: (file, args) =>
-      file === 'git' ? 'git@github.com:owner/repo.git' : args[1] === 'list' ? '[]' : '',
-    output: (message) => output.push(message),
-  });
-  assert.ok(output.some((message) => message.includes('Synchronized 4 labels')));
-  assert.ok(!output.some((message) => message.includes("Label 'custom' installed")));
+  const syncWithInjectedOutput = () =>
+    syncPrerequisites(root, custom, {
+      runner: (file) =>
+        file === 'git' ? 'git@github.com:owner/repo.git' : '',
+      output: (message) => outputMessages.push(message),
+    });
+
+  syncWithInjectedOutput();
+
+  assert.ok(outputMessages.some((message) => message.includes('Synchronized 4 labels')));
+  assert.ok(!outputMessages.some((message) => message.includes("Label 'custom' installed")));
 });
 
-test('sync preserves existing labels and reports malformed label payloads', () => {
-  const { root, config } = fixture();
-  const output = [];
-  syncPrerequisites(root, config, {
-    runner: (file, args) => {
-      if (file === 'git') return 'https://github.com/example/repo';
-      if (args[1] === 'list') {
-        const name = args[args.indexOf('--search') + 1];
-        return name === 'Automation Ready' ? JSON.stringify([{ name }]) : '[]';
-      }
-      return '';
-    },
-    output: (message) => output.push(message),
-  });
-  assert.ok(output.some((message) => message.includes('already exists')));
+test('sync skips creation for an existing label', () => {
+  const { root, config } = createSyncFixture();
+  const outputMessages = [];
+  const syncWithExistingLabel = () =>
+    syncPrerequisites(root, config, {
+      runner: (file, args) => {
+        if (file === 'git') return 'https://github.com/example/repo';
+        if (args[1] === 'list') {
+          const name = args[args.indexOf('--search') + 1];
+          return name === 'Automation Ready' ? JSON.stringify([{ name }]) : '[]';
+        }
+        return '';
+      },
+      output: (message) => outputMessages.push(message),
+    });
 
-  assert.throws(
-    () =>
-      syncPrerequisites(root, config, {
-        runner: (file, args) =>
-          file === 'git' ? 'https://github.com/example/repo' : args[1] === 'list' ? '{' : '',
-      }),
-    /Unexpected end|JSON/,
-  );
+  syncWithExistingLabel();
+
+  assert.ok(outputMessages.some((message) => message.includes('already exists')));
+});
+
+test('sync rejects malformed label JSON', () => {
+  const { root, config } = createSyncFixture();
+  const syncWithMalformedLabel = () =>
+    syncPrerequisites(root, config, {
+      runner: (file, args) =>
+        file === 'git' ? 'https://github.com/example/repo' : args[1] === 'list' ? '{' : '',
+    });
+
+  assert.throws(syncWithMalformedLabel, /Unexpected end|JSON/);
 });

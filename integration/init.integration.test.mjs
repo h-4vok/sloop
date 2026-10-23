@@ -1,7 +1,8 @@
+import { createIsolatedTemporaryDirectory } from '../test/support/temporary-directory.mjs';
 import { afterEach, test } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
@@ -17,23 +18,23 @@ afterEach(() => {
   temporaryRepos.clear();
 });
 
-function createRepo() {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-init-integration-'));
+function createRepository() {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-init-integration-'));
   temporaryRepos.add(root);
   writeFileSync(join(root, 'readme.md'), '# integration\n');
-  git(root, ['init', '-b', 'main']);
-  git(root, ['config', 'user.name', 'Sloop Integration Test']);
-  git(root, ['config', 'user.email', 'sloop-integration@example.test']);
-  git(root, ['add', 'readme.md']);
-  git(root, ['commit', '-m', 'test: seed integration repo']);
+  runGitCommand(root, ['init', '-b', 'main']);
+  runGitCommand(root, ['config', 'user.name', 'Sloop Integration Test']);
+  runGitCommand(root, ['config', 'user.email', 'sloop-integration@example.test']);
+  runGitCommand(root, ['add', 'readme.md']);
+  runGitCommand(root, ['commit', '-m', 'test: seed integration repo']);
   return root;
 }
 
-function git(cwd, args) {
+function runGitCommand(cwd, args) {
   execFileSync('git', args, { cwd, stdio: 'ignore' });
 }
 
-function runCli(cwd, args) {
+function runSloopCli(cwd, args) {
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: 'utf8',
@@ -41,7 +42,7 @@ function runCli(cwd, args) {
   });
 }
 
-function scriptedIO(answers) {
+function createMockScriptedIo(answers) {
   const input = new PassThrough();
   let captured = '';
   const output = new Writable({
@@ -54,18 +55,18 @@ function scriptedIO(answers) {
   output.isTTY = true;
   setImmediate(() => {
     let index = 0;
-    const send = () => {
+    const sendAnswer = () => {
       if (index < answers.length) {
         input.write(`${answers[index++]}\n`);
-        setTimeout(send, 2);
+        setTimeout(sendAnswer, 2);
       } else input.end();
     };
-    send();
+    sendAnswer();
   });
   return { input, output, text: () => captured };
 }
 
-function wizardAnswers(variant, confirmation) {
+function createWizardAnswers(variant, confirmation) {
   const values = [];
   for (const path of configPaths()) {
     const field = getConfigField(path);
@@ -88,24 +89,25 @@ function wizardAnswers(variant, confirmation) {
 }
 
 test('CLI integration contracts preserve discovery, JSON, exit classes, and safe failures', () => {
-  const outside = mkdtempSync(join(tmpdir(), 'sloop-contracts-outside-'));
+  const outside = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-contracts-outside-'));
   temporaryRepos.add(outside);
 
-  const help = runCli(outside, ['--help']);
+  const help = runSloopCli(outside, ['--help']);
+
   assert.equal(help.status, 0);
   assert.match(help.stdout, /Usage: sloop/);
 
-  const version = runCli(outside, ['--version']);
+  const version = runSloopCli(outside, ['--version']);
   assert.equal(version.status, 0);
   const packageVersion = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).version;
   assert.equal(version.stdout.trim(), packageVersion);
 
-  const unknown = runCli(outside, ['--unknown']);
+  const unknown = runSloopCli(outside, ['--unknown']);
   assert.equal(unknown.status, 2);
   assert.equal(unknown.stdout, '');
   assert.match(unknown.stderr, /Command usage is invalid/);
 
-  const json = runCli(outside, ['status', '--json']);
+  const json = runSloopCli(outside, ['status', '--json']);
   assert.equal(json.status, 2);
   assert.equal(json.stderr, '');
   const envelope = JSON.parse(json.stdout);
@@ -115,9 +117,10 @@ test('CLI integration contracts preserve discovery, JSON, exit classes, and safe
 });
 
 test('config integration contracts reject invalid and cancelled changes without side effects', async () => {
-  const root = createRepo();
+  const root = createRepository();
   const file = join(root, 'sloop.config.yaml');
   const init = await runConfigCommand(root, ['--init']);
+
   assert.equal(init, 0);
   const before = readFileSync(file);
 
@@ -125,7 +128,7 @@ test('config integration contracts reject invalid and cancelled changes without 
   assert.equal(invalid, 2);
   assert.deepEqual(readFileSync(file), before);
 
-  const cancelled = scriptedIO(['worktree', 'n']);
+  const cancelled = createMockScriptedIo(['worktree', 'n']);
   const result = await runConfigCommand(root, ['workspace.mode'], undefined, cancelled);
   assert.equal(result, 0);
   assert.deepEqual(readFileSync(file), before);
@@ -133,8 +136,9 @@ test('config integration contracts reject invalid and cancelled changes without 
 });
 
 test('CLI config init creates a valid canonical default config without a TTY', () => {
-  const root = createRepo();
-  const result = runCli(root, ['config', 'init']);
+  const root = createRepository();
+  const result = runSloopCli(root, ['config', 'init']);
+
   assert.equal(result.status, 0, result.stderr);
   const file = join(root, 'sloop.config.yaml');
   assert.equal(readFileSync(file, 'utf8'), canonicalConfigYaml());
@@ -142,20 +146,22 @@ test('CLI config init creates a valid canonical default config without a TTY', (
 });
 
 test('CLI config init is idempotent and does not overwrite an existing config', () => {
-  const root = createRepo();
-  assert.equal(runCli(root, ['config', 'init']).status, 0);
+  const root = createRepository();
+
+  assert.equal(runSloopCli(root, ['config', 'init']).status, 0);
   const file = join(root, 'sloop.config.yaml');
   const before = readFileSync(file, 'utf8');
   writeFileSync(file, `${before}\n# user change\n`);
-  const result = runCli(root, ['config', 'init']);
+  const result = runSloopCli(root, ['config', 'init']);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readFileSync(file, 'utf8'), `${before}\n# user change\n`);
   assert.match(result.stdout, /already exists; leaving it unchanged/);
 });
 
 test('wizard accepts defaults and writes a valid canonical config', async () => {
-  const root = createRepo();
-  const io = scriptedIO(['', 'y', 'n']);
+  const root = createRepository();
+  const io = createMockScriptedIo(['', 'y', 'n']);
+
   assert.equal(
     await runConfigCommand(root, ['--init', '--wizard', 'workspace.path'], undefined, io),
     0,
@@ -168,26 +174,27 @@ test('wizard accepts defaults and writes a valid canonical config', async () => 
 });
 
 test('wizard retries invalid input and persists varied valid answers', async () => {
-  const root = createRepo();
-  const modeIO = scriptedIO(['pijs', 'worktree', 'y', 'n']);
+  const root = createRepository();
+  const modeIO = createMockScriptedIo(['pijs', 'worktree', 'y', 'n']);
+
   assert.equal(
     await runConfigCommand(root, ['--init', '--wizard', 'workspace.mode'], undefined, modeIO),
     0,
     modeIO.text(),
   );
-  const rootIO = scriptedIO(['.tmp/worktrees', 'y']);
+  const rootIO = createMockScriptedIo(['.tmp/worktrees', 'y']);
   assert.equal(
     await runConfigCommand(root, ['workspace.worktreeRoot'], undefined, rootIO),
     0,
     rootIO.text(),
   );
-  const baseIO = scriptedIO(['develop', 'y']);
+  const baseIO = createMockScriptedIo(['develop', 'y']);
   assert.equal(
     await runConfigCommand(root, ['repository.baseBranch'], undefined, baseIO),
     0,
     baseIO.text(),
   );
-  const checksIO = scriptedIO(['1m', 'y']);
+  const checksIO = createMockScriptedIo(['1m', 'y']);
   assert.equal(
     await runConfigCommand(root, ['loop.interval'], undefined, checksIO),
     0,
@@ -203,8 +210,9 @@ test('wizard retries invalid input and persists varied valid answers', async () 
 });
 
 test('wizard cancellation does not create a config', async () => {
-  const root = createRepo();
-  const io = scriptedIO(['', 'n']);
+  const root = createRepository();
+  const io = createMockScriptedIo(['', 'n']);
+
   assert.equal(
     await runConfigCommand(root, ['--init', '--wizard', 'workspace.path'], undefined, io),
     0,
@@ -214,8 +222,9 @@ test('wizard cancellation does not create a config', async () => {
 });
 
 test('invalid init usage fails without creating a config', () => {
-  const root = createRepo();
-  const result = runCli(root, ['config', 'init', '--unknown']);
+  const root = createRepository();
+  const result = runSloopCli(root, ['config', 'init', '--unknown']);
+
   assert.equal(result.status, 2);
   assert.match(result.stderr, /usage|unsupported|unknown/i);
   assert.equal(existsSync(join(root, 'sloop.config.yaml')), false);

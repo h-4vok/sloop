@@ -11,10 +11,9 @@ import {
 } from '../scripts/release-workflow.mjs';
 
 test('extracts distinct Closes references from the PR body', () => {
-  assert.deepEqual(
-    closingIssueNumbers('Closes #112; close #113; CLOSES #112; fixes #114'),
-    [112, 113],
-  );
+  const issueNumbers = closingIssueNumbers('Closes #112; close #113; CLOSES #112; fixes #114');
+
+  assert.deepEqual(issueNumbers, [112, 113]);
 });
 
 test('reads all linked issue titles from the GitHub GraphQL API', async () => {
@@ -72,26 +71,33 @@ test('falls back to PR body references when the linked list is unavailable', asy
   assert.equal(warnings.length, 2);
 });
 
-test('calculates patch from issue #112 and minor only when no valid title resolves', async () => {
-  const metadata = () => null;
+test('calculates a patch version from the linked issue title', async () => {
+  const getReleaseMetadata = () => null;
+
   const patch = await calculateRelease({
     api: { closingIssueTitles: async () => ['[patch] fix'] },
     number: 113,
     body: '',
     tags: ['v0.2.0'],
-    readTagMetadata: metadata,
+    readTagMetadata: getReleaseMetadata,
     packageVersion: '0.2.0',
   });
+
+  assert.deepEqual(patch, { kind: 'patch', version: '0.2.1', reused: false });
+});
+
+test('defaults to a minor version when no linked issue title resolves', async () => {
+  const getReleaseMetadata = () => null;
+
   const fallback = await calculateRelease({
     api: { closingIssueTitles: async () => [], issueTitle: async () => null },
     number: 113,
     body: 'Closes #999',
     tags: ['v0.2.0'],
-    readTagMetadata: metadata,
+    readTagMetadata: getReleaseMetadata,
     packageVersion: '0.2.0',
   });
 
-  assert.deepEqual(patch, { kind: 'patch', version: '0.2.1', reused: false });
   assert.deepEqual(fallback, { kind: 'minor', version: '0.3.0', reused: false });
 });
 
@@ -124,34 +130,36 @@ test('existing release consistency is checked before any creation', async () => 
     },
   };
 
-  await assert.rejects(reuseOrCreateRelease(api, 'v0.2.1', 'abc123'), /does not match/);
+  const reuseExistingRelease = reuseOrCreateRelease(api, 'v0.2.1', 'abc123');
+
+  await assert.rejects(reuseExistingRelease, /does not match/);
 
   assert.equal(creations, 0);
 });
 
 test('publishing a second time reuses the tag without changing metadata', async () => {
   const calls = [];
-  let tagExists = false;
-  let releaseExists = false;
+  let hasTag = false;
+  let hasRelease = false;
   const api = {
     releaseByTag: async () =>
-      releaseExists ? { tagName: 'v0.2.1', targetCommitish: 'main' } : null,
+      hasRelease ? { tagName: 'v0.2.1', targetCommitish: 'main' } : null,
     createRelease: async (tag) => {
       calls.push(['release', tag]);
-      releaseExists = true;
+      hasRelease = true;
     },
   };
   const gitCommand = (...args) => {
     calls.push(args);
     if (args[0] === 'rev-list') {
-      if (!tagExists) throw new Error('no tag');
+      if (!hasTag) throw new Error('no tag');
       return 'abc123';
     }
     if (args[0] === 'diff') throw new Error('staged changes');
-    if (args[0] === 'tag') tagExists = true;
+    if (args[0] === 'tag') hasTag = true;
     return '';
   };
-  const metadata = () => calls.push(['metadata']);
+  const recordMetadataWrite = () => calls.push(['metadata']);
   const inputs = {
     api,
     version: '0.2.1',
@@ -159,8 +167,9 @@ test('publishing a second time reuses the tag without changing metadata', async 
     date: '2026-10-01',
     gitCommand,
     readFile: (file) => (file === 'package.json' ? '{"version":"0.2.0"}' : '# Changelog\n'),
-    updateMetadata: metadata,
+    updateMetadata: recordMetadataWrite,
   };
+
 
   const first = await publishRelease(inputs);
   const countAfterFirst = calls.length;

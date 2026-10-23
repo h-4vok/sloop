@@ -1,6 +1,7 @@
+import { createIsolatedTemporaryDirectory } from '../test/support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dispatch, runCommand } from '../src/dispatcher.js';
@@ -12,7 +13,7 @@ test(
   { skip: process.env.SLOOP_TEST_REAL_ARBITER !== '1', timeout: 660_000 },
   async (t) => {
     // Arrange: all external state is fictional; only the Arbiter process is real.
-    const root = mkdtempSync(join(tmpdir(), 'sloop-real-arbiter-'));
+    const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-real-arbiter-'));
     t.onTestFinished(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'normalize.mjs'), 'export const normalize = (value) => value;\n');
     const issue = {
@@ -69,7 +70,7 @@ test(
       checkPollIntervalMs: 0,
       checkTimeoutMs: 1000,
     };
-    const deps = {
+    const dependencies = {
       root,
       load: () => structuredClone(state),
       save: (next) => {
@@ -146,7 +147,7 @@ test(
     };
 
     // Act: exercise the real dispatcher, schema generation, process and validators.
-    await dispatch(cfg, deps);
+    await dispatch(cfg, dependencies);
 
     // Assert: no action is prescribed and no natural-language rationale is graded.
     assert.ok(raw, state.lastErrorVerbose ?? state.lastError ?? 'Arbiter produced no result');
