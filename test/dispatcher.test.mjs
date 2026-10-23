@@ -1,17 +1,10 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import {
   acquire,
   childProcessInvocation,
@@ -64,6 +57,7 @@ test('shared issue selector orders configured priorities then numeric ties', () 
     { number: 8, title: 'p0 later', labels: ['Priority: P0'] },
     { number: 3, title: 'p0 first', labels: ['Priority: P0'] },
   ];
+
   assert.deepEqual(
     selectIssues(issues, ['Priority: P0', 'Priority: P1']).map(({ number }) => number),
     [3, 8, 12, 20],
@@ -113,7 +107,8 @@ test('public command and commit helpers cover optional and invalid inputs', asyn
 });
 
 test('remaining public failure boundaries are deterministic', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-boundaries-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-dispatcher-boundaries-'));
+
   assert.equal(recoverStaleLock(root), 'No dispatcher lock found.');
   mkdirSync(dispatcherLockPath(root), { recursive: true });
   writeFileSync(join(dispatcherLockPath(root), 'owner.json'), 'not-json');
@@ -150,7 +145,7 @@ test('review feedback includes only matching QA review bodies for the requested 
   );
 });
 
-function githubHost(respond) {
+function createMockGitHubHost(respond) {
   const calls = [];
   return {
     calls,
@@ -168,7 +163,7 @@ function githubHost(respond) {
 }
 
 test('native dispatcher GitHub operations preserve argv, repository scoping, and response normalization', () => {
-  const fake = githubHost((args) => {
+  const fake = createMockGitHubHost((args) => {
     if (args[0] === 'issue' && args[1] === 'list')
       return JSON.stringify([
         { number: 9, title: 'later' },
@@ -212,7 +207,7 @@ test('native dispatcher GitHub operations preserve argv, repository scoping, and
 
 test('native dispatcher GitHub writes redact bodies, clean temporary files, and classify execution failures', () => {
   let bodyFile;
-  const fake = githubHost((args) => {
+  const fake = createMockGitHubHost((args) => {
     if (args.includes('--body-file')) {
       bodyFile = args.at(-1);
       assert.equal(readFileSync(bodyFile, 'utf8'), 'safe body');
@@ -222,6 +217,7 @@ test('native dispatcher GitHub writes redact bodies, clean temporary files, and 
 
   updatePullRequestBody(7, 'safe body', '/repo', undefined, fake.host);
   commentPullRequest(7, 'safe body', '/repo', undefined, fake.host);
+
   assert.equal(existsSync(bodyFile), false);
   assert.deepEqual(
     fake.calls.map(({ args }) => args.slice(0, 3)),
@@ -235,14 +231,14 @@ test('native dispatcher GitHub writes redact bodies, clean temporary files, and 
     TypeError,
   );
 
-  const failing = githubHost(() => {
+  const failing = createMockGitHubHost(() => {
     throw new Error('offline');
   });
   assert.throws(
     () => eligible('/repo', undefined, 'ready', failing.host),
     (error) => error instanceof CliFailure && error.exitCode === 5 && /offline/.test(error.message),
   );
-  const invalidJson = githubHost(() => '{broken');
+  const invalidJson = createMockGitHubHost(() => '{broken');
   assert.throws(
     () => pullRequestBody(7, '/repo', undefined, invalidJson.host),
     /gh returned invalid JSON/,
@@ -250,8 +246,9 @@ test('native dispatcher GitHub writes redact bodies, clean temporary files, and 
 });
 
 test('dispatcher state persistence, PID probe, and link operations remain deterministic through injected GitHub host', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-dispatcher-host-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-dispatcher-host-'));
   const statePath = join(root, 'state.json');
+
   assert.deepEqual(readState(statePath), {});
   writeFileSync(statePath, '{bad');
   assert.match(readState(statePath).lastError, /state corruption/);
@@ -261,7 +258,7 @@ test('dispatcher state persistence, PID probe, and link operations remain determ
   assert.equal(defaultProcessAlive(process.pid), true);
 
   writeState({ issue: 1, pr: 7, status: 'claimed', linkedClosingIssues: [4] }, statePath);
-  const fake = githubHost((args) => {
+  const fake = createMockGitHubHost((args) => {
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({ body: 'Summary', comments: [] });
     if (args[0] === 'issue' && args[1] === 'view')
@@ -285,7 +282,7 @@ test('dispatcher state persistence, PID probe, and link operations remain determ
 });
 
 test('review-cap resolution uses the host for identity and publication while enforcing waiver safety', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-review-cap-host-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-review-cap-host-'));
   const statePath = join(root, 'state.json');
   writeState(
     {
@@ -302,7 +299,7 @@ test('review-cap resolution uses the host for identity and publication while enf
     },
     statePath,
   );
-  const fake = githubHost((args) => {
+  const fake = createMockGitHubHost((args) => {
     if (args[0] === 'api') return 'octocat';
     if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
     if (args[0] === 'pr' && args[1] === 'view')
@@ -325,6 +322,7 @@ test('review-cap resolution uses the host for identity and publication while enf
 
   resolveReviewCap(options, { requiredPrChecks: ['pr-checks'] }, statePath, root, 'o/r', fake.host);
   const next = readState(statePath);
+
   assert.equal(next.status, 'ready_for_human_merge');
   assert.deepEqual(next.reviewCap.waivedFindingIds, ['Q1']);
   assert.equal(next.reviewCap.resolvedBy, 'octocat');
@@ -349,7 +347,7 @@ test('review-cap resolution uses the host for identity and publication while enf
 });
 
 test('review-cap resolution creates an empty cap when resuming a ready PR recovery', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-review-cap-recovery-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-review-cap-recovery-'));
   const statePath = join(root, 'state.json');
   const recovered = prepareRecovery(
     { issue: 1, pr: 7, status: 'ready_for_human_merge', reviewRound: 1, completedIssues: [1] },
@@ -359,7 +357,7 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
     100,
   );
   writeState(recovered, statePath);
-  const fake = githubHost((args) => {
+  const fake = createMockGitHubHost((args) => {
     if (args[0] === 'api') return 'octocat';
     if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
     if (args[0] === 'pr' && args[1] === 'view')
@@ -389,6 +387,7 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
   );
 
   const next = readState(statePath);
+
   assert.equal(next.status, 'worker_recovery_pending');
   assert.equal(next.reviewCap.capRound, 1);
   assert.deepEqual(next.reviewCap.outstandingFindingIds, []);
@@ -397,33 +396,34 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
 });
 
 test('dispatcher CLI worktree controls and checkout retain their direct contracts', async () => {
-  const h = harness();
+  const dispatcherHarness = createMockDispatcherHarness();
   const calls = [];
-  h.deps.listAllWorktrees = () => ['one'];
-  h.deps.clearAllWorktrees = () => calls.push('clear');
-  await runDispatcherCli({ kind: 'list-all-worktrees' }, h.deps);
-  await runDispatcherCli({ kind: 'clear-all-worktrees' }, h.deps);
+  dispatcherHarness.dependencies.listAllWorktrees = () => ['one'];
+  dispatcherHarness.dependencies.clearAllWorktrees = () => calls.push('clear');
+  await runDispatcherCli({ kind: 'list-all-worktrees' }, dispatcherHarness.dependencies);
+  await runDispatcherCli({ kind: 'clear-all-worktrees' }, dispatcherHarness.dependencies);
+
   assert.deepEqual(calls, ['clear']);
 
-  const root = mkdtempSync(join(tmpdir(), 'sloop-checkout-'));
-  const git = (args) => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-checkout-'));
+  const runGitCommand = (args) => {
     const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
   };
-  git(['init', '--initial-branch=main']);
-  git(['config', 'user.email', 'test@example.test']);
-  git(['config', 'user.name', 'Test']);
+  runGitCommand(['init', '--initial-branch=main']);
+  runGitCommand(['config', 'user.email', 'test@example.test']);
+  runGitCommand(['config', 'user.name', 'Test']);
   writeFileSync(join(root, 'README.md'), 'one');
-  git(['add', '.']);
-  git(['commit', '-m', 'initial']);
-  git(['branch', 'worker']);
+  runGitCommand(['add', '.']);
+  runGitCommand(['commit', '-m', 'initial']);
+  runGitCommand(['branch', 'worker']);
   checkoutWorkerBranch('worker', root);
   const current = spawnSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' });
   assert.equal(current.stdout.trim(), 'worker');
 });
 
 test('review-cap abandonment resumes safely after partial side effects', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-abandon-host-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-abandon-host-'));
   const statePath = join(root, 'state.json');
   const state = {
     issue: 1,
@@ -438,7 +438,7 @@ test('review-cap abandonment resumes safely after partial side effects', () => {
     },
   };
   writeState(state, statePath);
-  const fake = githubHost((args) => {
+  const fake = createMockGitHubHost((args) => {
     if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
     if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({ number: 7, comments: [] });
     return '';
@@ -452,6 +452,7 @@ test('review-cap abandonment resumes safely after partial side effects', () => {
   };
 
   resolveReviewCap(abandon, {}, statePath, root, undefined, fake.host);
+
   assert.equal(readState(statePath).status, 'abandoned');
   assert.equal(
     fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'pr close'),
@@ -480,7 +481,7 @@ test('review-cap abandonment resumes safely after partial side effects', () => {
     },
     statePath,
   );
-  const resumed = githubHost(() => {
+  const resumed = createMockGitHubHost(() => {
     throw new Error('completed actions must not repeat');
   });
   resolveReviewCap(abandon, {}, statePath, root, undefined, resumed.host);
@@ -518,6 +519,7 @@ test('executable resolution leaves Unix commands and explicit paths unchanged', 
   const unexpectedLookup = () => {
     throw new Error('lookup should not run');
   };
+
   assert.equal(resolveExecutable('codex', 'linux', unexpectedLookup), 'codex');
   assert.equal(
     resolveExecutable('C:\\tools\\codex.exe', 'win32', unexpectedLookup),
@@ -531,9 +533,10 @@ test('Windows batch commands execute from paths containing spaces', (t) => {
     return;
   }
 
-  const directory = mkdtempSync(join(tmpdir(), 'sloop batch command-'));
+  const directory = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop batch command-'));
   const executable = join(directory, 'echo argument.cmd');
   writeFileSync(executable, '@echo off\r\necho %~1\r\n');
+
   try {
     const launch = childProcessInvocation(executable, ['expected'], 'win32', process.env.ComSpec);
     const result = spawnSync(launch.command, launch.args, {
@@ -614,15 +617,15 @@ const baseConfig = {
   maxReviewRounds: 5,
 };
 
-function existingHumanReviewGuide(commit = 'abc1') {
+function createExistingHumanReviewGuide(commit = 'abc1') {
   return `[Human Review Guide] round=1 commit=${commit}\n<!-- sloop-dispatcher-human-review-guide -->\n\nSummary\nExercise the CLI change.\n\nSteps\n1. Run the focused command in a temporary directory.\n\nExpected results\n- The documented output appears.\n\nIsolation\nUse a temporary checkout and no credentials.\n\nLimitations / diagnostics\n- A failed command indicates the change is not ready.\n\nApproval checklist\n- [ ] Behavior matches the acceptance criteria.`;
 }
 
-function harness(
+function createMockDispatcherHarness(
   issues = [{ number: 1, title: 'one', body: 'acceptance criteria' }],
   overrides = {},
 ) {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-'));
   let state = overrides.initialState ?? {};
   const saves = [];
   const comments = [];
@@ -660,7 +663,7 @@ function harness(
   };
   const humanVerification = overrides.humanVerification ?? true;
   for (let guide = 0; guide < (overrides.existingHumanGuides ?? 0); guide += 1)
-    pr.comments.push({ body: existingHumanReviewGuide() });
+    pr.comments.push({ body: createExistingHumanReviewGuide() });
   if (overrides.malformedHumanGuide)
     pr.comments.push({
       body: '[Human Review Guide] round=1 commit=abc1\n<!-- sloop-dispatcher-human-review-guide -->',
@@ -668,7 +671,7 @@ function harness(
   const checkSequences = overrides.checkSequences ?? [pr.statusCheckRollup];
   let checkIndex = 0;
 
-  const roleOf = (spec) => {
+  const getAgentRole = (spec) => {
     if (spec.input?.includes('Use the worker skill')) return 'worker';
     if (spec.input?.includes('Use the sloop-qa skill')) return 'qa';
     if (spec.input?.includes('Use the staff-reviewer skill')) return 'staff';
@@ -676,7 +679,7 @@ function harness(
     return 'unknown';
   };
 
-  const deps = {
+  const dependencies = {
     root,
     load: () => state,
     save: (next) => {
@@ -708,7 +711,7 @@ function harness(
     comment: (issue, body) => comments.push([issue, body]),
     run: async (spec) => {
       runs.push(spec);
-      const role = roleOf(spec);
+      const role = getAgentRole(spec);
       spec.onStdout?.(`${role} stdout ✓\nline two\n`);
       spec.onStderr?.(`${role} stderr\nline err\n`);
       const round = Number(spec.input?.match(/review round (\d+)/)?.[1] ?? 1);
@@ -851,7 +854,7 @@ function harness(
     runs,
     reviews,
     saves,
-    deps,
+    dependencies,
     state: () => state,
     setState: (next) => {
       state = next;
@@ -866,7 +869,7 @@ function harness(
 
 // Reduced response from the failing PR #109 query: old GitHub reviews and a
 // current QA comment. No gh process or agent is launched by these tests.
-function qaCommentResponse() {
+function createQaCommentResponse() {
   const head = '43bc61cc0c7b0476f668a6e4f3a920386497f329';
   return {
     number: 109,
@@ -905,8 +908,8 @@ function qaCommentResponse() {
 
 test('gh response with a current QA comment selects passed instead of old GitHub reviews', () => {
   // Arrange
-  const raw = qaCommentResponse();
-  const fake = githubHost(() => JSON.stringify(raw));
+  const raw = createQaCommentResponse();
+  const fake = createMockGitHubHost(() => JSON.stringify(raw));
   // Act: use the real gh adapter and the real dispatcher evidence selector.
   const pr = pullRequest(109, '/repo', 'h-4vok/sloop', fake.host);
   const feedback = reviewFeedback(pr, '[QA/SDET Review]', 2);
@@ -921,8 +924,8 @@ test('gh response with a current QA comment selects passed instead of old GitHub
 
 test('recovery consumes current Worker and QA comments without rerunning agents or creating a branch', async () => {
   // Arrange
-  const raw = qaCommentResponse();
-  const h = harness([{ number: 100, title: 'Unknown keys' }], {
+  const raw = createQaCommentResponse();
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 100, title: 'Unknown keys' }], {
     prNumber: 109,
     headRefName: raw.headRefName,
     initialState: {
@@ -937,24 +940,25 @@ test('recovery consumes current Worker and QA comments without rerunning agents 
       lastErrorVerbose: 'QA evidence missing',
     },
   });
-  const fake = githubHost(() => JSON.stringify(raw));
-  h.deps.pullRequest = () => pullRequest(109, h.root, 'h-4vok/sloop', fake.host);
-  h.deps.run = async () => {
+  const fake = createMockGitHubHost(() => JSON.stringify(raw));
+  dispatcherHarness.dependencies.pullRequest = () =>
+    pullRequest(109, dispatcherHarness.root, 'h-4vok/sloop', fake.host);
+  dispatcherHarness.dependencies.run = async () => {
     throw new Error('existing valid evidence must not rerun agents');
   };
-  h.deps.prepareWorkerBranch = () => {
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     throw new Error('recovery must not create a branch');
   };
   // Act
-  const exit = await dispatch(h.cfg, h.deps);
+  const exit = await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   // Assert
   assert.equal(exit, 0);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.equal(h.state().pr, 109);
-  assert.equal(h.state().branch, raw.headRefName);
-  assert.equal(h.state().lastQaFeedback, raw.comments[1].body);
-  assert.equal(h.state().lastError, undefined);
-  assert.equal(h.state().lastErrorVerbose, undefined);
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.equal(dispatcherHarness.state().pr, 109);
+  assert.equal(dispatcherHarness.state().branch, raw.headRefName);
+  assert.equal(dispatcherHarness.state().lastQaFeedback, raw.comments[1].body);
+  assert.equal(dispatcherHarness.state().lastError, undefined);
+  assert.equal(dispatcherHarness.state().lastErrorVerbose, undefined);
 });
 
 for (const [condition, body] of [
@@ -967,9 +971,9 @@ for (const [condition, body] of [
 ]) {
   test(`QA comment with ${condition} is not accepted as current evidence`, () => {
     // Arrange
-    const raw = qaCommentResponse();
+    const raw = createQaCommentResponse();
     raw.comments[1].body = body.replace('HEAD', raw.headRefOid);
-    const fake = githubHost(() => JSON.stringify(raw));
+    const fake = createMockGitHubHost(() => JSON.stringify(raw));
     // Act
     const feedback = reviewFeedback(
       pullRequest(109, '/repo', 'h-4vok/sloop', fake.host),
@@ -983,7 +987,7 @@ for (const [condition, body] of [
 
 test('latest matching QA publication wins across comments and legacy reviews regardless of array order', () => {
   // Arrange
-  const raw = qaCommentResponse();
+  const raw = createQaCommentResponse();
   const older = {
     body: `[QA/SDET Review] round=2 verdict=blocked commit=${raw.headRefOid}`,
     createdAt: '2026-10-01T08:48:00Z',
@@ -995,7 +999,7 @@ test('latest matching QA publication wins across comments and legacy reviews reg
   };
   raw.comments.push(older);
   raw.reviews.unshift(newest);
-  const fake = githubHost(() => JSON.stringify(raw));
+  const fake = createMockGitHubHost(() => JSON.stringify(raw));
   // Act
   const feedback = reviewFeedback(
     pullRequest(109, '/repo', 'h-4vok/sloop', fake.host),
@@ -1020,33 +1024,35 @@ test('legacy QA review with contradictory native and declared SHAs is rejected',
 
 test('dispatcher still accepts a legacy GitHub QA review', async () => {
   // Arrange
-  const h = harness([{ number: 1, title: 'one' }], { qaPublication: 'review' });
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
+    qaPublication: 'review',
+  });
   // Act
-  const exit = await dispatch(h.cfg, h.deps);
+  const exit = await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   // Assert
   assert.equal(exit, 0);
-  assert.equal(h.state().status, 'ready_for_human_merge');
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
 });
 
 test('blocked QA comment requests changes and preserves feedback at the round cap', async () => {
   // Arrange
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['blocked'],
     config: { maxReviewRounds: 1 },
   });
   // Act
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   // Assert
-  assert.equal(h.state().status, 'review_cap_pending');
-  assert.ok(h.saves.some((state) => state.status === 'qa_changes_requested'));
-  assert.match(h.state().lastQaFeedback, /verdict=blocked/);
+  assert.equal(dispatcherHarness.state().status, 'review_cap_pending');
+  assert.ok(dispatcherHarness.saves.some((state) => state.status === 'qa_changes_requested'));
+  assert.match(dispatcherHarness.state().lastQaFeedback, /verdict=blocked/);
 });
 
 test('QA comment is accepted when GitHub has no Pull Request Review objects', () => {
   // Arrange
-  const raw = qaCommentResponse();
+  const raw = createQaCommentResponse();
   delete raw.reviews;
-  const fake = githubHost(() => JSON.stringify(raw));
+  const fake = createMockGitHubHost(() => JSON.stringify(raw));
   // Act
   const feedback = reviewFeedback(
     pullRequest(109, '/repo', 'h-4vok/sloop', fake.host),
@@ -1059,97 +1065,110 @@ test('QA comment is accepted when GitHub has no Pull Request Review objects', ()
 
 test('dispatcher rejects a QA comment for another SHA even when QA exits successfully', async () => {
   // Arrange
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaBodies: ['[QA/SDET Review] round=1 verdict=passed commit=stale'],
     config: { evidenceTimeoutMs: 1, evidencePollIntervalMs: 1 },
   });
   let clock = 0;
-  h.deps.now = () => clock;
-  h.deps.sleep = async () => {
+  dispatcherHarness.dependencies.now = () => clock;
+  dispatcherHarness.dependencies.sleep = async () => {
     clock += 1;
   };
   // Act
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   // Assert
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /round=1 commit=abc1/);
-  assert.match(h.state().lastError, /checked PR comments and GitHub reviews/);
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /round=1 commit=abc1/);
+  assert.match(dispatcherHarness.state().lastError, /checked PR comments and GitHub reviews/);
 });
 
 test('HEAD changing during QA prevents acceptance of its passed comment', async () => {
   // Arrange
-  const h = harness([{ number: 1, title: 'one' }]);
-  const originalRun = h.deps.run;
-  const originalPullRequest = h.deps.pullRequest;
-  let qaFinished = false;
-  h.deps.run = async (spec) => {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }]);
+  const originalRun = dispatcherHarness.dependencies.run;
+  const originalPullRequest = dispatcherHarness.dependencies.pullRequest;
+  let hasQaFinished = false;
+  dispatcherHarness.dependencies.run = async (spec) => {
     const result = await originalRun(spec);
-    if (spec.input?.includes('Use the sloop-qa skill')) qaFinished = true;
+    if (spec.input?.includes('Use the sloop-qa skill')) hasQaFinished = true;
     return result;
   };
-  h.deps.pullRequest = async (...args) => {
+  dispatcherHarness.dependencies.pullRequest = async (...args) => {
     const pr = await originalPullRequest(...args);
-    return qaFinished ? { ...pr, headRefOid: 'another-head' } : pr;
+    return hasQaFinished ? { ...pr, headRefOid: 'another-head' } : pr;
   };
   // Act
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   // Assert
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /HEAD changed/);
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /HEAD changed/);
 });
 
 test('post-preflight external adapter failures preserve exit 5', async () => {
-  const h = harness([{ number: 1, title: 'one', body: 'acceptance criteria' }]);
-  h.deps.comment = () => {
+  const dispatcherHarness = createMockDispatcherHarness([
+    { number: 1, title: 'one', body: 'acceptance criteria' },
+  ]);
+  dispatcherHarness.dependencies.comment = () => {
     throw new CliFailure(5, 'gh issue comment failed: service unavailable');
   };
 
   await assert.rejects(
-    () => dispatch(h.cfg, h.deps),
+    () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
     (error) => error instanceof CliFailure && error.exitCode === 5,
   );
-  assert.equal(h.state().status, 'claimed');
+
+  assert.equal(dispatcherHarness.state().status, 'claimed');
 });
 
 test('reconciles a terminal persisted run before selecting another issue', async () => {
-  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
-    initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
-  });
-  h.deps.reconcileActiveRun = () => ({
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 2, title: 'next', body: 'criteria' }],
+    {
+      initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+    },
+  );
+  dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'terminal',
     reason: 'PR merged; branch aligned',
     localSha: 'abc1',
     remoteSha: 'abc1',
   });
 
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
-  assert.equal(h.state().completedIssues.includes(1), true);
-  assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '2');
+  assert.equal(dispatcherHarness.state().completedIssues.includes(1), true);
+  assert.equal(dispatcherHarness.runs[0].env.SLOOP_ISSUE_NUMBER, '2');
   assert.equal(
-    h.saves.filter((state) => state.issue === 1 && state.status === 'done').length >= 1,
+    dispatcherHarness.saves.filter((state) => state.issue === 1 && state.status === 'done')
+      .length >= 1,
     true,
   );
 });
 
 test('blocks before selection when terminal reconciliation cannot verify local work', async () => {
-  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
-    initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
-  });
-  h.deps.reconcileActiveRun = () => ({
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 2, title: 'next', body: 'criteria' }],
+    {
+      initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+    },
+  );
+  dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'blocked',
     reason: 'uncommitted local work remains',
   });
 
-  await assert.rejects(() => dispatch(h.cfg, h.deps), /uncommitted local work remains/);
+  await assert.rejects(
+    () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
+    /uncommitted local work remains/,
+  );
 
-  assert.equal(h.runs.length, 0);
-  assert.equal(h.state().status, 'blocked');
-  assert.equal(h.state().issue, 1);
+  assert.equal(dispatcherHarness.runs.length, 0);
+  assert.equal(dispatcherHarness.state().status, 'blocked');
+  assert.equal(dispatcherHarness.state().issue, 1);
 });
 
 test('repeated terminal reconciliation does not duplicate completed issues', async () => {
-  const h = harness([], {
+  const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 1,
       pr: 14,
@@ -1158,70 +1177,104 @@ test('repeated terminal reconciliation does not duplicate completed issues', asy
       completedIssues: [1],
     },
   });
-  h.deps.reconcileActiveRun = () => ({
+  dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'terminal',
     reason: 'issue closed; branch aligned',
   });
 
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
-  assert.deepEqual(h.state().completedIssues, [1]);
+  assert.deepEqual(dispatcherHarness.state().completedIssues, [1]);
   assert.equal(
-    h.saves.filter((state) => state.issue === 1 && state.status === 'done').length >= 1,
+    dispatcherHarness.saves.filter((state) => state.issue === 1 && state.status === 'done')
+      .length >= 1,
     true,
   );
 });
 
 test('open persisted runs keep the existing active-run guard', async () => {
-  const h = harness([{ number: 2, title: 'next', body: 'criteria' }], {
-    initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 2, title: 'next', body: 'criteria' }],
+    {
+      initialState: { issue: 1, pr: 14, branch: 'codex/issue-1', status: 'in_progress' },
+    },
+  );
+  dispatcherHarness.dependencies.reconcileActiveRun = () => ({
+    outcome: 'open',
+    reason: 'PR remains open',
   });
-  h.deps.reconcileActiveRun = () => ({ outcome: 'open', reason: 'PR remains open' });
 
-  await assert.rejects(() => dispatch(h.cfg, h.deps), /active run exists for issue #1/);
+  await assert.rejects(
+    () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
+    /active run exists for issue #1/,
+  );
 
-  assert.equal(h.runs.length, 0);
+  assert.equal(dispatcherHarness.runs.length, 0);
 });
 
 test('public CLI commands invoke only the injected control seams', async () => {
-  const h = harness([], { initialState: { issue: 28, pr: 49, status: 'blocked' } });
+  const dispatcherHarness = createMockDispatcherHarness([], {
+    initialState: { issue: 28, pr: 49, status: 'blocked' },
+  });
   const calls = [];
-  h.deps.loadConfig = () => (calls.push(['loadConfig']), h.cfg);
-  h.deps.status = (verbose) => (calls.push(['status', verbose]), { status: 'injected' });
-  h.deps.list = () => (calls.push(['list']), [{ number: 28, title: 'injected' }]);
-  h.deps.recoverLock = () => (calls.push(['recoverLock']), 'injected recovery');
-  h.deps.reset = () => calls.push(['reset']);
-  h.deps.resolveReviewCap = (args, config) => calls.push(['resolveReviewCap', args, config]);
-  h.deps.linkIssue = (issue) => calls.push(['linkIssue', issue]);
-  h.deps.prepareRecovery = (issue, pr, config) => (
+  dispatcherHarness.dependencies.loadConfig = () => (
+    calls.push(['loadConfig']),
+    dispatcherHarness.cfg
+  );
+  dispatcherHarness.dependencies.status = (verbose) => (
+    calls.push(['status', verbose]),
+    { status: 'injected' }
+  );
+  dispatcherHarness.dependencies.list = () => (
+    calls.push(['list']),
+    [{ number: 28, title: 'injected' }]
+  );
+  dispatcherHarness.dependencies.recoverLock = () => (
+    calls.push(['recoverLock']),
+    'injected recovery'
+  );
+  dispatcherHarness.dependencies.reset = () => calls.push(['reset']);
+  dispatcherHarness.dependencies.resolveReviewCap = (args, config) =>
+    calls.push(['resolveReviewCap', args, config]);
+  dispatcherHarness.dependencies.linkIssue = (issue) => calls.push(['linkIssue', issue]);
+  dispatcherHarness.dependencies.prepareRecovery = (issue, pr, config) => (
     calls.push(['prepareRecovery', issue, pr, config]),
     49
   );
   const originalLog = console.log;
   console.log = () => {};
   try {
-    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), h.deps);
-    await runDispatcherCli(parseDispatcherCommand(['--list']), h.deps);
-    await runDispatcherCli(parseDispatcherCommand(['--recover-lock']), h.deps);
-    await runDispatcherCli(parseDispatcherCommand(['--reset']), h.deps);
-    await runDispatcherCli(
-      parseDispatcherCommand([
-        '--resolve-review-cap',
-        '--steer',
-        'continue',
-        '--additional-rounds',
-        '1',
-      ]),
-      h.deps,
-    );
-    await runDispatcherCli(parseDispatcherCommand(['--link-issue', '29']), h.deps);
-    await runDispatcherCli(
-      parseDispatcherCommand(['--prepare-recovery', '28', '--pr', '49']),
-      h.deps,
-    );
+    const dispatcherArgs = ['--status', '--verbose'];
+    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+    await runDispatcherCli(parsedDispatcherCommand, dispatcherHarness.dependencies);
+    const dispatcherArgs2 = ['--list'];
+    const parsedDispatcherCommand2 = parseDispatcherCommand(dispatcherArgs2);
+    await runDispatcherCli(parsedDispatcherCommand2, dispatcherHarness.dependencies);
+    const dispatcherArgs3 = ['--recover-lock'];
+    const parsedDispatcherCommand3 = parseDispatcherCommand(dispatcherArgs3);
+    await runDispatcherCli(parsedDispatcherCommand3, dispatcherHarness.dependencies);
+    const dispatcherArgs4 = ['--reset'];
+    const parsedDispatcherCommand4 = parseDispatcherCommand(dispatcherArgs4);
+    await runDispatcherCli(parsedDispatcherCommand4, dispatcherHarness.dependencies);
+    const dispatcherArgs5 = [
+      '--resolve-review-cap',
+      '--steer',
+      'continue',
+      '--additional-rounds',
+      '1',
+    ];
+    const parsedDispatcherCommand5 = parseDispatcherCommand(dispatcherArgs5);
+    await runDispatcherCli(parsedDispatcherCommand5, dispatcherHarness.dependencies);
+    const dispatcherArgs6 = ['--link-issue', '29'];
+    const parsedDispatcherCommand6 = parseDispatcherCommand(dispatcherArgs6);
+    await runDispatcherCli(parsedDispatcherCommand6, dispatcherHarness.dependencies);
+    const dispatcherArgs7 = ['--prepare-recovery', '28', '--pr', '49'];
+    const parsedDispatcherCommand7 = parseDispatcherCommand(dispatcherArgs7);
+    await runDispatcherCli(parsedDispatcherCommand7, dispatcherHarness.dependencies);
   } finally {
     console.log = originalLog;
   }
+
   assert.deepEqual(
     calls.map(([name]) => name),
     [
@@ -1279,18 +1332,26 @@ test('commands use argv, exit codes, retries, timeout and no shell contract', as
 });
 
 test('role commands preserve distinct argv and logging configuration', async () => {
-  const h = harness([{ number: 1, title: 'one', body: 'criteria' }], {
-    config: {
-      workerCommand: {
-        command: 'worker-codex',
-        args: ['exec', '--sandbox', 'read-only', '--worker'],
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 1, title: 'one', body: 'criteria' }],
+    {
+      config: {
+        workerCommand: {
+          command: 'worker-codex',
+          args: ['exec', '--sandbox', 'read-only', '--worker'],
+        },
+        qaCommand: { command: 'qa-codex', args: ['exec', '--sandbox', 'workspace-write', '--qa'] },
       },
-      qaCommand: { command: 'qa-codex', args: ['exec', '--sandbox', 'workspace-write', '--qa'] },
     },
-  });
-  await dispatch(h.cfg, h.deps);
+  );
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
   assert.deepEqual(
-    h.runs.map(({ command, args, logInvocation }) => ({ command, args, logInvocation })),
+    dispatcherHarness.runs.map(({ command, args, logInvocation }) => ({
+      command,
+      args,
+      logInvocation,
+    })),
     [
       {
         command: 'worker-codex',
@@ -1313,23 +1374,31 @@ test('invalid role commands fail before any process launch with migration guidan
     { command: 'codex', args: ['exec', '--sandbox', 'read-only', '--sandbox', 'read-only'] },
     { command: 'codex', args: ['exec', '--sandbox', 'invalid'] },
   ]) {
-    const h = harness(undefined, { config: { workerCommand: invalid } });
-    await assert.rejects(() => dispatch(h.cfg, h.deps), /exactly one valid --sandbox/);
-    assert.equal(h.runs.length, 0);
+    const dispatcherHarness = createMockDispatcherHarness(undefined, {
+      config: { workerCommand: invalid },
+    });
+    await assert.rejects(
+      () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
+      /exactly one valid --sandbox/,
+    );
+    assert.equal(dispatcherHarness.runs.length, 0);
   }
-  const legacy = harness(undefined, { config: { codexSandbox: 'read-only' } });
+  const legacy = createMockDispatcherHarness(undefined, { config: { codexSandbox: 'read-only' } });
   await assert.rejects(
-    () => dispatch(legacy.cfg, legacy.deps),
+    () => dispatch(legacy.cfg, legacy.dependencies),
     /codexSandbox is no longer supported/,
   );
   assert.equal(legacy.runs.length, 0);
 });
 
 test('logRoleInvocation false suppresses role invocation logging metadata', async () => {
-  const h = harness(undefined, { config: { logRoleInvocation: false } });
-  await dispatch(h.cfg, h.deps);
+  const dispatcherHarness = createMockDispatcherHarness(undefined, {
+    config: { logRoleInvocation: false },
+  });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
   assert.deepEqual(
-    h.runs.map((run) => run.logInvocation),
+    dispatcherHarness.runs.map((run) => run.logInvocation),
     [false, false],
   );
 });
@@ -1400,42 +1469,48 @@ test('Worker commit evidence accepts escaped newline delimiters from Windows com
 });
 
 test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => {
-  const h = harness();
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
+  const dispatcherHarness = createMockDispatcherHarness();
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.deepEqual(dispatcherHarness.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
   assert.deepEqual(
-    h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
+    dispatcherHarness.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
     ['worker', 'sloop-qa'],
   );
   assert.deepEqual(
-    h.runs.map((run) => run.args.slice(-2)),
+    dispatcherHarness.runs.map((run) => run.args.slice(-2)),
     [
       ['--sandbox', 'read-only'],
       ['--sandbox', 'read-only'],
     ],
   );
-  assert.equal(h.runs[0].env.SLOOP_ISSUE_NUMBER, '1');
-  assert.match(h.runs[0].input, /exactly one \[Worker\] evidence comment/);
-  assert.match(h.runs[0].input, /repository's own AGENTS\.md, scripts, and workflow instructions/);
-  assert.doesNotMatch(h.runs[0].input, /npm run pr-checks|canonical gate/);
-  const published = await h.deps.pullRequest(14);
+  assert.equal(dispatcherHarness.runs[0].env.SLOOP_ISSUE_NUMBER, '1');
+  assert.match(dispatcherHarness.runs[0].input, /exactly one \[Worker\] evidence comment/);
+  assert.match(
+    dispatcherHarness.runs[0].input,
+    /repository's own AGENTS\.md, scripts, and workflow instructions/,
+  );
+  assert.doesNotMatch(dispatcherHarness.runs[0].input, /npm run pr-checks|canonical gate/);
+  const published = await dispatcherHarness.dependencies.pullRequest(14);
   assert.equal(
     published.comments.filter((comment) => comment.body.startsWith('[QA/SDET Review]')).length,
     1,
   );
-  assert.equal(h.reviews.length, 0);
-  assert.match(h.runs[1].input, /gh pr comment --body-file/);
-  const guide = h.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ?? '';
+  assert.equal(dispatcherHarness.reviews.length, 0);
+  assert.match(dispatcherHarness.runs[1].input, /gh pr comment --body-file/);
+  const guide =
+    dispatcherHarness.comments.find(([, body]) => body.startsWith('[Human Review Guide]'))?.[1] ??
+    '';
   assert.match(guide, /commit=abc1/);
   assert.match(guide, /Run the focused command/);
   assert.match(guide, /documented output appears/);
-  assert.equal(h.state().branch, 'codex/issue-1');
-  assert.equal(h.state().mainBaseSha, 'main-sha-1');
-  const runDirectories = readdirSync(join(h.root, '.sloop', 'runs'));
+  assert.equal(dispatcherHarness.state().branch, 'codex/issue-1');
+  assert.equal(dispatcherHarness.state().mainBaseSha, 'main-sha-1');
+  const runDirectories = readdirSync(join(dispatcherHarness.root, '.sloop', 'runs'));
   assert.equal(runDirectories.length, 2);
   const events = runDirectories.flatMap((directory) =>
-    readFileSync(join(h.root, '.sloop', 'runs', directory, 'events.jsonl'), 'utf8')
+    readFileSync(join(dispatcherHarness.root, '.sloop', 'runs', directory, 'events.jsonl'), 'utf8')
       .split('\n')
       .filter(Boolean)
       .map((line) => JSON.parse(line)),
@@ -1451,60 +1526,85 @@ test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => 
 });
 
 test('existing human guide for the current commit is not published twice', async () => {
-  const h = harness(undefined, { existingHumanGuides: 1 });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.comments.filter(([, body]) => body.startsWith('[Human Review Guide]')).length, 0);
+  const dispatcherHarness = createMockDispatcherHarness(undefined, { existingHumanGuides: 1 });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(
+    dispatcherHarness.comments.filter(([, body]) => body.startsWith('[Human Review Guide]')).length,
+    0,
+  );
 });
 
 test('duplicate human guides for the current commit block ready_for_human_merge', async () => {
-  const h = harness(undefined, { existingHumanGuides: 2 });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /Expected exactly one \[Human Review Guide\].*duplicates/);
-  assert.equal(h.comments.filter(([, body]) => body.startsWith('[Human Review Guide]')).length, 0);
+  const dispatcherHarness = createMockDispatcherHarness(undefined, { existingHumanGuides: 2 });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(
+    dispatcherHarness.state().lastError,
+    /Expected exactly one \[Human Review Guide\].*duplicates/,
+  );
+  assert.equal(
+    dispatcherHarness.comments.filter(([, body]) => body.startsWith('[Human Review Guide]')).length,
+    0,
+  );
 });
 
 test('malformed current human guide blocks ready_for_human_merge', async () => {
-  const h = harness(undefined, { malformedHumanGuide: true });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /not dispatcher-rendered/);
-  assert.equal(h.comments.filter(([, body]) => body.startsWith('[Human Review Guide]')).length, 0);
+  const dispatcherHarness = createMockDispatcherHarness(undefined, { malformedHumanGuide: true });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /not dispatcher-rendered/);
+  assert.equal(
+    dispatcherHarness.comments.filter(([, body]) => body.startsWith('[Human Review Guide]')).length,
+    0,
+  );
 });
 
 test('incomplete Worker human-verification evidence blocks before ready_for_human_merge', async () => {
-  const h = harness(undefined, { humanVerification: false });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /complete \[Human Verification\] guide/);
+  const dispatcherHarness = createMockDispatcherHarness(undefined, { humanVerification: false });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /complete \[Human Verification\] guide/);
 });
 
 test('create and recovery smoke paths capture the persisted claimed-issue PR body', async () => {
-  const h = harness([{ number: 17, title: 'seventeen', body: 'criteria' }], {
-    prBody: 'Summary\n\nCloses #1\nClose #99',
-  });
-  await dispatch(h.cfg, h.deps);
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 17, title: 'seventeen', body: 'criteria' }],
+    {
+      prBody: 'Summary\n\nCloses #1\nClose #99',
+    },
+  );
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   // This is the create-path handoff: the Worker receives the exact body contract
   // that it must pass to `gh pr create`.
   const workerInput =
-    h.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
+    dispatcherHarness.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
 
   // This is the recovery/update path: the captured `gh pr edit --body-file`
   // equivalent receives one normalized reference and no stale references.
-  assert.deepEqual(h.prBodyUpdates, [{ number: 14, body: 'Summary\n\nCloses #17' }]);
-  assert.equal((h.prBodyUpdates[0].body.match(/^Closes #17$/gm) ?? []).length, 1);
+  assert.deepEqual(dispatcherHarness.prBodyUpdates, [
+    { number: 14, body: 'Summary\n\nCloses #17' },
+  ]);
+  assert.equal((dispatcherHarness.prBodyUpdates[0].body.match(/^Closes #17$/gm) ?? []).length, 1);
 });
 
 test('dispatcher-generated body is used by the initial PR creation path', async () => {
-  const h = harness([{ number: 17, title: 'seventeen', body: 'criteria' }], {
-    workerCreatesPr: true,
-  });
-  await dispatch(h.cfg, h.deps);
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 17, title: 'seventeen', body: 'criteria' }],
+    {
+      workerCreatesPr: true,
+    },
+  );
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   const workerInput =
-    h.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
-  assert.equal(h.runs[0].env.SLOOP_PR_BODY, 'Closes #17');
-  assert.deepEqual(h.createdPrBodies, ['Closes #17']);
-  assert.equal((h.createdPrBodies[0].match(/^Closes #17$/gm) ?? []).length, 1);
+    dispatcherHarness.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
+
+  assert.equal(dispatcherHarness.runs[0].env.SLOOP_PR_BODY, 'Closes #17');
+  assert.deepEqual(dispatcherHarness.createdPrBodies, ['Closes #17']);
+  assert.equal((dispatcherHarness.createdPrBodies[0].match(/^Closes #17$/gm) ?? []).length, 1);
 });
 
 test('worker branch convention is deterministic and rejects invalid issue numbers', () => {
@@ -1520,20 +1620,21 @@ test('PR closing references preserve authorized linked issues and remove stale o
 });
 
 test('review cap pauses before a replacement Worker is launched', async () => {
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
     config: { maxReviewRounds: 1 },
   });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'review_cap_pending');
-  assert.equal(h.state().reviewRound, 2);
-  assert.equal(h.counts().workerCount, 1);
-  assert.deepEqual(h.state().reviewCap.outstandingFindingIds, []);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'review_cap_pending');
+  assert.equal(dispatcherHarness.state().reviewRound, 2);
+  assert.equal(dispatcherHarness.counts().workerCount, 1);
+  assert.deepEqual(dispatcherHarness.state().reviewCap.outstandingFindingIds, []);
 });
 
 test('stale remote run restores explicit HITL round and existing PR branch before Worker and QA', async () => {
   // Arrange
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     prNumber: 14,
     headRefName: 'codex/issue-1',
     initialState: {
@@ -1585,7 +1686,7 @@ test('stale remote run restores explicit HITL round and existing PR branch befor
   ];
   const published = [];
   let claimCount = 0;
-  h.deps.remote = {
+  dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       issue: 1,
       pr: 14,
@@ -1608,38 +1709,41 @@ test('stale remote run restores explicit HITL round and existing PR branch befor
     },
   };
   const checkedOut = [];
-  h.deps.checkoutWorkerBranch = (branch) => checkedOut.push(branch);
+  dispatcherHarness.dependencies.checkoutWorkerBranch = (branch) => checkedOut.push(branch);
   const prepared = [];
-  h.deps.prepareWorkerBranch = (issue) => {
+  dispatcherHarness.dependencies.prepareWorkerBranch = (issue) => {
     prepared.push(issue);
     return { branch: workerBranchName(issue), mainBaseSha: 'new-base' };
   };
 
   // Act
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
   // Assert
   const workerInput =
-    h.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
-  const qaInput = h.runs.find((run) => run.input?.includes('Use the sloop-qa skill'))?.input ?? '';
+    dispatcherHarness.runs.find((run) => run.input?.includes('Use the worker skill'))?.input ?? '';
+  const qaInput =
+    dispatcherHarness.runs.find((run) => run.input?.includes('Use the sloop-qa skill'))?.input ??
+    '';
+
   assert.equal(claimCount, 0);
   assert.deepEqual(prepared, []);
   assert.deepEqual(checkedOut, ['codex/issue-1']);
   assert.match(workerInput, /review round 4/);
   assert.match(workerInput, /Fix Q1 and Q2, then request QA/);
   assert.match(qaInput, /review round 4/);
-  assert.equal(h.counts().workerCount, 1);
-  assert.equal(h.counts().qaCount, 1);
-  assert.equal(h.state().branch, 'codex/issue-1');
-  assert.equal(h.state().reviewRound, 4);
-  assert.equal(h.state().reviewCap.additionalRounds, 2);
-  assert.equal(h.state().reviewCap.steer, 'Fix Q1 and Q2, then request QA.');
+  assert.equal(dispatcherHarness.counts().workerCount, 1);
+  assert.equal(dispatcherHarness.counts().qaCount, 1);
+  assert.equal(dispatcherHarness.state().branch, 'codex/issue-1');
+  assert.equal(dispatcherHarness.state().reviewRound, 4);
+  assert.equal(dispatcherHarness.state().reviewCap.additionalRounds, 2);
+  assert.equal(dispatcherHarness.state().reviewCap.steer, 'Fix Q1 and Q2, then request QA.');
   assert.ok(published.some((manifest) => manifest.phase === 'blocked'));
 });
 
 test('branch mismatch stops before Worker executes', async () => {
   // Arrange
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     prNumber: 14,
     headRefName: 'codex/issue-1',
     initialState: {
@@ -1650,23 +1754,23 @@ test('branch mismatch stops before Worker executes', async () => {
       reviewRound: 2,
     },
   });
-  h.deps.checkoutWorkerBranch = () => {};
+  dispatcherHarness.dependencies.checkoutWorkerBranch = () => {};
 
   // Act
-  const result = await dispatch(h.cfg, h.deps);
+  const result = await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
   // Assert
   assert.equal(result, 4);
-  assert.equal(h.counts().workerCount, 0);
-  assert.equal(h.counts().qaCount, 0);
+  assert.equal(dispatcherHarness.counts().workerCount, 0);
+  assert.equal(dispatcherHarness.counts().qaCount, 0);
   assert.match(
-    h.state().lastError,
+    dispatcherHarness.state().lastError,
     /refusing to launch Worker.*must use worker branch codex\/issue-1-40ae; found codex\/issue-1/,
   );
 });
 
 test('configured Arbiter upholds a finding and adds a Worker round', async () => {
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested', 'passed'],
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
@@ -1678,15 +1782,16 @@ test('configured Arbiter upholds a finding and adds a Worker round', async () =>
       arbiterCommand: { command: 'codex', args: [] },
     },
   });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.counts().workerCount, 2);
-  assert.equal(h.state().arbiterInterventions, 1);
-  assert.match(h.state().lastQaFeedback, /Worker steering/);
-  assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.counts().workerCount, 2);
+  assert.equal(dispatcherHarness.state().arbiterInterventions, 1);
+  assert.match(dispatcherHarness.state().lastQaFeedback, /Worker steering/);
+  assert.ok(dispatcherHarness.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
 });
 
 test('configured Codex Arbiter receives the output schema and returns its structured result', async () => {
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested', 'passed'],
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
@@ -1698,10 +1803,10 @@ test('configured Codex Arbiter receives the output schema and returns its struct
       arbiterCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
     },
   });
-  const originalRun = h.deps.run;
+  const originalRun = dispatcherHarness.dependencies.run;
   let schema;
   let prompt;
-  h.deps.run = async (spec) => {
+  dispatcherHarness.dependencies.run = async (spec) => {
     if (!spec.input?.includes('Use the Arbiter contract')) return originalRun(spec);
     prompt = spec.input;
     const schemaIndex = spec.args.indexOf('--output-schema');
@@ -1725,7 +1830,7 @@ test('configured Codex Arbiter receives the output schema and returns its struct
     ]);
     // Every object sent to Codex must be closed and require all its properties,
     // even within nullable objects, arrays and local references.
-    const visit = (node) => {
+    const visitNode = (node) => {
       if (!node || typeof node !== 'object') return;
       if (node.$ref) assert.ok(node.$ref.startsWith('#/$defs/'));
       if (node.properties) {
@@ -1734,17 +1839,17 @@ test('configured Codex Arbiter receives the output schema and returns its struct
       }
       if (node.enum || node.const) assert.ok(node.type);
       for (const child of Object.values(node)) {
-        if (Array.isArray(child)) child.forEach(visit);
-        else visit(child);
+        if (Array.isArray(child)) child.forEach(visitNode);
+        else visitNode(child);
       }
     };
-    visit(schema);
+    visitNode(schema);
     const result = await originalRun(spec);
     writeFileSync(spec.args[outputIndex + 1], result);
     return 'Codex execution metadata is not the structured result';
   };
 
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
   assert.ok(schema);
   assert.match(prompt, /Do not add fields or use "version" in place of "schema"/);
@@ -1753,12 +1858,12 @@ test('configured Codex Arbiter receives the output schema and returns its struct
     { id: 'Q1', owner: 'qa', summary: '- [Q1] fail - contract finding' },
   ]);
   assert.match(prompt, /"run":"/);
-  assert.equal(h.state().arbiterInterventions, 1);
-  assert.ok(h.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
+  assert.equal(dispatcherHarness.state().arbiterInterventions, 1);
+  assert.ok(dispatcherHarness.comments.some(([, body]) => body.startsWith('[Sloop Arbiter]')));
 });
 
 test('configured Arbiter defer creates backlog follow-up without Automation Ready', async () => {
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
@@ -1770,14 +1875,15 @@ test('configured Arbiter defer creates backlog follow-up without Automation Read
       arbiterCommand: { command: 'codex', args: [] },
     },
   });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.createdIssues.length, 1);
-  assert.match(h.createdIssues[0].body, /not Automation Ready/);
-  assert.equal(h.state().status, 'review_cap_pending');
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.createdIssues.length, 1);
+  assert.match(dispatcherHarness.createdIssues[0].body, /not Automation Ready/);
+  assert.equal(dispatcherHarness.state().status, 'review_cap_pending');
 });
 
 test('configured Arbiter protocol failure stops the loop and preserves intervention budget', async () => {
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
@@ -1788,8 +1894,8 @@ test('configured Arbiter protocol failure stops the loop and preserves intervent
       arbiterCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
     },
   });
-  const originalRun = h.deps.run;
-  h.deps.run = async (spec) => {
+  const originalRun = dispatcherHarness.dependencies.run;
+  dispatcherHarness.dependencies.run = async (spec) => {
     if (spec.input?.includes('Use the Arbiter contract')) {
       const outputIndex = spec.args.indexOf('--output-last-message');
       writeFileSync(spec.args[outputIndex + 1], '{invalid');
@@ -1797,13 +1903,14 @@ test('configured Arbiter protocol failure stops the loop and preserves intervent
     }
     return originalRun(spec);
   };
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().arbiterInterventions ?? 0, 0);
-  assert.match(h.state().lastErrorVerbose, /Expected property name/);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().arbiterInterventions ?? 0, 0);
+  assert.match(dispatcherHarness.state().lastErrorVerbose, /Expected property name/);
 });
 
 test('a local HITL budget and steer are included in the resumed Worker context', async () => {
-  const h = harness([{ number: 1, title: 'one' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
       pr: 14,
@@ -1821,14 +1928,18 @@ test('a local HITL budget and steer are included in the resumed Worker context',
     },
     config: { maxReviewRounds: 1 },
   });
-  h.deps.checkoutWorkerBranch = () => {};
-  await dispatch(h.cfg, h.deps);
-  assert.match(h.runs[0].input, /HITL steer \(binding\): Do not change GitHub configuration/);
+  dispatcherHarness.dependencies.checkoutWorkerBranch = () => {};
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.match(
+    dispatcherHarness.runs[0].input,
+    /HITL steer \(binding\): Do not change GitHub configuration/,
+  );
 });
 
 test('new branch preparation refuses to overwrite an existing worker branch', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-git-'));
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-git-'));
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
   const runGit = (args) => {
     const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
@@ -1841,6 +1952,7 @@ test('new branch preparation refuses to overwrite an existing worker branch', ()
   runGit(['add', 'README.md']);
   runGit(['commit', '-m', 'initial']);
   const remoteResult = spawnSync('git', ['init', '--bare', remote], { encoding: 'utf8' });
+
   assert.equal(remoteResult.status, 0, remoteResult.stderr);
   runGit(['remote', 'add', 'origin', remote]);
   runGit(['push', 'origin', 'main']);
@@ -1855,14 +1967,15 @@ test('new branch preparation refuses to overwrite an existing worker branch', ()
 });
 
 test('new branch preparation uses main updated by fetch', () => {
-  const seed = mkdtempSync(join(tmpdir(), 'sloop-seed-'));
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-remote-'));
-  const work = mkdtempSync(join(tmpdir(), 'sloop-work-'));
+  const seed = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-seed-'));
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  const work = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-work-'));
   const runGit = (cwd, args) => {
     const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     return result.stdout.trim();
   };
+
   try {
     runGit(seed, ['init', '-b', 'main']);
     runGit(seed, ['config', 'user.email', 'test@example.com']);
@@ -1894,11 +2007,12 @@ test('new branch preparation uses main updated by fetch', () => {
 });
 
 test('worker branch preparation classifies a failed fetch as an external dependency failure', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-git-fetch-failure-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-git-fetch-failure-'));
   const runGit = (args) => {
     const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
   };
+
   try {
     runGit(['init', '-b', 'main']);
     runGit(['config', 'user.email', 'test@example.com']);
@@ -1918,38 +2032,45 @@ test('worker branch preparation classifies a failed fetch as an external depende
 });
 
 test('dispatcher rejects a PR whose worker branch violates the convention', async () => {
-  const h = harness([{ number: 1, title: 'branch validation' }], {
-    headRefName: 'codex/other-branch',
-  });
-  await dispatch(h.cfg, h.deps);
+  const dispatcherHarness = createMockDispatcherHarness(
+    [{ number: 1, title: 'branch validation' }],
+    {
+      headRefName: 'codex/other-branch',
+    },
+  );
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
   assert.match(
-    h.state().lastError,
+    dispatcherHarness.state().lastError,
     /must use worker branch codex\/issue-1; found codex\/other-branch/,
   );
 });
 
 test('dispatcher rejects a configurable non-main PR base explicitly', async () => {
-  const h = harness();
+  const dispatcherHarness = createMockDispatcherHarness();
   await assert.rejects(
-    () => dispatch({ ...h.cfg, baseBranch: 'develop' }, h.deps),
+    () =>
+      dispatch({ ...dispatcherHarness.cfg, baseBranch: 'develop' }, dispatcherHarness.dependencies),
     /Worker PR baseBranch must be main; found develop/,
   );
-  assert.equal(h.runs.length, 0);
+
+  assert.equal(dispatcherHarness.runs.length, 0);
 });
 
 test('dispatcher stops after one issue instead of draining the queue', async () => {
-  const h = harness([
+  const dispatcherHarness = createMockDispatcherHarness([
     { number: 1, title: 'first' },
     { number: 2, title: 'second' },
   ]);
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
-  assert.deepEqual(h.state().completedIssues, [1]);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.deepEqual(dispatcherHarness.counts(), { workerCount: 1, qaCount: 1, staffCount: 0 });
+  assert.deepEqual(dispatcherHarness.state().completedIssues, [1]);
 });
 
 test('new issue claim clears the completed issue PR context before validation', async () => {
-  const h = harness(
+  const dispatcherHarness = createMockDispatcherHarness(
     [
       { number: 16, title: 'completed' },
       { number: 17, title: 'next issue', body: 'new acceptance criteria' },
@@ -1980,15 +2101,16 @@ test('new issue claim clears the completed issue PR context before validation', 
     },
   );
   const validatedPrs = [];
-  const pullRequest = h.deps.pullRequest;
-  h.deps.pullRequest = (pr) => {
+  const pullRequest = dispatcherHarness.dependencies.pullRequest;
+  dispatcherHarness.dependencies.pullRequest = (pr) => {
     validatedPrs.push(pr);
     return pullRequest(pr);
   };
 
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
-  const claimSave = h.saves.find((saved) => saved.status === 'claimed');
+  const claimSave = dispatcherHarness.saves.find((saved) => saved.status === 'claimed');
+
   assert.deepEqual(claimSave, {
     completedIssues: [16],
     mainGreen: true,
@@ -1998,33 +2120,36 @@ test('new issue claim clears the completed issue PR context before validation', 
     drainStatus: 'running',
     updatedAt: claimSave.updatedAt,
   });
-  assert.equal(h.runs[0].input.includes('An existing PR is #16'), false);
-  assert.equal(h.runs[0].input.includes('old task context'), false);
-  assert.equal(h.state().branch, 'codex/issue-17');
-  assert.equal(h.state().pr, 14);
+  assert.equal(dispatcherHarness.runs[0].input.includes('An existing PR is #16'), false);
+  assert.equal(dispatcherHarness.runs[0].input.includes('old task context'), false);
+  assert.equal(dispatcherHarness.state().branch, 'codex/issue-17');
+  assert.equal(dispatcherHarness.state().pr, 14);
   assert.equal(validatedPrs.length > 0, true);
   assert.equal(
     validatedPrs.every((pr) => pr === 14),
     true,
   );
-  assert.deepEqual(h.state().completedIssues, [16, 17]);
-  assert.equal(h.state().mainGreen, true);
+  assert.deepEqual(dispatcherHarness.state().completedIssues, [16, 17]);
+  assert.equal(dispatcherHarness.state().mainGreen, true);
 });
 
 test('QA changes return to Worker and QA is repeated', async () => {
-  const h = harness([{ number: 1, title: 'a' }], { qaVerdicts: ['changes_requested', 'passed'] });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.deepEqual(h.counts(), { workerCount: 2, qaCount: 2, staffCount: 0 });
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
+    qaVerdicts: ['changes_requested', 'passed'],
+  });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.deepEqual(dispatcherHarness.counts(), { workerCount: 2, qaCount: 2, staffCount: 0 });
   assert.deepEqual(
-    h.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
+    dispatcherHarness.runs.map((run) => run.input?.match(/Use the ([^ ]+)/)?.[1]),
     ['worker', 'sloop-qa', 'worker', 'sloop-qa'],
   );
 });
 
 test('recovery detects stale Worker state, starts a new Worker and reuses the existing PR', async () => {
   const now = Date.now();
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: prepareRecovery(
       { completedIssues: [1], branch: 'codex/issue-1' },
       1,
@@ -2033,27 +2158,28 @@ test('recovery detects stale Worker state, starts a new Worker and reuses the ex
       100,
     ),
   });
-  h.deps.prepareWorkerBranch = () => {
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     throw new Error('recovery must reuse the existing branch');
   };
   let checkedOut;
-  h.deps.checkoutWorkerBranch = (branch) => {
+  dispatcherHarness.dependencies.checkoutWorkerBranch = (branch) => {
     checkedOut = branch;
   };
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.equal(h.state().pr, 14);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.equal(dispatcherHarness.state().pr, 14);
   assert.equal(checkedOut, 'codex/issue-1');
-  assert.equal(h.counts().workerCount, 1);
+  assert.equal(dispatcherHarness.counts().workerCount, 1);
   assert.equal(
-    h.comments.some(([, body]) => body.includes('Worker perdido')),
+    dispatcherHarness.comments.some(([, body]) => body.includes('Worker perdido')),
     true,
   );
 });
 
 test('recovery with a stale remote branch adopts the existing PR branch and reaches QA', async () => {
   const now = Date.now();
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     headRefName: 'codex/issue-1-137e',
     initialState: {
       issue: 1,
@@ -2065,7 +2191,7 @@ test('recovery with a stale remote branch adopts the existing PR branch and reac
       workerHeartbeatAt: now - 101,
     },
   });
-  h.deps.remote = {
+  dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       protocol: 1,
       issue: 1,
@@ -2091,24 +2217,25 @@ test('recovery with a stale remote branch adopts the existing PR branch and reac
   };
   let prepared = 0;
   let checkedOut;
-  h.deps.prepareWorkerBranch = () => {
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     prepared += 1;
     throw new Error('must not create a second branch for an existing PR');
   };
-  h.deps.checkoutWorkerBranch = (branch) => {
+  dispatcherHarness.dependencies.checkoutWorkerBranch = (branch) => {
     checkedOut = branch;
   };
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
   assert.equal(prepared, 0);
   assert.equal(checkedOut, 'codex/issue-1-137e');
-  assert.equal(h.counts().qaCount, 1);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.equal(h.state().reviewRound, 4);
+  assert.equal(dispatcherHarness.counts().qaCount, 1);
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.equal(dispatcherHarness.state().reviewRound, 4);
 });
 
 test('recovery accepts a collision-suffixed Worker branch', async () => {
   const now = Date.now();
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: prepareRecovery(
       { completedIssues: [1], branch: 'codex/issue-1-071f' },
       1,
@@ -2118,16 +2245,17 @@ test('recovery accepts a collision-suffixed Worker branch', async () => {
     ),
   });
   let checkedOut;
-  h.deps.checkoutWorkerBranch = (branch) => {
+  dispatcherHarness.dependencies.checkoutWorkerBranch = (branch) => {
     checkedOut = branch;
   };
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
   assert.equal(checkedOut, 'codex/issue-1-071f');
-  assert.equal(h.state().status, 'worker_recovery_pending');
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
 });
 
 test('recovery explains why an issue is not eligible', async () => {
-  const h = harness([], {
+  const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 31,
       status: 'worker_running',
@@ -2138,7 +2266,7 @@ test('recovery explains why an issue is not eligible', async () => {
     },
   });
   await assert.rejects(
-    () => dispatch(h.cfg, h.deps),
+    () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
     (error) => {
       assert.match(error.message, /Issue #31 cannot be recovered/);
       assert.match(error.message, /Automation Ready/);
@@ -2150,26 +2278,28 @@ test('recovery explains why an issue is not eligible', async () => {
 });
 
 test('new branch preparation failure is persisted and does not leave a claimed run stuck', async () => {
-  const h = harness([{ number: 1, title: 'a' }]);
-  h.deps.prepareWorkerBranch = () => {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }]);
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     throw new Error('fetch failed');
   };
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'blocked');
-  assert.match(h.state().lastError, /The loop stopped during blocked/);
-  assert.equal(h.state().lastErrorVerbose, 'fetch failed');
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'blocked');
+  assert.match(dispatcherHarness.state().lastError, /The loop stopped during blocked/);
+  assert.equal(dispatcherHarness.state().lastErrorVerbose, 'fetch failed');
 });
 
 test('dispatcher preserves the external exit class from post-preflight branch preparation', async () => {
-  const h = harness([{ number: 1, title: 'a' }]);
-  h.deps.prepareWorkerBranch = () => {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }]);
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     throw new CliFailure(5, 'git fetch failed: service unavailable');
   };
   await assert.rejects(
-    () => dispatch(h.cfg, h.deps),
+    () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
     (error) => error instanceof CliFailure && error.exitCode === 5,
   );
-  assert.notEqual(h.state().status, 'blocked');
+
+  assert.notEqual(dispatcherHarness.state().status, 'blocked');
 });
 
 function assertPersistedDiagnostic(state, phase, diagnostic, context) {
@@ -2180,34 +2310,37 @@ function assertPersistedDiagnostic(state, phase, diagnostic, context) {
 }
 
 test('empty diagnostic fallback persists concise blocked context separately from verbose output', async () => {
-  const h = harness([{ number: 1, title: 'a' }]);
-  h.deps.prepareWorkerBranch = () => {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }]);
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     throw new Error('');
   };
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   assertPersistedDiagnostic(
-    h.state(),
+    dispatcherHarness.state(),
     'blocked',
     'No diagnostic output was captured during blocked.',
     [/issue #1/],
   );
-  assert.match(h.state().lastError, /No diagnostic output was available/);
+
+  assert.match(dispatcherHarness.state().lastError, /No diagnostic output was available/);
 });
 
 test('QA feedback persists concise context and the complete diagnostic', async () => {
   const diagnostic =
     '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n[Q1] fail - café output';
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     qaVerdicts: ['changes_requested', 'passed'],
     qaBodies: [diagnostic],
   });
-  await dispatch(h.cfg, h.deps);
-  const persisted = h.saves.find((state) => state.status === 'qa_changes_requested');
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+  const persisted = dispatcherHarness.saves.find(
+    (state) => state.status === 'qa_changes_requested',
+  );
   assertPersistedDiagnostic(persisted, 'qa changes requested', diagnostic, [/issue #1/, /PR #14/]);
 });
 
 test('recovery failure persists concise issue and PR context with complete diagnostics', async () => {
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: prepareRecovery(
       { completedIssues: [1], branch: 'codex/issue-1' },
       1,
@@ -2216,12 +2349,12 @@ test('recovery failure persists concise issue and PR context with complete diagn
       100,
     ),
   });
-  h.deps.checkoutWorkerBranch = () => {
+  dispatcherHarness.dependencies.checkoutWorkerBranch = () => {
     throw new Error('recovery checkout failed\nexit 2');
   };
-  await dispatch(h.cfg, h.deps);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
   assertPersistedDiagnostic(
-    h.state(),
+    dispatcherHarness.state(),
     'worker recovery pending',
     'recovery checkout failed\nexit 2',
     [/issue #1/, /PR #14/],
@@ -2229,7 +2362,7 @@ test('recovery failure persists concise issue and PR context with complete diagn
 });
 
 test('blocked issue with PR context enters recovery instead of a fresh claim', async () => {
-  const h = harness([{ number: 1, title: 'recover me' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'recover me' }], {
     initialState: {
       issue: 1,
       status: 'blocked',
@@ -2240,19 +2373,20 @@ test('blocked issue with PR context enters recovery instead of a fresh claim', a
       lastQaFeedback: 'actionable QA finding',
     },
   });
-  h.deps.prepareWorkerBranch = () => {
+  dispatcherHarness.dependencies.prepareWorkerBranch = () => {
     throw new Error('fresh claim path must not run');
   };
-  h.deps.checkoutWorkerBranch = () => {};
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.runs[0].input.includes('An existing PR is #14'), true);
-  assert.equal(h.runs[0].input.includes('actionable QA finding'), true);
-  assert.equal(h.state().status, 'ready_for_human_merge');
+  dispatcherHarness.dependencies.checkoutWorkerBranch = () => {};
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.runs[0].input.includes('An existing PR is #14'), true);
+  assert.equal(dispatcherHarness.runs[0].input.includes('actionable QA finding'), true);
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
 });
 
 test('recovery rejects a conflicting persisted branch', async () => {
   const now = Date.now();
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: {
       issue: 1,
       pr: 14,
@@ -2269,14 +2403,18 @@ test('recovery rejects a conflicting persisted branch', async () => {
       updatedAt: now,
     },
   });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /must use worker branch main; found codex\/issue-1/);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(
+    dispatcherHarness.state().lastError,
+    /must use worker branch main; found codex\/issue-1/,
+  );
 });
 
 test('conflicting Worker PR is rejected before reviews', async () => {
-  const h = harness([{ number: 1, title: 'a' }]);
-  h.deps.pullRequest = () => ({
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }]);
+  dispatcherHarness.dependencies.pullRequest = () => ({
     number: 14,
     state: 'OPEN',
     baseRefName: 'main',
@@ -2288,28 +2426,30 @@ test('conflicting Worker PR is rejected before reviews', async () => {
     reviews: [],
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.counts().qaCount, 0);
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /remains conflicting or dirty/);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.counts().qaCount, 0);
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /remains conflicting or dirty/);
 });
 
 test('failed PR CI returns the issue to a recovered Worker without local npm gates', async () => {
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     checkSequences: [
       [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
       [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'FAILURE' }],
       [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
     ],
   });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'ready_for_human_merge');
-  assert.equal(h.counts().workerCount, 2);
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.equal(dispatcherHarness.counts().workerCount, 2);
   assert.equal(
-    h.runs.some((run) => run.command === 'npm'),
+    dispatcherHarness.runs.some((run) => run.command === 'npm'),
     false,
   );
-  const ciFailure = h.saves.find((state) => state.status === 'ci_failed');
+  const ciFailure = dispatcherHarness.saves.find((state) => state.status === 'ci_failed');
   assertPersistedDiagnostic(ciFailure, 'ci failed', '[CI] pr-checks: FAILURE', [
     /issue #1/,
     /PR #14/,
@@ -2317,14 +2457,17 @@ test('failed PR CI returns the issue to a recovered Worker without local npm gat
 });
 
 test('successful role process without a published review blocks the dispatcher', async () => {
-  const h = harness([{ number: 1, title: 'a' }], { publishEvidence: { qa: false } });
-  await dispatch(h.cfg, h.deps);
-  assert.equal(h.state().status, 'worker_recovery_pending');
-  assert.match(h.state().lastError, /did not publish \[QA\/SDET Review\]/);
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
+    publishEvidence: { qa: false },
+  });
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /did not publish \[QA\/SDET Review\]/);
 });
 
 test('active live run remains exclusive while stale recovery is allowed', async () => {
-  const h = harness([{ number: 1, title: 'a' }], {
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: {
       issue: 1,
       status: 'worker_running',
@@ -2333,23 +2476,24 @@ test('active live run remains exclusive while stale recovery is allowed', async 
     },
   });
   await assert.rejects(
-    () => dispatch(h.cfg, h.deps),
+    () => dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies),
     (error) => error.exitCode === 3 && /active run exists/.test(error.message),
   );
 });
 
 test('stale locks recover safely and reclaim markers are atomic', () => {
-  const h = harness();
+  const dispatcherHarness = createMockDispatcherHarness();
   const calls = [];
-  h.deps.tryAcquire = () => (calls.push('tryAcquire'), false);
-  h.deps.readOwner = () => {
+  dispatcherHarness.dependencies.tryAcquire = () => (calls.push('tryAcquire'), false);
+  dispatcherHarness.dependencies.readOwner = () => {
     calls.push('readOwner');
     throw new Error('corrupt owner');
   };
-  h.deps.tryBeginReclaim = () => (calls.push('tryBeginReclaim'), true);
-  h.deps.finishReclaim = () => calls.push('finishReclaim');
-  h.deps.onReclaim = () => calls.push('onReclaim');
-  const first = acquire(h.deps, 1);
+  dispatcherHarness.dependencies.tryBeginReclaim = () => (calls.push('tryBeginReclaim'), true);
+  dispatcherHarness.dependencies.finishReclaim = () => calls.push('finishReclaim');
+  dispatcherHarness.dependencies.onReclaim = () => calls.push('onReclaim');
+  const first = acquire(dispatcherHarness.dependencies, 1);
+
   assert.match(first, /^[0-9a-f-]+$/);
   assert.deepEqual(calls, [
     'tryAcquire',
@@ -2360,8 +2504,8 @@ test('stale locks recover safely and reclaim markers are atomic', () => {
   ]);
 });
 
-test('status remains concise by default and returns exact verbose diagnostics only on request', async () => {
-  const injected = harness([], {
+test('status returns only the concise summary by default', async () => {
+  const injected = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
       pr: 42,
@@ -2375,19 +2519,53 @@ test('status remains concise by default and returns exact verbose diagnostics on
   const output = [];
   const originalLog = console.log;
   console.log = (value) => output.push(value);
+
   try {
-    await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
-    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
+    const dispatcherArgs = ['--status'];
+    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+
+    await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
   } finally {
     console.log = originalLog;
   }
-  assert.deepEqual(JSON.parse(output[0]), {
+
+  const expectedStatus = {
     issue: 9,
     pr: 42,
     status: 'worker_running',
     lastError: 'short summary',
+  };
+
+  assert.deepEqual(JSON.parse(output[0]), expectedStatus);
+});
+
+test('verbose status returns the complete diagnostic state', async () => {
+  const injected = createMockDispatcherHarness([], {
+    initialState: {
+      issue: 9,
+      pr: 42,
+      status: 'worker_running',
+      lastError: 'short summary',
+      lastErrorVerbose: 'line one\nUnicode: café\nline three',
+      branch: 'codex/issue-9',
+      workerRecoveryCount: 3,
+    },
   });
-  assert.deepEqual(JSON.parse(output[1]), injected.state());
+  const output = [];
+  const originalLog = console.log;
+  console.log = (value) => output.push(value);
+
+  try {
+    const verboseStatusArgs = ['--status', '--verbose'];
+    const parsedDispatcherCommand = parseDispatcherCommand(verboseStatusArgs);
+    await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
+  } finally {
+    console.log = originalLog;
+  }
+
+  const verboseStatus = JSON.parse(output[0]);
+
+  assert.deepEqual(verboseStatus, injected.state());
 });
 
 test('status recommends safe recovery only for valid pending Worker context', async () => {
@@ -2426,13 +2604,16 @@ test('status recommends safe recovery only for valid pending Worker context', as
       expected: { issue: 31, status: 'worker_recovery_pending' },
     },
   ];
+
   for (const { state, expected } of cases) {
-    const injected = harness([], { initialState: state });
+    const injected = createMockDispatcherHarness([], { initialState: state });
     let output;
     const originalLog = console.log;
     console.log = (value) => (output = value);
     try {
-      await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
+      const dispatcherArgs = ['--status'];
+      const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+      await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
     } finally {
       console.log = originalLog;
     }
@@ -2442,7 +2623,8 @@ test('status recommends safe recovery only for valid pending Worker context', as
 });
 
 test('status rejects unsupported flag combinations', () => {
-  const h = harness();
+  const dispatcherHarness = createMockDispatcherHarness();
+
   for (const args of [
     ['--status', '--list'],
     ['--status', '--verbose', '--list'],
@@ -2451,7 +2633,7 @@ test('status rejects unsupported flag combinations', () => {
     const result = spawnSync(
       process.execPath,
       [join(process.cwd(), 'dist', 'dispatcher.js'), ...args],
-      { cwd: h.root, encoding: 'utf8' },
+      { cwd: dispatcherHarness.root, encoding: 'utf8' },
     );
     assert.notEqual(result.status, 0);
     assert.match(
@@ -2467,27 +2649,31 @@ test('--list prints only issue number and title while eligible issues retain bod
     { number: 7, title: 'Earlier issue', body: 'other internal context' },
     { number: 25, title: 'Structured agent output', body: 'internal acceptance criteria' },
   ];
-  const injected = harness(injectedIssues);
+  const injected = createMockDispatcherHarness(injectedIssues);
   let output;
   const originalLog = console.log;
   console.log = (value) => (output = value);
   try {
-    await runDispatcherCli(parseDispatcherCommand(['--list']), injected.deps);
+    const dispatcherArgs = ['--list'];
+    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+    await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
   } finally {
     console.log = originalLog;
   }
+
   assert.deepEqual(
     JSON.parse(output),
     injectedIssues.map(({ number, title }) => ({ number, title })),
   );
   assert.doesNotMatch(output, /body|internal acceptance criteria|other internal context/);
-  assert.deepEqual(injected.deps.eligible(), injectedIssues);
+  assert.deepEqual(injected.dependencies.eligible(), injectedIssues);
 });
 
 test('diagnostic redaction preserves safe multiline output and hides common credentials', () => {
   const output = redactDiagnostic(
     'exit 1\nGITHUB_TOKEN=secret-value\n{"password":"p@ss"}\nhttps://example.test/log',
   );
+
   assert.match(output, /exit 1/);
   assert.match(output, /https:\/\/example.test\/log/);
   assert.doesNotMatch(output, /secret-value|p@ss/);
@@ -2540,6 +2726,7 @@ test('diagnostic redaction exactly preserves bare and prefixed header diagnostic
 
 test('diagnostic redaction removes short Bearer credentials', () => {
   const output = redactDiagnostic('Bearer abc\nBearer secret\nBearer a');
+
   assert.equal(output, 'Bearer [REDACTED]\nBearer [REDACTED]\nBearer [REDACTED]');
 });
 
@@ -2547,6 +2734,7 @@ test('diagnostic redaction removes URL userinfo and complete cookie header value
   const output = redactDiagnostic(
     'https://alice:supersecret@example.test/log\nCookie: session=one; csrf=two\nSet-Cookie: session=three; HttpOnly\nhttps://example.test/safe',
   );
+
   assert.match(output, /https:\/\/\[REDACTED\]@example\.test\/log/);
   assert.match(output, /Cookie: \[REDACTED\]/);
   assert.match(output, /Set-Cookie: \[REDACTED\]/);
@@ -2555,18 +2743,23 @@ test('diagnostic redaction removes URL userinfo and complete cookie header value
 });
 
 test('legacy lastError-only state remains readable in both status modes', async () => {
-  const injected = harness([], {
+  const injected = createMockDispatcherHarness([], {
     initialState: { issue: 9, status: 'blocked', lastError: 'legacy failure summary' },
   });
   const output = [];
   const originalLog = console.log;
   console.log = (value) => output.push(value);
   try {
-    await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
-    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
+    const dispatcherArgs = ['--status'];
+    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+    await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
+    const dispatcherArgs2 = ['--status', '--verbose'];
+    const parsedDispatcherCommand2 = parseDispatcherCommand(dispatcherArgs2);
+    await runDispatcherCli(parsedDispatcherCommand2, injected.dependencies);
   } finally {
     console.log = originalLog;
   }
+
   for (const value of output)
     assert.deepEqual(JSON.parse(value), {
       issue: 9,
@@ -2576,22 +2769,29 @@ test('legacy lastError-only state remains readable in both status modes', async 
 });
 
 test('successful state without errors remains unchanged in both status modes', async () => {
-  const injected = harness([], { initialState: { issue: 9, status: 'claimed' } });
+  const injected = createMockDispatcherHarness([], {
+    initialState: { issue: 9, status: 'claimed' },
+  });
   const output = [];
   const originalLog = console.log;
   console.log = (value) => output.push(value);
   try {
-    await runDispatcherCli(parseDispatcherCommand(['--status']), injected.deps);
-    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
+    const dispatcherArgs = ['--status'];
+    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+    await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
+    const dispatcherArgs2 = ['--status', '--verbose'];
+    const parsedDispatcherCommand2 = parseDispatcherCommand(dispatcherArgs2);
+    await runDispatcherCli(parsedDispatcherCommand2, injected.dependencies);
   } finally {
     console.log = originalLog;
   }
+
   for (const value of output) assert.deepEqual(JSON.parse(value), { issue: 9, status: 'claimed' });
 });
 
 test('verbose status preserves quotes and shell-like diagnostic text exactly', async () => {
   const injectedDiagnostic = 'stdout: "quoted"\nstderr: $(whoami) & echo %PATH%\nexit=17';
-  const injected = harness([], {
+  const injected = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
       status: 'blocked',
@@ -2603,10 +2803,13 @@ test('verbose status preserves quotes and shell-like diagnostic text exactly', a
   const originalLog = console.log;
   console.log = (value) => (output = value);
   try {
-    await runDispatcherCli(parseDispatcherCommand(['--status', '--verbose']), injected.deps);
+    const dispatcherArgs = ['--status', '--verbose'];
+    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
+    await runDispatcherCli(parsedDispatcherCommand, injected.dependencies);
   } finally {
     console.log = originalLog;
   }
+
   assert.equal(JSON.parse(output).lastErrorVerbose, injectedDiagnostic);
 });
 
@@ -2627,6 +2830,7 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
     1000,
     100,
   );
+
   assert.equal(state.pr, 15);
   assert.equal(state.branch, 'codex/issue-1');
   assert.equal(state.status, 'worker_running');
@@ -2647,11 +2851,13 @@ test('prepareRecovery preserves an existing collision-suffixed branch', () => {
     1000,
     100,
   );
+
   assert.equal(state.branch, 'codex/issue-1-071f');
 });
 
 test('prepareRecovery persists the canonical branch from empty state', () => {
   const state = prepareRecovery({}, 31, 54, 1000, 100);
+
   assert.equal(state.issue, 31);
   assert.equal(state.pr, 54);
   assert.equal(state.branch, 'codex/issue-31');
@@ -2659,7 +2865,7 @@ test('prepareRecovery persists the canonical branch from empty state', () => {
 });
 
 test('no-work done state clears all prior run context', async () => {
-  const h = harness([], {
+  const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
       status: 'blocked',
@@ -2682,7 +2888,7 @@ test('no-work done state clears all prior run context', async () => {
       mainGreen: true,
     },
   });
-  h.setState({
+  dispatcherHarness.setState({
     completedIssues: [8],
     mainGreen: true,
     status: undefined,
@@ -2690,13 +2896,14 @@ test('no-work done state clears all prior run context', async () => {
     pr: undefined,
     branch: undefined,
   });
-  await dispatch(h.cfg, h.deps);
-  assert.deepEqual(h.state(), {
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  assert.deepEqual(dispatcherHarness.state(), {
     completedIssues: [8],
     mainGreen: true,
     status: 'done',
     drainStatus: 'done',
-    updatedAt: h.state().updatedAt,
+    updatedAt: dispatcherHarness.state().updatedAt,
   });
 });
 
@@ -2714,6 +2921,7 @@ test('resetRunState clears stale run context and preserves completed issues', ()
     },
     () => false,
   );
+
   assert.deepEqual(state.completedIssues, [1, 2, 3]);
   assert.equal(state.status, undefined);
   assert.equal(state.pr, undefined);
@@ -2730,10 +2938,11 @@ test('resetRunState refuses a live Worker', () => {
 });
 
 test('recoverStaleLock removes only a lock owned by a dead process', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-lock-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-lock-'));
   const lock = dispatcherLockPath(root);
   mkdirSync(lock, { recursive: true });
   writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: 9999 }));
+
   assert.match(
     recoverStaleLock(root, () => false),
     /Recovered stale dispatcher lock/,
@@ -2743,10 +2952,11 @@ test('recoverStaleLock removes only a lock owned by a dead process', () => {
 });
 
 test('recoverStaleLock refuses a live owner', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-lock-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-lock-'));
   const lock = dispatcherLockPath(root);
   mkdirSync(lock, { recursive: true });
   writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: 9999 }));
+
   assert.throws(
     () => recoverStaleLock(root, () => true),
     (error) => error.exitCode === 3 && /owner PID 9999 is still running/.test(error.message),
@@ -2756,20 +2966,25 @@ test('recoverStaleLock refuses a live owner', () => {
 });
 
 test('lock reclaim uses injected storage and process liveness seams', () => {
-  const h = harness();
+  const dispatcherHarness = createMockDispatcherHarness();
   const calls = [];
-  h.deps.now = () => 100;
-  h.deps.tryAcquire = () => false;
-  h.deps.readOwner = () => ({ pid: 41, createdAt: 0, token: 'old' });
-  h.deps.processAlive = (pid) => (calls.push(`processAlive:${pid}`), false);
-  h.deps.tryBeginReclaim = (() => {
+  dispatcherHarness.dependencies.now = () => 100;
+  dispatcherHarness.dependencies.tryAcquire = () => false;
+  dispatcherHarness.dependencies.readOwner = () => ({ pid: 41, createdAt: 0, token: 'old' });
+  dispatcherHarness.dependencies.processAlive = (pid) => (calls.push(`processAlive:${pid}`), false);
+  dispatcherHarness.dependencies.tryBeginReclaim = (() => {
     let attempt = 0;
     return () => ++attempt > 1;
   })();
-  h.deps.readReclaimOwner = () => ({ pid: 42, createdAt: 0, token: 'reclaimer' });
-  h.deps.abandonReclaim = () => calls.push('abandonReclaim');
-  h.deps.finishReclaim = () => calls.push('finishReclaim');
-  const token = acquire(h.deps, 10);
+  dispatcherHarness.dependencies.readReclaimOwner = () => ({
+    pid: 42,
+    createdAt: 0,
+    token: 'reclaimer',
+  });
+  dispatcherHarness.dependencies.abandonReclaim = () => calls.push('abandonReclaim');
+  dispatcherHarness.dependencies.finishReclaim = () => calls.push('finishReclaim');
+  const token = acquire(dispatcherHarness.dependencies, 10);
+
   assert.match(token, /^[0-9a-f-]+$/);
   assert.deepEqual(calls, [
     'processAlive:41',

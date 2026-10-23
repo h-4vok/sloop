@@ -1,6 +1,7 @@
-import test from 'node:test';
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -20,6 +21,7 @@ import { command, runCommand } from '../src/dispatcher.js';
 
 test('remote projection is deterministic and ignores unrelated markers', () => {
   const s = { issue: 33, markers: ['other/In Progress'], labels: ['In Progress'] };
+
   assert.deepEqual(
     projectRemoteState(s),
     projectRemoteState({ ...s, labels: [...s.labels].reverse() }),
@@ -29,7 +31,7 @@ test('remote projection is deterministic and ignores unrelated markers', () => {
 });
 
 test('run logger writes ordered sensitive local JSONL with restrictive permissions', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-'));
   const logger = new RunLogger(runDirectory(root, 33, 'run/one'));
   logger.write('stdout', 'line 1\nline 2');
   logger.write('transition', { phase: 'review' });
@@ -37,6 +39,7 @@ test('run logger writes ordered sensitive local JSONL with restrictive permissio
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+
   assert.deepEqual(
     events.map(({ seq, type }) => [seq, type]),
     [
@@ -54,7 +57,7 @@ test('run logger writes ordered sensitive local JSONL with restrictive permissio
 });
 
 test('real command execution captures Unicode and multiline stdout/stderr in arrival order', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-'));
   const logger = new RunLogger(runDirectory(root, 33, 'streams/✓'));
   const seen = [];
   const output = await runCommand(
@@ -80,6 +83,7 @@ test('real command execution captures Unicode and multiline stdout/stderr in arr
     },
     root,
   );
+
   assert.match(output, /salut ✓/);
   const text = readFileSync(logger.file, 'utf8');
   assert.match(text, /ошибка/);
@@ -112,7 +116,8 @@ test('publication boundary preserves safe values and rejects non-string GitHub b
 });
 
 test('ephemeral mutex releases after the run', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-'));
+
   assert.equal(
     withEphemeralMutex(root, 'a', () => 3),
     3,
@@ -136,6 +141,7 @@ test('remote manifest contracts reject malformed markers and validate boundaries
     contextCursor: '',
     artifacts: [],
   };
+
   assert.deepEqual(parseRunManifestMarker(runManifestMarker(manifest), 33), manifest);
   assert.equal(parseRunManifestMarker('<!-- sloop/v1/manifest !!! -->', 33), undefined);
   assert.equal(parseRunManifestMarker(runManifestMarker(manifest), 34), undefined);
@@ -167,7 +173,8 @@ test('remote manifest contracts reject malformed markers and validate boundaries
 });
 
 test('ephemeral mutex rejects contention and always releases after failure', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-mutex-contract-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-mutex-contract-'));
+
   assert.throws(
     () =>
       withEphemeralMutex(root, 'first', () => {
@@ -187,7 +194,7 @@ test('ephemeral mutex rejects contention and always releases after failure', () 
 });
 
 test('async ephemeral mutex preserves the lease until resolution and cleanup', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-async-mutex-contract-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-async-mutex-contract-'));
   const result = await withEphemeralMutexAsync(root, 'async-owner', async () => {
     assert.equal(
       readFileSync(join(root, '.sloop', 'mutex', 'active', 'owner'), 'utf8'),
@@ -195,6 +202,7 @@ test('async ephemeral mutex preserves the lease until resolution and cleanup', a
     );
     return 42;
   });
+
   assert.equal(result, 42);
   assert.equal(existsSync(join(root, '.sloop', 'mutex', 'active')), false);
 });
@@ -222,6 +230,7 @@ test('projection handles leases, gates, unsupported protocols, and marker reconc
     sha: 'bad',
     leaseOwner: 'b',
   });
+
   assert.equal(projected.phase, 'review');
   assert.ok(projected.openGates.includes('lease:owned'));
   assert.throws(() => projectRemoteState({ issue: 33, protocol: 99 }), /unsupported/);
@@ -241,18 +250,20 @@ test('projection handles leases, gates, unsupported protocols, and marker reconc
 });
 
 test('mutex surfaces filesystem failures that are not normal contention', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-mutex-filesystem-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-mutex-filesystem-'));
   const impossibleRoot = join(root, 'file');
   writeFileSync(impossibleRoot, 'not a directory');
+
   assert.throws(() => withEphemeralMutex(impossibleRoot, 'owner', () => {}));
   await assert.rejects(() => withEphemeralMutexAsync(impossibleRoot, 'owner', async () => {}));
 });
 
 test('logging retains runs by default and supports explicit retention', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-'));
   const logger = new RunLogger(runDirectory(root, 33, 'unicode/✓'));
   logger.command('node', 'ü\nstdout', 'err\n', root);
   logger.stream('codex', 'multi\nline');
+
   assert.ok(statSync(logger.file).mode & 0o200);
   applyRunRetention(root);
   assert.ok(readFileSync(logger.file, 'utf8').includes('multi'));
@@ -261,33 +272,36 @@ test('logging retains runs by default and supports explicit retention', () => {
 });
 
 test('run logger preserves append-only evidence after a malformed prior line', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-log-corrupt-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-log-corrupt-'));
   const directory = runDirectory(root, 33, 'corrupt');
   new RunLogger(directory);
   const file = join(directory, 'events.jsonl');
   await import('node:fs').then(({ appendFileSync }) => appendFileSync(file, '{bad json}\n'));
   const logger = new RunLogger(directory);
   logger.write('safe');
+
   assert.match(readFileSync(file, 'utf8'), /"type":"safe"/);
 });
 
 test('explicit retention removes only expired run directories and never unsafe siblings', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-'));
   const old = runDirectory(root, 33, 'old', new Date('2020-01-01T00:00:00Z'));
   const fresh = runDirectory(root, 33, 'fresh', new Date('2026-09-09T00:00:00Z'));
   new RunLogger(old);
   new RunLogger(fresh);
   applyRunRetention(root, 24 * 60 * 60 * 1000, Date.parse('2026-09-10T00:00:00Z'));
+
   assert.equal(existsSync(old), false);
   assert.equal(existsSync(fresh), true);
 });
 
 test('retention leaves non-directory and unparseable entries untouched', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-retention-safe-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-retention-safe-'));
   const runs = join(root, '.sloop', 'runs');
   mkdirSync(join(runs, 'not-a-timestamp'), { recursive: true });
   writeFileSync(join(runs, 'notes.txt'), 'keep');
   applyRunRetention(root, 0, Date.now() + 1);
+
   assert.equal(existsSync(join(runs, 'not-a-timestamp')), true);
   assert.equal(existsSync(join(runs, 'notes.txt')), true);
 });
@@ -296,6 +310,7 @@ test('publication boundary removes bearer, cookie, and URL credentials', () => {
   const value = allowlistedPublication(
     'Authorization: Bearer abc\nCookie: sid=xyz https://u:p@example.test/x',
   );
+
   assert.equal(String(value).includes('abc'), false);
   assert.equal(String(value).includes('xyz'), false);
   assert.equal(String(value).includes('u:p@'), false);
@@ -324,7 +339,7 @@ const faultConfig = {
   maxReviewRounds: 3,
 };
 
-function faultManifest(overrides = {}) {
+function createFaultRunManifest(overrides = {}) {
   const runId = overrides.runId ?? 'fault-run';
   const key = artifactKey('run', { issue: 33, runId });
   const { omitPr = false, ...manifestOverrides } = overrides;
@@ -344,7 +359,7 @@ function faultManifest(overrides = {}) {
   };
 }
 
-function faultHarness({
+function createMockFaultHarness({
   remoteManifest,
   outage = false,
   ambiguous = false,
@@ -352,14 +367,14 @@ function faultHarness({
   initialState = {},
   pullRequestEvidence = {},
 } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-fault-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-fault-'));
   let state = structuredClone(initialState);
   let remote = remoteManifest;
   let claimCount = 0;
   let publishCount = 0;
   const publishedManifests = [];
   let prepareCount = 0;
-  let crashTriggered = false;
+  let hasSimulatedCrash = false;
   const comments = [];
   const reviews = [];
   const events = [];
@@ -388,12 +403,12 @@ function faultHarness({
       leaseOwner: '7001:33',
     };
   };
-  const deps = {
+  const dependencies = {
     root,
     load: () => state,
     save: (next) => {
-      if (crashAfterClaim && claimCount > 0 && next.workerRunId && !crashTriggered) {
-        crashTriggered = true;
+      if (crashAfterClaim && claimCount > 0 && next.workerRunId && !hasSimulatedCrash) {
+        hasSimulatedCrash = true;
         throw new Error('crash before local acknowledgement');
       }
       state = structuredClone(next);
@@ -501,7 +516,7 @@ function faultHarness({
     },
   };
   return {
-    deps,
+    dependencies,
     counts: () => ({ claimCount, publishCount, prepareCount }),
     remote: () => remote,
     published: () => publishedManifests,
@@ -510,31 +525,34 @@ function faultHarness({
 }
 
 test('dispatcher fails closed on GitHub outage before any remote write or workspace work', async () => {
-  const h = faultHarness({ outage: true });
-  assert.equal(await dispatch(faultConfig, h.deps), 4);
-  assert.deepEqual(h.counts(), { claimCount: 0, publishCount: 0, prepareCount: 0 });
+  const faultHarness = createMockFaultHarness({ outage: true });
+
+  assert.equal(await dispatch(faultConfig, faultHarness.dependencies), 4);
+  assert.deepEqual(faultHarness.counts(), { claimCount: 0, publishCount: 0, prepareCount: 0 });
 });
 
 test('dispatcher reconciles an ambiguous claim instead of publishing a duplicate', async () => {
-  const h = faultHarness({ ambiguous: true });
-  assert.equal(await dispatch(faultConfig, h.deps), 0);
-  assert.equal(h.counts().claimCount, 1);
-  assert.equal(h.counts().prepareCount, 1);
-  assert.ok(h.counts().publishCount >= 1);
+  const faultHarness = createMockFaultHarness({ ambiguous: true });
+
+  assert.equal(await dispatch(faultConfig, faultHarness.dependencies), 0);
+  assert.equal(faultHarness.counts().claimCount, 1);
+  assert.equal(faultHarness.counts().prepareCount, 1);
+  assert.ok(faultHarness.counts().publishCount >= 1);
 });
 
 test('dispatcher recovers a remote marker after crash before local acknowledgement', async () => {
-  const first = faultHarness({ crashAfterClaim: true });
-  assert.equal(await dispatch(faultConfig, first.deps), 4);
-  const second = faultHarness({ remoteManifest: first.remote() });
-  assert.equal(await dispatch(faultConfig, second.deps), 0);
+  const first = createMockFaultHarness({ crashAfterClaim: true });
+
+  assert.equal(await dispatch(faultConfig, first.dependencies), 4);
+  const second = createMockFaultHarness({ remoteManifest: first.remote() });
+  assert.equal(await dispatch(faultConfig, second.dependencies), 0);
   assert.equal(second.counts().claimCount, 0);
   assert.equal(second.counts().prepareCount, 1);
 });
 
 test('dispatcher preserves a verified explicitly prepared PR when the remote manifest has none', async () => {
-  const h = faultHarness({
-    remoteManifest: faultManifest({ omitPr: true }),
+  const faultHarness = createMockFaultHarness({
+    remoteManifest: createFaultRunManifest({ omitPr: true }),
     initialState: {
       issue: 33,
       pr: 14,
@@ -546,13 +564,13 @@ test('dispatcher preserves a verified explicitly prepared PR when the remote man
     },
   });
 
-  assert.equal(await dispatch(faultConfig, h.deps), 0);
-  assert.equal(h.deps.load().pr, 14);
-  assert.equal(h.deps.load().branch, 'codex/issue-33-fault');
-  assert.equal(h.deps.load().preparedRecovery, undefined);
+  assert.equal(await dispatch(faultConfig, faultHarness.dependencies), 0);
+  assert.equal(faultHarness.dependencies.load().pr, 14);
+  assert.equal(faultHarness.dependencies.load().branch, 'codex/issue-33-fault');
+  assert.equal(faultHarness.dependencies.load().preparedRecovery, undefined);
   assert.ok(
-    h.events().findIndex((event) => event.type === 'pullRequest') <
-      h.events().findIndex((event) => event.type === 'worker'),
+    faultHarness.events().findIndex((event) => event.type === 'pullRequest') <
+      faultHarness.events().findIndex((event) => event.type === 'worker'),
   );
 });
 
@@ -566,8 +584,8 @@ test('dispatcher rejects an unverified prepared PR before hydration or Worker ex
   ];
 
   for (const evidence of invalidEvidence) {
-    const h = faultHarness({
-      remoteManifest: faultManifest({ omitPr: true }),
+    const faultHarness = createMockFaultHarness({
+      remoteManifest: createFaultRunManifest({ omitPr: true }),
       initialState: {
         issue: 33,
         pr: 14,
@@ -578,39 +596,41 @@ test('dispatcher rejects an unverified prepared PR before hydration or Worker ex
       pullRequestEvidence: evidence,
     });
 
-    assert.equal(await dispatch(faultConfig, h.deps), 4);
-    assert.equal(h.deps.load().pr, 14);
-    assert.equal(h.deps.load().preparedRecovery, true);
+    assert.equal(await dispatch(faultConfig, faultHarness.dependencies), 4);
+    assert.equal(faultHarness.dependencies.load().pr, 14);
+    assert.equal(faultHarness.dependencies.load().preparedRecovery, true);
     assert.equal(
-      h.events().some((event) => event.type === 'worker'),
+      faultHarness.events().some((event) => event.type === 'worker'),
       false,
     );
   }
 });
 
 test('dispatcher reclaims an expired remote lease and preserves the artifact identity', async () => {
-  const manifest = faultManifest({
+  const manifest = createFaultRunManifest({
     lease: { owner: 'old-owner', expiresAt: new Date(Date.now() - 1).toISOString() },
   });
-  const h = faultHarness({ remoteManifest: manifest });
-  assert.equal(await dispatch(faultConfig, h.deps), 0);
-  assert.equal(h.counts().claimCount, 0);
-  assert.ok(h.counts().publishCount >= 1);
-  assert.equal(h.remote().artifacts[0], manifest.artifacts[0]);
+  const faultHarness = createMockFaultHarness({ remoteManifest: manifest });
+
+  assert.equal(await dispatch(faultConfig, faultHarness.dependencies), 0);
+  assert.equal(faultHarness.counts().claimCount, 0);
+  assert.ok(faultHarness.counts().publishCount >= 1);
+  assert.equal(faultHarness.remote().artifacts[0], manifest.artifacts[0]);
   assert.equal(
-    h.published().find((candidate) => candidate.phase === 'working').lease.owner,
+    faultHarness.published().find((candidate) => candidate.phase === 'working').lease.owner,
     '7001:33',
   );
 });
 
 test('dispatcher refuses a competing live remote lease', async () => {
-  const manifest = faultManifest({
+  const manifest = createFaultRunManifest({
     lease: { owner: 'other-owner', expiresAt: new Date(Date.now() + 60_000).toISOString() },
   });
-  const h = faultHarness({ remoteManifest: manifest });
+  const faultHarness = createMockFaultHarness({ remoteManifest: manifest });
   await assert.rejects(
-    () => dispatch(faultConfig, h.deps),
+    () => dispatch(faultConfig, faultHarness.dependencies),
     (error) => error instanceof CliFailure && error.exitCode === 3,
   );
-  assert.equal(h.counts().prepareCount, 0);
+
+  assert.equal(faultHarness.counts().prepareCount, 0);
 });

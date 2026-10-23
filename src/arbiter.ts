@@ -303,6 +303,7 @@ export async function runLoggedProcess(spec: ProcessSpec): Promise<{
       stderr = '',
       pendingLine = '',
       timedOut = false;
+    let launchError: Error | undefined;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
@@ -326,8 +327,8 @@ export async function runLoggedProcess(spec: ProcessSpec): Promise<{
     });
     child.on('error', (error) => {
       clearTimeout(timer);
+      launchError = error;
       write('stderr', `process_error=${error.message}`);
-      reject(error);
     });
     if (spec.input) child.stdin.end(spec.input);
     else child.stdin.end();
@@ -335,7 +336,8 @@ export async function runLoggedProcess(spec: ProcessSpec): Promise<{
       clearTimeout(timer);
       if (pendingLine.trim()) spec.onStdoutLine?.(pendingLine);
       write('stderr', `process_exit code=${code ?? 'null'} timedOut=${timedOut}`);
-      resolve({ stdout, stderr, code, timedOut, logFile });
+      if (launchError) reject(launchError);
+      else resolve({ stdout, stderr, code, timedOut, logFile });
     });
   });
 }

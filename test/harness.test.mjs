@@ -1,9 +1,10 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import {
   ResumeAmbiguousError,
   CodexHarness,
@@ -12,7 +13,7 @@ import {
   runHarnessTurn,
 } from '../src/harness.js';
 
-function codexProcess({ stdout = [], stderr = [], code = 0 } = {}) {
+function createMockCodexProcess({ stdout = [], stderr = [], code = 0 } = {}) {
   const child = new EventEmitter();
   child.stdin = { end: (chunk) => (child.input = chunk) };
   child.stdout = new EventEmitter();
@@ -26,7 +27,7 @@ function codexProcess({ stdout = [], stderr = [], code = 0 } = {}) {
   return child;
 }
 
-function codexHarness(response, calls, logs = []) {
+function createMockCodexHarness(response, calls, logs = []) {
   return new CodexHarness({
     cwd: 'fixture-repository',
     model: 'gpt-5-codex',
@@ -35,7 +36,7 @@ function codexHarness(response, calls, logs = []) {
     timeoutMs: 1000,
     log: (source, chunk) => logs.push([source, chunk]),
     spawn: (file, args, options) => {
-      const child = codexProcess(response);
+      const child = createMockCodexProcess(response);
       calls.push({ file, args, options, child });
       return child;
     },
@@ -51,7 +52,7 @@ const context = {
   progress: 'progress',
   qaUpdates: 'qa updates',
 };
-function launchedCodexArgs(call) {
+function getLaunchedCodexArgs(call) {
   if (call.child.input === undefined) return call.args;
   const lines = call.child.input.split('\n');
   const [countLine] = lines;
@@ -63,7 +64,7 @@ function launchedCodexArgs(call) {
 test('CodexHarness starts with typed CLI options, extracts the session, and logs raw output', async () => {
   const calls = [];
   const logs = [];
-  const harness = codexHarness(
+  const harness = createMockCodexHarness(
     {
       stdout: ['{"type":"thread.started","thread_id":"session-start"}\n', '{"type":"message"}\n'],
       stderr: ['diagnostic\n'],
@@ -76,7 +77,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
 
   assert.deepEqual(result, { accepted: true, session: 'session-start' });
   assert.equal(calls[0].file, process.platform === 'win32' ? 'powershell.exe' : 'codex');
-  assert.deepEqual(launchedCodexArgs(calls[0]), [
+  assert.deepEqual(getLaunchedCodexArgs(calls[0]), [
     'exec',
     '--json',
     '--sandbox',
@@ -87,7 +88,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
     'model_reasoning_effort=high',
     'do the work',
   ]);
-  assert.ok(launchedCodexArgs(calls[0]).every((arg) => arg.length > 0));
+  assert.ok(getLaunchedCodexArgs(calls[0]).every((arg) => arg.length > 0));
   assert.deepEqual(logs, [
     ['stdout', '{"type":"thread.started","thread_id":"session-start"}\n'],
     ['stdout', '{"type":"message"}\n'],
@@ -109,7 +110,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
 
 test('CodexHarness returns completed agent messages as the turn output', async () => {
   const calls = [];
-  const harness = codexHarness(
+  const harness = createMockCodexHarness(
     {
       stdout: [
         '{"type":"thread.started","thread_id":"session-start"}\n',
@@ -130,7 +131,7 @@ test('CodexHarness returns completed agent messages as the turn output', async (
 
 test('CodexHarness resumes the supplied opaque session and accepts a replacement', async () => {
   const calls = [];
-  const harness = codexHarness(
+  const harness = createMockCodexHarness(
     { stdout: ['{"type":"thread.started","thread_id":"session-next"}\n'] },
     calls,
   );
@@ -139,7 +140,7 @@ test('CodexHarness resumes the supplied opaque session and accepts a replacement
 
   assert.deepEqual(result, { accepted: true, session: 'session-next' });
   assert.equal(calls[0].file, process.platform === 'win32' ? 'powershell.exe' : 'codex');
-  assert.deepEqual(launchedCodexArgs(calls[0]), [
+  assert.deepEqual(getLaunchedCodexArgs(calls[0]), [
     'exec',
     'resume',
     'session-old',
@@ -158,7 +159,7 @@ test('CodexHarness resumes the supplied opaque session and accepts a replacement
 });
 
 test('CodexHarness rejects successful output without a session ID', async () => {
-  const harness = codexHarness({ stdout: ['{"type":"message"}\n'] }, []);
+  const harness = createMockCodexHarness({ stdout: ['{"type":"message"}\n'] }, []);
 
   await assert.rejects(
     () => harness.start(context, { prompt: 'missing id' }),
@@ -167,21 +168,21 @@ test('CodexHarness rejects successful output without a session ID', async () => 
 });
 
 test('CodexHarness distinguishes pre-turn rejection from an ambiguous started failure', async () => {
-  const rejected = codexHarness({ stderr: ['invalid session\n'], code: 1 }, []);
+  const rejected = createMockCodexHarness({ stderr: ['invalid session\n'], code: 1 }, []);
   await assert.rejects(
     () => rejected.resume(context, { prompt: 'retry me', session: 'rejected' }),
     ResumeRejectedError,
   );
 
-  const ambiguous = codexHarness({ stdout: ['{"type":"started"}\n'], code: 1 }, []);
+  const ambiguous = createMockCodexHarness({ stdout: ['{"type":"started"}\n'], code: 1 }, []);
   await assert.rejects(
     () => ambiguous.start(context, { prompt: 'do not retry' }),
     ResumeAmbiguousError,
   );
 });
 
-test('starts once, resumes the same run issue role, and isolates other keys', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-harness-'));
+test('resumes the stored session for the same run issue and role', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-harness-'));
   const store = new SessionStore(join(root, 'sessions.json'));
   const calls = [];
   const harness = {
@@ -195,6 +196,7 @@ test('starts once, resumes the same run issue role, and isolates other keys', as
       return { accepted: true, session: turn.session };
     },
   };
+
   await runHarnessTurn(
     harness,
     store,
@@ -209,6 +211,43 @@ test('starts once, resumes the same run issue role, and isolates other keys', as
     context,
     'second',
   );
+
+  const persisted = JSON.parse(await readFile(join(root, 'sessions.json'), 'utf8'));
+
+  assert.deepEqual(
+    calls.map(([kind]) => kind),
+    ['start', 'resume'],
+  );
+  assert.equal(calls[1][1].prompt, 'second');
+  assert.equal(
+    persisted[`run-a${String.fromCharCode(0)}114${String.fromCharCode(0)}worker`],
+    'opaque-a',
+  );
+});
+
+test('starts a separate session for a different run key', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-harness-'));
+  const store = new SessionStore(join(root, 'sessions.json'));
+  const calls = [];
+  const harness = {
+    capabilities: { sessions: true },
+    async start(_, turn) {
+      calls.push(['start', turn]);
+      return { accepted: true, session: `session-${turn.run}` };
+    },
+    async resume(_, turn) {
+      calls.push(['resume', turn]);
+      return { accepted: true, session: turn.session };
+    },
+  };
+
+  await runHarnessTurn(
+    harness,
+    store,
+    { run: 'run-a', issue: 114, role: 'worker' },
+    context,
+    'first',
+  );
   await runHarnessTurn(
     harness,
     store,
@@ -216,20 +255,15 @@ test('starts once, resumes the same run issue role, and isolates other keys', as
     { ...context, run: 'run-b' },
     'other',
   );
+
   assert.deepEqual(
     calls.map(([kind]) => kind),
-    ['start', 'resume', 'start'],
-  );
-  assert.equal(calls[1][1].prompt, 'second');
-  const persisted = JSON.parse(await readFile(join(root, 'sessions.json'), 'utf8'));
-  assert.equal(
-    persisted[`run-a${String.fromCharCode(0)}114${String.fromCharCode(0)}worker`],
-    'opaque-a',
+    ['start', 'start'],
   );
 });
 
-test('persists across store instances and falls back only on pre-turn rejection with full context', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-harness-'));
+test('falls back with full context after a pre-turn resume rejection', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-harness-'));
   const file = join(root, 'sessions.json');
   const first = new SessionStore(file);
   const initial = {
@@ -241,6 +275,7 @@ test('persists across store instances and falls back only on pre-turn rejection 
       throw new ResumeRejectedError();
     },
   };
+
   await runHarnessTurn(
     initial,
     first,
@@ -262,6 +297,7 @@ test('persists across store instances and falls back only on pre-turn rejection 
       return { accepted: true, session: 'new' };
     },
   };
+
   await runHarnessTurn(
     recovering,
     second,
@@ -270,12 +306,34 @@ test('persists across store instances and falls back only on pre-turn rejection 
     'new work',
     (message) => warnings.push(message),
   );
+
   assert.deepEqual(calls, [
     'resume',
     'issue context\n\nrepo context\n\nprogress\n\nqa updates\n\nnew work',
   ]);
   assert.equal(warnings.length, 1);
   assert.equal(await new SessionStore(file).get({ run: 'r', issue: 1, role: 'qa' }), 'new');
+});
+
+test('preserves stored sessions when resume outcome is ambiguous', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-harness-'));
+  const file = join(root, 'sessions.json');
+  const store = new SessionStore(file);
+  const initial = {
+    capabilities: { sessions: true },
+    async start() {
+      return { accepted: true, session: 'stored' };
+    },
+  };
+
+  await runHarnessTurn(
+    initial,
+    store,
+    { run: 'r', issue: 1, role: 'qa' },
+    { ...context, run: 'r', issue: 1, role: 'qa' },
+    'initial',
+  );
+
   const ambiguous = {
     capabilities: { sessions: true },
     async resume() {
@@ -285,21 +343,19 @@ test('persists across store instances and falls back only on pre-turn rejection 
       throw new Error('must not retry');
     },
   };
-  await assert.rejects(
-    () =>
-      runHarnessTurn(
-        ambiguous,
-        new SessionStore(file),
-        { run: 'r', issue: 1, role: 'qa' },
-        { ...context, run: 'r', issue: 1, role: 'qa' },
-        'ambiguous',
-      ),
-    ResumeAmbiguousError,
+  const resumeAmbiguousSession = runHarnessTurn(
+    ambiguous,
+    new SessionStore(file),
+    { run: 'r', issue: 1, role: 'qa' },
+    { ...context, run: 'r', issue: 1, role: 'qa' },
+    'ambiguous',
   );
+
+  await assert.rejects(resumeAmbiguousSession, ResumeAmbiguousError);
 });
 
 test('sessionless harness receives fresh invocations without a persisted reference', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-harness-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-harness-'));
   const calls = [];
   const harness = {
     capabilities: { sessions: false },
@@ -314,6 +370,7 @@ test('sessionless harness receives fresh invocations without a persisted referen
   const store = new SessionStore(join(root, 'sessions.json'));
   await runHarnessTurn(harness, store, { run: 'r', issue: 1, role: 'worker' }, context, 'one');
   await runHarnessTurn(harness, store, { run: 'r', issue: 1, role: 'worker' }, context, 'two');
+
   assert.deepEqual(
     calls.map((call) => call.prompt),
     ['one', 'two'],

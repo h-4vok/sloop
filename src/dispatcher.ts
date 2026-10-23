@@ -2859,4 +2859,4 @@ export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Pro
 
 // The legacy path remains callable for compatibility, but crosses the same startup boundary.
 if (process.argv[1]?.replaceAll('\\', '/').endsWith('/dispatcher.js'))
-  void import('./cli.js').then(({ runCli }) => runCli(process.argv.slice(2)));
+  void import('./cli.js').then(({ cli }) => cli.runCli(process.argv.slice(2)));

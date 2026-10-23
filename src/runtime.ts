@@ -807,8 +807,12 @@ export function parseCliCommand(args: readonly string[]): CliCommand {
   return { kind: 'dispatcher', command: parseDispatcherCommand(args) };
 }
 
-export function emitUsageFailure(args: readonly string[], message: string): ExitCode {
-  const io = productionIo();
+export function emitUsageFailure(
+  args: readonly string[],
+  message: string,
+  providedIo?: RuntimeIo,
+): ExitCode {
+  const io = providedIo ?? productionIo();
   return emit(
     envelope(commandName(args), 'failed', 'preflight', 'Command usage is invalid.', null, [
       diagnostic('usage', message, 'Run `sloop --help` and use a documented command form.'),
