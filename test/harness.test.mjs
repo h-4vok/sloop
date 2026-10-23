@@ -14,6 +14,7 @@ import {
 
 function codexProcess({ stdout = [], stderr = [], code = 0 } = {}) {
   const child = new EventEmitter();
+  child.stdin = { end: (chunk) => (child.input = chunk) };
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.kill = () => {};
@@ -34,8 +35,9 @@ function codexHarness(response, calls, logs = []) {
     timeoutMs: 1000,
     log: (source, chunk) => logs.push([source, chunk]),
     spawn: (file, args, options) => {
-      calls.push({ file, args, options });
-      return codexProcess(response);
+      const child = codexProcess(response);
+      calls.push({ file, args, options, child });
+      return child;
     },
   });
 }
@@ -49,6 +51,14 @@ const context = {
   progress: 'progress',
   qaUpdates: 'qa updates',
 };
+function launchedCodexArgs(call) {
+  if (call.child.input === undefined) return call.args;
+  const lines = call.child.input.split('\n');
+  const [countLine] = lines;
+  const encodedArgs = lines.slice(1, Number(countLine) + 1);
+  assert.equal(Number(countLine), encodedArgs.length);
+  return encodedArgs.map((encoded) => Buffer.from(encoded, 'base64').toString('utf8'));
+}
 
 test('CodexHarness starts with typed CLI options, extracts the session, and logs raw output', async () => {
   const calls = [];
@@ -65,8 +75,8 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   const result = await harness.start(context, { prompt: 'do the work' });
 
   assert.deepEqual(result, { accepted: true, session: 'session-start' });
-  assert.equal(calls[0].file, 'codex');
-  assert.deepEqual(calls[0].args, [
+  assert.equal(calls[0].file, process.platform === 'win32' ? 'powershell.exe' : 'codex');
+  assert.deepEqual(launchedCodexArgs(calls[0]), [
     'exec',
     '--json',
     '--sandbox',
@@ -77,6 +87,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
     'model_reasoning_effort=high',
     'do the work',
   ]);
+  assert.ok(launchedCodexArgs(calls[0]).every((arg) => arg.length > 0));
   assert.deepEqual(logs, [
     ['stdout', '{"type":"thread.started","thread_id":"session-start"}\n'],
     ['stdout', '{"type":"message"}\n'],
@@ -84,7 +95,16 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   ]);
   assert.equal(calls[0].options.cwd, 'fixture-repository');
   assert.equal(calls[0].options.shell, false);
-  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
+  assert.deepEqual(calls[0].options.stdio, [
+    process.platform === 'win32' ? 'pipe' : 'ignore',
+    'pipe',
+    'pipe',
+  ]);
+  if (process.platform === 'win32')
+    assert.match(
+      Buffer.from(calls[0].args.at(-1), 'base64').toString('utf16le'),
+      /Get-Command codex\.exe/,
+    );
 });
 
 test('CodexHarness returns completed agent messages as the turn output', async () => {
@@ -118,7 +138,8 @@ test('CodexHarness resumes the supplied opaque session and accepts a replacement
   const result = await harness.resume(context, { prompt: 'continue', session: 'session-old' });
 
   assert.deepEqual(result, { accepted: true, session: 'session-next' });
-  assert.deepEqual(calls[0].args, [
+  assert.equal(calls[0].file, process.platform === 'win32' ? 'powershell.exe' : 'codex');
+  assert.deepEqual(launchedCodexArgs(calls[0]), [
     'exec',
     'resume',
     'session-old',
@@ -129,7 +150,11 @@ test('CodexHarness resumes the supplied opaque session and accepts a replacement
     'model_reasoning_effort=high',
     'continue',
   ]);
-  assert.deepEqual(calls[0].options.stdio, ['ignore', 'pipe', 'pipe']);
+  assert.deepEqual(calls[0].options.stdio, [
+    process.platform === 'win32' ? 'pipe' : 'ignore',
+    'pipe',
+    'pipe',
+  ]);
 });
 
 test('CodexHarness rejects successful output without a session ID', async () => {

@@ -20,6 +20,14 @@ const guide = {
   limitations: ['fake'],
   checklist: ['check'],
 };
+function forwardedArgs(stdin, args) {
+  if (stdin === undefined) return args;
+  const lines = stdin.split('\n');
+  const [countLine] = lines;
+  const encodedArgs = lines.slice(1, Number(countLine) + 1);
+  assert.equal(Number(countLine), encodedArgs.length);
+  return encodedArgs.map((encoded) => Buffer.from(encoded, 'base64').toString('utf8'));
+}
 const worker = () => ({
   schema: 'sloop.agent-output/v1',
   context,
@@ -136,7 +144,7 @@ test('Codex runner builds separated structured-output argv and captures a result
     reasoningEffort: 'high',
     sandbox: 'read-only',
     execute: async (command, args, options) => {
-      seen = [command, args];
+      seen = [command, args, options.stdin];
       await import('node:fs/promises').then(({ writeFile }) =>
         writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
       );
@@ -146,30 +154,31 @@ test('Codex runner builds separated structured-output argv and captures a result
     },
   });
   assert.equal((await runner.run('prompt', context)).status, 'ready');
-  assert.equal(seen[0], 'codex');
-  assert.deepEqual(seen[1].slice(0, 8), [
+  assert.equal(seen[0], process.platform === 'win32' ? 'powershell.exe' : 'codex');
+  const codexArgs = forwardedArgs(seen[2], seen[1]);
+  assert.ok(codexArgs.every((arg) => arg.length > 0));
+  assert.deepEqual(codexArgs.slice(0, 7), [
     'exec',
     '--cd',
     process.cwd(),
     '--sandbox',
     'read-only',
     '--output-schema',
-    seen[1][6],
-    '--output-last-message',
+    codexArgs[6],
   ]);
-  assert.ok(seen[1].includes('prompt'));
+  assert.ok(codexArgs.includes('prompt'));
 });
 
 test('non-interactive Codex structured-output smoke uses declared paths and one validated result', async () => {
   const events = [];
-  let executable = '';
+  let invocation;
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
     model: 'smoke-model',
     sandbox: 'read-only',
     timeoutMs: 1000,
     execute: async (command, args, options) => {
-      executable = command;
+      invocation = { command, args, stdin: options.stdin };
       events.push(['argv', args]);
       const schema = JSON.parse(await readFile(options.env.SLOOP_AGENT_SCHEMA, 'utf8'));
       assert.equal(schema.$id, 'sloop.agent-output/v1');
@@ -185,13 +194,14 @@ test('non-interactive Codex structured-output smoke uses declared paths and one 
     log: (source, chunk) => events.push([source, chunk]),
   });
   const result = await runner.run('non-interactive smoke prompt', context);
-  assert.equal(executable, 'codex');
+  assert.equal(invocation.command, process.platform === 'win32' ? 'powershell.exe' : 'codex');
+  const codexArgs = forwardedArgs(invocation.stdin, invocation.args);
   assert.equal(result.schema, 'sloop.agent-output/v1');
   assert.equal(result.status, 'ready');
   assert.equal(events[1][0], 'stdout');
   assert.equal(events[2][0], 'stderr');
-  assert.ok(events[0][1].includes('--output-schema'));
-  assert.ok(events[0][1].includes('--output-last-message'));
+  assert.ok(codexArgs.includes('--output-schema'));
+  assert.ok(codexArgs.includes('--output-last-message'));
 });
 
 test('runner exposes the complete canonical schema and rejects operational failure matrix', async () => {
@@ -338,7 +348,7 @@ test('Codex runner applies its default sandbox', async () => {
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
     execute: async (_command, received, options) => {
-      args = received;
+      args = forwardedArgs(options.stdin, received);
       await import('node:fs/promises').then(({ writeFile }) =>
         writeFile(
           options.env.SLOOP_AGENT_OUTPUT,

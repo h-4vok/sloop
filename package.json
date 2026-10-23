@@ -34,7 +34,6 @@
     "prepare": "node scripts/install-git-hooks.mjs"
   },
   "dependencies": {
-    "@openai/codex": "^0.154.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
