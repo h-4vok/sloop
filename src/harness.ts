@@ -83,10 +83,15 @@ export class CodexHarness implements Harness {
       const child = (this.options.spawn ?? spawn)(invocation.command, invocation.args, {
         cwd: this.options.cwd,
         shell: false,
-        // Codex appends piped stdin to a positional prompt and waits for EOF.
-        // Ignore stdin so each invocation receives only the explicit turn prompt.
-        stdio: ['ignore', 'pipe', 'pipe'],
+        // Direct Codex launches ignore stdin; Windows sends encoded argv to the
+        // PowerShell bridge, which consumes it before launching the global CLI.
+        stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
+      if (!child.stdout || !child.stderr || (invocation.stdin !== undefined && !child.stdin)) {
+        child.kill();
+        return reject(new Error('Codex process streams were not created'));
+      }
+      if (invocation.stdin !== undefined) child.stdin?.end(invocation.stdin);
       let stdout = '',
         stderr = '',
         started = false,

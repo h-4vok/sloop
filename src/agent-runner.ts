@@ -53,6 +53,7 @@ export type ProcessExecutor = (
     cwd: string;
     env: NodeJS.ProcessEnv;
     timeoutMs: number;
+    stdin?: string;
     onStdout: (s: string) => void;
     onStderr: (s: string) => void;
   },
@@ -219,7 +220,17 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
 
 const defaultExec: ProcessExecutor = (command, args, options) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd: options.cwd, env: options.env, shell: false });
+    const child = spawn(command, [...args], {
+      cwd: options.cwd,
+      env: options.env,
+      shell: false,
+      stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
+    if (!child.stdout || !child.stderr || (options.stdin !== undefined && !child.stdin)) {
+      child.kill();
+      return reject(new Error('Codex process streams were not created'));
+    }
+    if (options.stdin !== undefined) child.stdin?.end(options.stdin);
     let stdout = '',
       stderr = '';
     const timer = setTimeout(() => child.kill(), options.timeoutMs);
@@ -419,7 +430,16 @@ export class CodexAgentRunner extends ArbitraryCommandRunner {
     if (options.model) args.push('--model', options.model);
     if (options.reasoningEffort)
       args.push('--config', `model_reasoning_effort=${options.reasoningEffort}`);
-    const invocation = codexCliInvocation(args);
-    super(invocation.command, invocation.args, options);
+    const execute = options.execute ?? defaultExec;
+    super('codex', args, {
+      ...options,
+      execute: async (_command, receivedArgs, processOptions) => {
+        const invocation = codexCliInvocation(receivedArgs);
+        return execute(invocation.command, invocation.args, {
+          ...processOptions,
+          ...(invocation.stdin === undefined ? {} : { stdin: invocation.stdin }),
+        });
+      },
+    });
   }
 }
