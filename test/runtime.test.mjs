@@ -252,10 +252,7 @@ test('JSON failure is one envelope on stdout with no stderr noise', () => {
 
   const readOnlyArgs = ['status', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-    EXIT.preflight,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.preflight);
   assert.equal(runtimeHarness.stderr.length, 0);
   assert.equal(runtimeHarness.stdout.length, 1);
   const result = JSON.parse(runtimeHarness.stdout[0]);
@@ -282,7 +279,11 @@ test('status is read-only, loads local configuration, and skips GitHub', () => {
   assert.equal(result.result.repository, resolve('/repo'));
   assert.equal(result.result.configRef, 'working-tree');
   assert.ok(!runtimeHarness.calls.some(({ file }) => file === 'gh'));
-  assert.ok(!runtimeHarness.calls.some(({ args }) => ['fetch', 'checkout', 'reset', 'clean'].includes(args[0])));
+  assert.ok(
+    !runtimeHarness.calls.some(({ args }) =>
+      ['fetch', 'checkout', 'reset', 'clean'].includes(args[0]),
+    ),
+  );
 });
 
 test('issues list validates relevant GitHub prerequisites and returns references', () => {
@@ -290,10 +291,7 @@ test('issues list validates relevant GitHub prerequisites and returns references
 
   const readOnlyArgs = ['issues', 'list', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-    EXIT.ok,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.ok);
   const result = JSON.parse(runtimeHarness.stdout[0]);
   assert.deepEqual(result.references.issues, [31]);
   assert.equal(result.result.issues[0].title, 'Discovery');
@@ -312,10 +310,7 @@ test('preflight aggregates safely evaluable failures', () => {
 
   const readOnlyArgs = ['issues', 'list', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-    EXIT.preflight,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.preflight);
   const checks = JSON.parse(runtimeHarness.stdout[0]).diagnostics.map(({ check }) => check);
   assert.deepEqual(checks, ['github-auth', 'repository-identity', 'labels']);
   assert.ok(!runtimeHarness.calls.some(({ args }) => args[0] === 'issue'));
@@ -333,10 +328,7 @@ test('external service failure uses exit 5 and never reports success', () => {
 
   const readOnlyArgs = ['issues', 'list', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-    EXIT.external,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.external);
   assert.equal(JSON.parse(runtimeHarness.stdout[0]).status, 'failed');
 });
 
@@ -356,10 +348,7 @@ test('public status result boundary emits blocked JSON and exit 4 for unreadable
     runtimeHarness.io.cwd = root;
     const readOnlyArgs = ['status', '--json'];
     const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-    assert.equal(
-      runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-      EXIT.blocked,
-    );
+    assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.blocked);
     assert.equal(runtimeHarness.stderr.length, 0);
     assert.equal(runtimeHarness.stdout.length, 1);
     const result = JSON.parse(runtimeHarness.stdout[0]);
@@ -394,7 +383,9 @@ test('dispatcher preflight failure stops before any mutation-capable dependency'
   assert.deepEqual(result, { code: EXIT.preflight });
   assert.match(runtimeHarness.stderr[0], /configuration/);
   assert.ok(!runtimeHarness.calls.some(({ file }) => file === 'gh'));
-  assert.ok(!runtimeHarness.calls.some(({ args }) => ['status', 'checkout', 'reset'].includes(args[0])));
+  assert.ok(
+    !runtimeHarness.calls.some(({ args }) => ['status', 'checkout', 'reset'].includes(args[0])),
+  );
 });
 
 test('local recovery commands do not require GitHub, Codex, labels, or a clean tree', () => {
@@ -405,14 +396,13 @@ test('local recovery commands do not require GitHub, Codex, labels, or a clean t
   });
   const dispatcherArgs = ['--prepare-recovery', '31', '--pr', '54'];
   const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
-  const result = runDispatcherPreflight(
-    parsedDispatcherCommand,
-    runtimeHarness.io,
-  );
+  const result = runDispatcherPreflight(parsedDispatcherCommand, runtimeHarness.io);
 
   assert.equal(result.code, EXIT.ok);
   assert.ok(!runtimeHarness.calls.some(({ file }) => file === 'gh' || file === 'codex'));
-  assert.ok(!runtimeHarness.calls.some(({ args }) => args[0] === 'status' || args[0] === 'symbolic-ref'));
+  assert.ok(
+    !runtimeHarness.calls.some(({ args }) => args[0] === 'status' || args[0] === 'symbolic-ref'),
+  );
 });
 
 test('ambiguous dispatcher command fails before discovery or mutation prerequisites', () => {
@@ -430,10 +420,7 @@ test('missing configured remote is collected as a preflight diagnostic', () => {
 
   const readOnlyArgs = ['issues', 'list', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-    EXIT.preflight,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.preflight);
   const checks = JSON.parse(runtimeHarness.stdout[0]).diagnostics.map(({ check }) => check);
   assert.ok(checks.includes('remote'));
 });
@@ -521,7 +508,9 @@ test('runtime diagnostics cover unavailable tools, malformed GitHub responses, a
     const runtimeHarness = createMockRuntimeHarness(overrides);
     const parsedReadOnlyCommand = parseReadOnlyCommand(args);
     assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.preflight);
-    assert.ok(JSON.parse(runtimeHarness.stdout[0]).diagnostics.some((item) => item.check === check));
+    assert.ok(
+      JSON.parse(runtimeHarness.stdout[0]).diagnostics.some((item) => item.check === check),
+    );
   }
   for (const [stdout, expected] of [
     ['not json', EXIT.external],
@@ -533,10 +522,7 @@ test('runtime diagnostics cover unavailable tools, malformed GitHub responses, a
     });
     const readOnlyArgs = ['issues', 'list', '--json'];
     const parsedReadOnlyCommand2 = parseReadOnlyCommand(readOnlyArgs);
-    assert.equal(
-      runReadOnlyCommand(parsedReadOnlyCommand2, runtimeHarness.io),
-      expected,
-    );
+    assert.equal(runReadOnlyCommand(parsedReadOnlyCommand2, runtimeHarness.io), expected);
   }
 });
 
@@ -625,10 +611,7 @@ test('status uses production IO from the repository and fails outside it', () =>
     const production = createMockRuntimeHarness();
     const readOnlyArgs = ['status', '--json'];
     const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-    assert.equal(
-      runReadOnlyCommand(parsedReadOnlyCommand, production.io),
-      EXIT.ok,
-    );
+    assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, production.io), EXIT.ok);
     process.chdir(outside);
     const readOnlyArgs2 = ['status', '--json'];
     const parsedReadOnlyCommand2 = parseReadOnlyCommand(readOnlyArgs2);
@@ -668,7 +651,6 @@ test('doctor reports every failed prerequisite in one diagnostic response', () =
     'branch-policy',
   ])
     assert.match(checks, new RegExp(`\\[${check}\\]`));
-
 });
 
 test('dispatcher preflight rejects every command when local configuration is malformed', () => {
@@ -695,7 +677,6 @@ test('dispatcher preflight rejects every command when local configuration is mal
     { kind: 'status', verbose: false },
   ])
     assert.equal(runDispatcherPreflight(command, invalid.io).code, EXIT.preflight);
-
 });
 
 test.each([
@@ -705,10 +686,7 @@ test.each([
 ])('status reports the expected exit code for %s state', (status, expected) => {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-runtime-state-'));
   mkdirSync(join(root, '.sloop'));
-  writeFileSync(
-    join(root, '.sloop', 'state.json'),
-    JSON.stringify({ status, issue: 7, pr: 8 }),
-  );
+  writeFileSync(join(root, '.sloop', 'state.json'), JSON.stringify({ status, issue: 7, pr: 8 }));
   const runtimeHarness = createMockRuntimeHarness({
     'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
   });
@@ -751,11 +729,11 @@ test('CLI config init and install map to distinct dispatcher commands', () => {
 
 test('dispatcher preflight accepts each GitHub write command family', () => {
   const dispatcherArgs3 = [
-      '--resolve-review-cap',
-      '--steer',
-      'continue',
-      '--waive-all-outstanding',
-    ];
+    '--resolve-review-cap',
+    '--steer',
+    'continue',
+    '--waive-all-outstanding',
+  ];
   const dispatcherArgs2 = ['--link-issue', '9'];
   const dispatcherArgs = ['--list'];
   const parsedDispatcherCommand3 = parseDispatcherCommand(dispatcherArgs3);
@@ -781,10 +759,7 @@ test('issues list rejects a remote URL outside GitHub', () => {
   });
   const readOnlyArgs = ['issues', 'list', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, badRemote.io),
-    EXIT.preflight,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, badRemote.io), EXIT.preflight);
   assert.equal(JSON.parse(badRemote.stdout[0]).diagnostics.at(-1).check, 'repository-identity');
 });
 
@@ -806,20 +781,14 @@ test('runtime reports missing configuration and dispatcher validation failures a
 
   const readOnlyArgs = ['status', '--json'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, missing.io),
-    EXIT.preflight,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, missing.io), EXIT.preflight);
   assert.equal(JSON.parse(missing.stdout[0]).diagnostics[0].check, 'configuration');
   const invalid = createMockRuntimeHarness({
     'git remote get-url origin': { stdout: '', stderr: 'missing', status: 1 },
   });
   const dispatcherArgs = ['--status'];
   const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
-  assert.equal(
-    runDispatcherPreflight(parsedDispatcherCommand, invalid.io).code,
-    EXIT.preflight,
-  );
+  assert.equal(runDispatcherPreflight(parsedDispatcherCommand, invalid.io).code, EXIT.preflight);
 });
 
 test('runtime reports malformed repository identity and label payloads', () => {
@@ -838,10 +807,7 @@ test('runtime reports malformed repository identity and label payloads', () => {
 
   const readOnlyArgs = ['issues', 'list'];
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-  assert.equal(
-    runReadOnlyCommand(parsedReadOnlyCommand, identity.io),
-    EXIT.preflight,
-  );
+  assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, identity.io), EXIT.preflight);
   assert.ok(identity.calls.some(({ file, args }) => file === 'gh' && args[0] === 'repo'));
   assert.ok(identity.calls.some(({ file, args }) => file === 'gh' && args[0] === 'label'));
 });

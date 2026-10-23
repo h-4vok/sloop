@@ -11,7 +11,6 @@ import { CliFailure } from '../src/dispatcher.js';
 import { runManifestMarker } from '../src/remote-state.js';
 
 // This builds the production adapter dependencies and mocks only the GitHub CLI executor.
-
 function createAdapterDependenciesWithMockGitHubCommand(execute) {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-81-adapters-'));
   return productionDependencies(root, loadConfigText(canonicalConfigYaml()), 'o/r', {
@@ -42,14 +41,11 @@ test('adapter wraps GitHub comment failures with the external-service exit code'
   });
   const publishComment = () => dependencies.comment(81, 'body');
 
-  assert.throws(
-    publishComment,
-    (error) => {
-      assert.ok(error instanceof CliFailure);
-      assert.equal(error.exitCode, 5);
-      return true;
-    },
-  );
+  assert.throws(publishComment, (error) => {
+    assert.ok(error instanceof CliFailure);
+    assert.equal(error.exitCode, 5);
+    return true;
+  });
 });
 
 test('adapter reconciles a previously published artifact key', () => {

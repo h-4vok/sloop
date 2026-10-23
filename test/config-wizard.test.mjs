@@ -520,10 +520,8 @@ test('config install reports a failure when its reconciler is unavailable', asyn
 test('forced config init requests GitHub reconciliation', async () => {
   const blank = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-direct-'));
   const events = [];
-  const exitCode = await runConfigCommand(
-    blank,
-    ['--init', '--force'],
-    async (_root, kind) => events.push(kind),
+  const exitCode = await runConfigCommand(blank, ['--init', '--force'], async (_root, kind) =>
+    events.push(kind),
   );
 
   assert.equal(exitCode, 0);
@@ -545,10 +543,7 @@ test('interactive init writes gitignore, list and argv wizard values, and synchr
   const gitignoreText = readFileSync(join(root, '.gitignore'), 'utf8');
 
   assert.equal(exitCode, 0);
-  assert.match(
-    configurationText,
-    /command:\n    - git\n    - status/,
-  );
+  assert.match(configurationText, /command:\n    - git\n    - status/);
   assert.match(gitignoreText, /\.sloop\//);
   assert.deepEqual(events, []);
 });

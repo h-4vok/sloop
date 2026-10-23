@@ -241,7 +241,13 @@ test('starts a separate session for a different run key', async () => {
     },
   };
 
-  await runHarnessTurn(harness, store, { run: 'run-a', issue: 114, role: 'worker' }, context, 'first');
+  await runHarnessTurn(
+    harness,
+    store,
+    { run: 'run-a', issue: 114, role: 'worker' },
+    context,
+    'first',
+  );
   await runHarnessTurn(
     harness,
     store,
@@ -250,7 +256,10 @@ test('starts a separate session for a different run key', async () => {
     'other',
   );
 
-  assert.deepEqual(calls.map(([kind]) => kind), ['start', 'start']);
+  assert.deepEqual(
+    calls.map(([kind]) => kind),
+    ['start', 'start'],
+  );
 });
 
 test('falls back with full context after a pre-turn resume rejection', async () => {
@@ -342,10 +351,7 @@ test('preserves stored sessions when resume outcome is ambiguous', async () => {
     'ambiguous',
   );
 
-  await assert.rejects(
-    resumeAmbiguousSession,
-    ResumeAmbiguousError,
-  );
+  await assert.rejects(resumeAmbiguousSession, ResumeAmbiguousError);
 });
 
 test('sessionless harness receives fresh invocations without a persisted reference', async () => {

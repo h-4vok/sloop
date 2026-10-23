@@ -41,6 +41,7 @@ Local runtime state is `.sloop/state.json` and is intentionally untracked. There
 
 ```text
 npm run format:check
+npm run format:write
 npm run build
 npm test
 npm run pr-checks

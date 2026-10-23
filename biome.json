@@ -18,12 +18,7 @@
             "conventions": [
               {
                 "selector": { "kind": "objectLiteralMember" },
-                "formats": [
-                  "camelCase",
-                  "PascalCase",
-                  "CONSTANT_CASE",
-                  "snake_case"
-                ]
+                "formats": ["camelCase", "PascalCase", "CONSTANT_CASE", "snake_case"]
               },
               {
                 "selector": { "kind": "variable" },

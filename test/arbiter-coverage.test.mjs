@@ -25,7 +25,8 @@ import {
   validateArbiterDecisions,
 } from '../src/arbiter-contracts.js';
 
-const createTemporaryFile = () => join(createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-arbiter-')), 'events.jsonl');
+const createTemporaryFile = () =>
+  join(createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-arbiter-')), 'events.jsonl');
 
 for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
   test(`Arbiter ${action} accepts its structural contract without grading rationale vocabulary`, () => {

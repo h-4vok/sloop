@@ -31,7 +31,6 @@ test('resolveExecutable covers host defaults and safely falls back for an imposs
   // The no-argument call exercises the production platform default. Supplying
   // win32 below executes the production where.exe locator on every host; the
   // deliberately impossible command must always take its documented fallback.
-
   const defaultPlatformCommand = resolveExecutable(missing);
   const windowsCommand = resolveExecutable(missing, 'win32');
 
@@ -72,7 +71,6 @@ test('resolveExecutable keeps the original command when no Windows match exists'
 test('runSyncCommand trims output and passes direct-process options', async () => {
   const { runSyncCommand } = await loadProcessAdapter();
   const calls = [];
-
 
   const result = runSyncCommand(
     'node',

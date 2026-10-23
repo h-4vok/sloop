@@ -88,11 +88,9 @@ test('sync rejects legacy skill names until config init runs', () => {
     .replaceAll('sloop-qa', 'qa-sdet');
   const config = loadConfigText(text);
   const syncLegacyConfig = () =>
-    syncPrerequisites(
-      createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-sync-')),
-      config,
-      { runner: () => '' },
-    );
+    syncPrerequisites(createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-sync-')), config, {
+      runner: () => '',
+    });
 
   assert.throws(syncLegacyConfig, /run sloop config init/);
 });
@@ -144,8 +142,7 @@ test('sync omits custom label keys from canonical output', () => {
   };
   const syncWithInjectedOutput = () =>
     syncPrerequisites(root, custom, {
-      runner: (file) =>
-        file === 'git' ? 'git@github.com:owner/repo.git' : '',
+      runner: (file) => (file === 'git' ? 'git@github.com:owner/repo.git' : ''),
       output: (message) => outputMessages.push(message),
     });
 

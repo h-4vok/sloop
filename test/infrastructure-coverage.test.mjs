@@ -12,7 +12,8 @@ import { withEphemeralMutex, withEphemeralMutexAsync } from '../src/mutex.js';
 import { RunLogger, applyRunRetention, runDirectory } from '../src/run-log.js';
 import { runManifestMarker } from '../src/remote-state.js';
 
-const createTemporaryDirectory = (prefix) => createIsolatedTemporaryDirectory(join(tmpdir(), prefix));
+const createTemporaryDirectory = (prefix) =>
+  createIsolatedTemporaryDirectory(join(tmpdir(), prefix));
 const createTestRunManifest = (overrides = {}) => ({
   protocol: 1,
   runId: 'adapter-run',
@@ -29,7 +30,6 @@ const createTestRunManifest = (overrides = {}) => ({
 });
 
 // This builds the real production adapter dependencies with a mocked GitHub CLI boundary.
-
 function createAdapterDependenciesWithMockGitHubCommand(execute, repository = 'owner/repository') {
   return productionDependencies(
     createTemporaryDirectory('sloop-infra-adapter-'),
@@ -48,7 +48,6 @@ test('remote snapshot normalizes issue and pull-request state', () => {
   const manifestMarker = runManifestMarker(runManifest);
 
   // The issue marker links this snapshot request to PR 9, which the adapter then loads.
-
   const mockIssueResponse = {
     labels: [{ name: 'eligible' }],
     comments: [{ body: manifestMarker }],
@@ -104,7 +103,10 @@ test('remote claims publish string leases and manifest leases', () => {
   adapterDependencies.remote.claim(
     81,
     'key',
-    createTestRunManifest({ artifacts: ['existing'], lease: { owner: 'lease-owner', expiresAt: 7 } }),
+    createTestRunManifest({
+      artifacts: ['existing'],
+      lease: { owner: 'lease-owner', expiresAt: 7 },
+    }),
   );
 
   assert.ok(calls.some((args) => args.includes('sloop/v1/lease/81/key/lease')));
@@ -187,7 +189,8 @@ test('production config reconciler delegates validated synchronization through i
 test('adapter workspace callbacks use the configured checkout lifecycle', () => {
   const checkout = createTemporaryDirectory('sloop-infra-checkout-');
   const remote = createTemporaryDirectory('sloop-infra-checkout-remote-');
-  const runGitCommand = (...args) => execFileSync('git', args, { cwd: checkout, encoding: 'utf8' }).trim();
+  const runGitCommand = (...args) =>
+    execFileSync('git', args, { cwd: checkout, encoding: 'utf8' }).trim();
   runGitCommand('init', '-b', 'main');
   runGitCommand('config', 'user.email', 'test@example.com');
   runGitCommand('config', 'user.name', 'Sloop Test');
@@ -212,7 +215,6 @@ test('adapter workspace callbacks use the configured checkout lifecycle', () => 
 });
 
 // These are production adapters; only the GitHub CLI boundary is mocked so the tests exercise remote snapshot behavior.
-
 const createSnapshotAdapterDependenciesWithMockGitHubCommand = (issueResponse) => {
   const issueNumber = 81;
   const mockGitHubCommand = (_file, commandArgs) => {
@@ -238,7 +240,8 @@ const createSnapshotAdapterDependenciesWithMockGitHubCommand = (issueResponse) =
 test('remote snapshot returns no inline threads when the API response has none', () => {
   const issueNumber = 81;
   const mockIssueResponse = {};
-  const adapterDependencies = createSnapshotAdapterDependenciesWithMockGitHubCommand(mockIssueResponse);
+  const adapterDependencies =
+    createSnapshotAdapterDependenciesWithMockGitHubCommand(mockIssueResponse);
 
   const snapshot = adapterDependencies.remote.snapshot(issueNumber);
 
@@ -248,7 +251,8 @@ test('remote snapshot returns no inline threads when the API response has none',
 test('remote snapshot preserves a legacy marker comment', () => {
   const issueNumber = 81;
   const mockIssueResponse = { comments: [{ body: 'sloop/v1/marker' }] };
-  const adapterDependencies = createSnapshotAdapterDependenciesWithMockGitHubCommand(mockIssueResponse);
+  const adapterDependencies =
+    createSnapshotAdapterDependenciesWithMockGitHubCommand(mockIssueResponse);
 
   const snapshot = adapterDependencies.remote.snapshot(issueNumber);
 
@@ -262,7 +266,8 @@ test('remote snapshot uses pull-request metadata when a manifest marker is prese
   const runManifest = createTestRunManifest({ artifacts: [] });
   const manifestMarker = runManifestMarker(runManifest);
   const mockIssueResponse = { comments: [{ body: manifestMarker }] };
-  const adapterDependencies = createSnapshotAdapterDependenciesWithMockGitHubCommand(mockIssueResponse);
+  const adapterDependencies =
+    createSnapshotAdapterDependenciesWithMockGitHubCommand(mockIssueResponse);
 
   const snapshot = adapterDependencies.remote.snapshot(issueNumber);
   const hasUnregisteredArtifact = adapterDependencies.remote.reconcile(issueNumber, 'missing');

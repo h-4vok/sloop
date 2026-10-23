@@ -14,7 +14,13 @@ import {
 
 test('parses only exact issue release prefixes', () => {
   const recognizedTitles = ['[patch] fix', '[minor] feature', '[major] breaking'];
-  const unrecognizedTitles = ['fix', '[Patch] fix', '[none] docs', '[patch] [minor] fix', '[unknown] fix'];
+  const unrecognizedTitles = [
+    'fix',
+    '[Patch] fix',
+    '[none] docs',
+    '[patch] [minor] fix',
+    '[unknown] fix',
+  ];
 
   const recognizedKinds = recognizedTitles.map(parseIssueReleaseKind);
   const rejectedKinds = unrecognizedTitles.map(parseIssueReleaseKind);
@@ -204,7 +210,6 @@ test('rejects a release that points to a different commit', () => {
 test('merged-PR workflow runs the tested API helper with the built-in token', () => {
   const workflow = parseYaml(readFileSync('.github/workflows/release.yml', 'utf8'));
   const steps = workflow.jobs.release.steps;
-
 
   assert.deepEqual(workflow.on.pull_request.types, ['closed']);
   assert.equal(workflow.jobs.release.if, 'github.event.pull_request.merged == true');

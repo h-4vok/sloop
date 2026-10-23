@@ -163,7 +163,9 @@ test(
   'Windows PowerShell shim fallback rejects empty arguments instead of dropping them',
   { skip: process.platform !== 'win32' },
   async (t) => {
-    const fixtureDir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-global-codex-empty-'));
+    const fixtureDir = createIsolatedTemporaryDirectory(
+      join(tmpdir(), 'sloop-global-codex-empty-'),
+    );
     t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await writeFile(join(fixtureDir, 'codex.ps1'), "Write-Output 'shim was invoked'\n", 'utf8');
 

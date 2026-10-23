@@ -30,7 +30,8 @@
     "unlink:local": "npm unlink --global sloop",
     "help": "node dist/cli.js --help",
     "version": "node dist/cli.js --version",
-    "format": "prettier --write .",
+    "format": "npm run format:write",
+    "format:write": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "node scripts/install-git-hooks.mjs"
   },

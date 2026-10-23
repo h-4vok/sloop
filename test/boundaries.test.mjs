@@ -84,7 +84,6 @@ test('production assembly supplies every typed external-concern boundary', () =>
     RunEventSink: ['onReclaim'],
   };
 
-
   for (const [boundary, members] of Object.entries(methods))
     for (const member of members)
       assert.equal(typeof dependencies[member], 'function', `${boundary}.${member} is required`);
@@ -112,7 +111,6 @@ test('production adapters sanitize every GitHub body and marker publication path
     'https://user:password-secret@example.test/path',
     JSON.stringify({ nested: { accessToken: 'nested-secret', raw: 'local-only' } }),
   ].join('\n');
-
 
   dependencies.comment(33, body);
   dependencies.prComment(76, body);

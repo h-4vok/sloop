@@ -345,7 +345,10 @@ test('a public remote name changes the config fingerprint', () => {
 
 for (const [credentialType, remote] of [
   ['an AWS access key', 'AKIAIOSFODNN7EXAMPLE'],
-  ['a Slack bot token', ['xoxb', '123456789012', '123456789012', 'abcdefghijklmnopqrstuvwx'].join('-')],
+  [
+    'a Slack bot token',
+    ['xoxb', '123456789012', '123456789012', 'abcdefghijklmnopqrstuvwx'].join('-'),
+  ],
   ['a Stripe secret key', ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')],
 ]) {
   test('config parser rejects ' + credentialType + ' in the repository remote', () => {
@@ -507,8 +510,7 @@ test('config value parser converts boolean, integer, and duration fields', () =>
 });
 
 test('config value parser rejects invalid list values', () => {
-  const parseInvalidRequiredSkills = () =>
-    parseConfigValue(getConfigField('skills.required'), 'x');
+  const parseInvalidRequiredSkills = () => parseConfigValue(getConfigField('skills.required'), 'x');
 
   assert.throws(parseInvalidRequiredSkills, ConfigValidationError);
 });

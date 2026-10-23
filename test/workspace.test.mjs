@@ -41,7 +41,10 @@ test('checkout preparation uses the configured base SHA and rejects dirty trees'
   assert.equal(facts.headSha, facts.baseSha);
   assert.match(facts.branch, /^sloop\/32-[0-9a-f]{4}$/);
   writeFileSync(join(root, 'dirty.txt'), 'do not discard');
-  assert.throws(() => prepareCheckoutWorkspace(createWorkspaceOptions(root, { issue: 33 })), /dirty\.txt/);
+  assert.throws(
+    () => prepareCheckoutWorkspace(createWorkspaceOptions(root, { issue: 33 })),
+    /dirty\.txt/,
+  );
 });
 
 test('worktree preparation persists facts, supports recovery, listing, and cleanup', async () => {
@@ -224,7 +227,8 @@ test('recovery and cleanup preserve unknown untracked files and reject unmatched
 });
 
 test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {
-  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } =
+    await loadWorkspaceModule();
   const root = createRepository();
   const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
   runGitCommand(remote, 'init', '--bare');
@@ -246,7 +250,6 @@ test('clear retains registrations whose Git ancestry cannot be verified', async 
   const remoteRepository = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
 
   // Arrange a registered worktree with a valid local remote before invalidating its base commit.
-
   runGitCommand(remoteRepository, 'init', '--bare');
   runGitCommand(repositoryRoot, 'remote', 'add', 'origin', remoteRepository);
   runGitCommand(repositoryRoot, 'push', '-u', 'origin', 'main');
@@ -263,11 +266,9 @@ test('clear retains registrations whose Git ancestry cannot be verified', async 
   writeFileSync(stateFile, JSON.stringify(persistedState));
 
   // Act: cleanup cannot prove ancestry, so it must preserve the registered worktree.
-
   workspaceModule.clearWorkspaces(repositoryRoot);
 
   // Assert: both the registration and its execution directory remain available.
-
   const remainingWorkspaces = workspaceModule.listWorkspaces(repositoryRoot);
   const isExecutionRootPresent = existsSync(workspaceFacts.executionRoot);
 

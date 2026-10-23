@@ -26,6 +26,10 @@ npm run pr-checks
 Do not report a code task as complete while this gate is failing. If it fails,
 fix the issue or report the exact blocker and command output.
 
+If `npm run format:check` fails, apply the repository formatter with
+`npm run format:write`, then rerun `npm run format:check`. Do not hand-format
+individual Prettier differences or leave formatter output unapplied.
+
 All unit tests must be:
 
 1. Fast: run without unnecessary I/O, sleeps, or network calls.

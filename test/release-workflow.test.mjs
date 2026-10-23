@@ -142,8 +142,7 @@ test('publishing a second time reuses the tag without changing metadata', async 
   let hasTag = false;
   let hasRelease = false;
   const api = {
-    releaseByTag: async () =>
-      hasRelease ? { tagName: 'v0.2.1', targetCommitish: 'main' } : null,
+    releaseByTag: async () => (hasRelease ? { tagName: 'v0.2.1', targetCommitish: 'main' } : null),
     createRelease: async (tag) => {
       calls.push(['release', tag]);
       hasRelease = true;
@@ -169,7 +168,6 @@ test('publishing a second time reuses the tag without changing metadata', async 
     readFile: (file) => (file === 'package.json' ? '{"version":"0.2.0"}' : '# Changelog\n'),
     updateMetadata: recordMetadataWrite,
   };
-
 
   const first = await publishRelease(inputs);
   const countAfterFirst = calls.length;
