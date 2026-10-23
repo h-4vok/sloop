@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { test } from 'vitest';
 import { productionConfigReconciler, productionDependencies } from '../src/adapters.js';
 import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
 import { CliFailure } from '../src/dispatcher.js';

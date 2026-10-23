@@ -1,4 +1,4 @@
-import test, { afterEach } from 'node:test';
+import { afterEach, test } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

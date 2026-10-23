@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +13,7 @@ test(
   async (t) => {
     // Arrange: all external state is fictional; only the Arbiter process is real.
     const root = mkdtempSync(join(tmpdir(), 'sloop-real-arbiter-'));
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    t.onTestFinished(() => rmSync(root, { recursive: true, force: true }));
     writeFileSync(join(root, 'normalize.mjs'), 'export const normalize = (value) => value;\n');
     const issue = {
       number: 41,
@@ -131,7 +131,7 @@ test(
         const outputIndex = spec.args.indexOf('--output-last-message');
         assert.ok(outputIndex >= 0, 'production must request a structured result file');
         raw = JSON.parse(readFileSync(spec.args[outputIndex + 1], 'utf8'));
-        t.diagnostic(`Unmodified Arbiter result: ${JSON.stringify(raw)}`);
+        console.info(`Unmodified Arbiter result: ${JSON.stringify(raw)}`);
         return result;
       },
       now: () => Date.now(),

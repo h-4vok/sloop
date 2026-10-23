@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { CliFailure } from '../src/dispatcher.js';
 import { emitDispatcherFailure, HELP, requireSupportedNode, runCli } from '../src/cli.js';
 

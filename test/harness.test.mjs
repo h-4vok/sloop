@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import {
   ResumeAmbiguousError,
   CodexHarness,

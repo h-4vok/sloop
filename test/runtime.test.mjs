@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import {
   discoverRepository,
   EXIT,

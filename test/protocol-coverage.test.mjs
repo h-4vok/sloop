@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { AgentContractError, validateAgentEnvelope } from '../src/agent-runner.js';
 import {
   REMOTE_PROTOCOL,

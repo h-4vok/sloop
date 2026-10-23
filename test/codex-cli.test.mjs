@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import test from 'node:test';
+import { test } from 'vitest';
 import { codexCliInvocation } from '../src/codex-cli.js';
 
 test('Codex CLI uses the global command directly outside Windows', () => {
@@ -55,7 +55,7 @@ test(
   { skip: process.platform !== 'win32' },
   async (t) => {
     const fixtureDir = await mkdtemp(join(tmpdir(), 'sloop-global-codex-'));
-    t.after(() => rm(fixtureDir, { recursive: true, force: true }));
+    t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await copyFile(process.execPath, join(fixtureDir, 'codex.exe'));
 
     const expectedArgs = [
@@ -105,7 +105,7 @@ test(
   { skip: process.platform !== 'win32' },
   async (t) => {
     const fixtureDir = await mkdtemp(join(tmpdir(), 'sloop-global-codex-ps1-'));
-    t.after(() => rm(fixtureDir, { recursive: true, force: true }));
+    t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await writeFile(
       join(fixtureDir, 'codex.ps1'),
       "& $env:SLOOP_NODE_EXE -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' @args; exit $LASTEXITCODE\n",
@@ -163,7 +163,7 @@ test(
   { skip: process.platform !== 'win32' },
   async (t) => {
     const fixtureDir = await mkdtemp(join(tmpdir(), 'sloop-global-codex-empty-'));
-    t.after(() => rm(fixtureDir, { recursive: true, force: true }));
+    t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
     await writeFile(join(fixtureDir, 'codex.ps1'), "Write-Output 'shim was invoked'\n", 'utf8');
 
     const invocation = codexCliInvocation(['exec', '']);
