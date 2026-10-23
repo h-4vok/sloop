@@ -87,6 +87,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
     'model_reasoning_effort=high',
     'do the work',
   ]);
+  assert.ok(launchedCodexArgs(calls[0]).every((arg) => arg.length > 0));
   assert.deepEqual(logs, [
     ['stdout', '{"type":"thread.started","thread_id":"session-start"}\n'],
     ['stdout', '{"type":"message"}\n'],
@@ -102,7 +103,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   if (process.platform === 'win32')
     assert.match(
       Buffer.from(calls[0].args.at(-1), 'base64').toString('utf16le'),
-      /& codex @codexArgs/,
+      /Get-Command codex\.exe/,
     );
 });
 

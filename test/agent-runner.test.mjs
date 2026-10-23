@@ -156,6 +156,7 @@ test('Codex runner builds separated structured-output argv and captures a result
   assert.equal((await runner.run('prompt', context)).status, 'ready');
   assert.equal(seen[0], process.platform === 'win32' ? 'powershell.exe' : 'codex');
   const codexArgs = forwardedArgs(seen[2], seen[1]);
+  assert.ok(codexArgs.every((arg) => arg.length > 0));
   assert.deepEqual(codexArgs.slice(0, 7), [
     'exec',
     '--cd',
