@@ -1,4 +1,4 @@
-import type { CliCommand } from '../../runtime.js';
+import type { CliCommand } from './CliCommand.js';
 import type { CliModules } from './CliModules.js';
 import type { CliExecutionContext } from './CliExecutionContext.js';
 

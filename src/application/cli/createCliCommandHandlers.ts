@@ -1,4 +1,4 @@
-import type { CliCommand } from '../../runtime.js';
+import type { CliCommand } from './CliCommand.js';
 import type { CliCommandHandlerMap } from './CliCommandHandlerMap.js';
 import type { CliCommandHandlers } from './CliCommandHandlers.js';
 import type { CliExecutionContext } from './CliExecutionContext.js';
@@ -15,11 +15,11 @@ type CliRuntime = NonNullable<CliModules['runtime']>;
 // Creates the command routing object bound to the shared CLI execution context.
 export function createCliCommandHandlers(context: CliExecutionContext): CliCommandHandlers {
   const commandHandlerMap: CliCommandHandlerMap = {
-    help: (command) => runCliHelpCommand(command, context),
-    version: (command) => runCliVersionCommand(command, context),
-    'read-only': (command, runtime) => runCliReadOnlyCommand(command, runtime, context),
-    config: (command, runtime) => runCliConfigCommand(command, runtime, context),
-    dispatcher: (command, runtime) => runCliDispatcherCommand(command, runtime, context),
+    help: (command) => runCliHelpCommand.run(command, context),
+    version: (command) => runCliVersionCommand.run(command, context),
+    'read-only': (command, runtime) => runCliReadOnlyCommand.run(command, runtime, context),
+    config: (command, runtime) => runCliConfigCommand.run(command, runtime, context),
+    dispatcher: (command, runtime) => runCliDispatcherCommand.run(command, runtime, context),
   };
 
   const runCliCommand = (command: CliCommand, runtime: CliRuntime) =>

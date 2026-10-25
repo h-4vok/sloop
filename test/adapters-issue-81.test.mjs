@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
 import { productionConfigReconciler, productionDependencies } from '../src/adapters.js';
-import { CliFailure } from '../src/dispatcher.js';
+import { ExternalServiceError } from '../src/core/ExternalServiceError.js';
 import { runManifestMarker } from '../src/remote-state.js';
 
 // This builds the production adapter dependencies and mocks only the GitHub CLI executor.
@@ -35,15 +35,16 @@ function createRepository() {
   return root;
 }
 
-test('adapter wraps GitHub comment failures with the external-service exit code', () => {
+test('adapter reports GitHub comment failures with a typed external-service error', () => {
   const dependencies = createAdapterDependenciesWithMockGitHubCommand(() => {
     throw new Error('permission denied');
   });
   const publishComment = () => dependencies.comment(81, 'body');
 
   assert.throws(publishComment, (error) => {
-    assert.ok(error instanceof CliFailure);
-    assert.equal(error.exitCode, 5);
+    assert.ok(error instanceof ExternalServiceError);
+    assert.equal(error.service, 'github');
+    assert.equal(error.message, 'permission denied');
     return true;
   });
 });
@@ -317,7 +318,7 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
   });
   assert.throws(
     () => failing.list(),
-    (error) => error instanceof CliFailure && error.exitCode === 5,
+    (error) => error instanceof ExternalServiceError && error.service === 'github',
   );
   assert.throws(() => failing.eligible(), /offline/);
   assert.throws(() => failing.remote.reconcile(81, 'x'), /GitHub reconciliation unavailable/);

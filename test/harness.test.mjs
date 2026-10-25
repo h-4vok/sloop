@@ -129,6 +129,18 @@ test('CodexHarness returns completed agent messages as the turn output', async (
   });
 });
 
+test('CodexHarness accepts session IDs from alternate JSON event shapes', async () => {
+  const calls = [];
+  const harness = createMockCodexHarness(
+    { stdout: ['{"session_id":"session-alternate"}\n'] },
+    calls,
+  );
+
+  const result = await harness.start(context, { prompt: 'read alternate session field' });
+
+  assert.deepEqual(result, { accepted: true, session: 'session-alternate' });
+});
+
 test('CodexHarness resumes the supplied opaque session and accepts a replacement', async () => {
   const calls = [];
   const harness = createMockCodexHarness(
@@ -158,6 +170,15 @@ test('CodexHarness resumes the supplied opaque session and accepts a replacement
   ]);
 });
 
+test('CodexHarness rejects resume requests without a session reference', () => {
+  const harness = createMockCodexHarness({ stdout: [] }, []);
+
+  assert.throws(
+    () => harness.resume(context, { prompt: 'resume without a reference', session: '' }),
+    ResumeRejectedError,
+  );
+});
+
 test('CodexHarness rejects successful output without a session ID', async () => {
   const harness = createMockCodexHarness({ stdout: ['{"type":"message"}\n'] }, []);
 
@@ -179,6 +200,71 @@ test('CodexHarness distinguishes pre-turn rejection from an ambiguous started fa
     () => ambiguous.start(context, { prompt: 'do not retry' }),
     ResumeAmbiguousError,
   );
+});
+
+test('CodexHarness kills timed-out processes and rejects spawn errors', async () => {
+  const timedOutChild = new EventEmitter();
+  timedOutChild.stdout = new EventEmitter();
+  timedOutChild.stderr = new EventEmitter();
+  timedOutChild.stdin = { end: () => {} };
+  timedOutChild.kill = () => queueMicrotask(() => timedOutChild.emit('close', null));
+  const timedOutHarness = new CodexHarness({
+    cwd: 'fixture-repository',
+    model: 'gpt-5-codex',
+    sandbox: 'workspace-write',
+    reasoningEffort: 'high',
+    timeoutMs: 1,
+    spawn: () => timedOutChild,
+  });
+
+  await assert.rejects(
+    () => timedOutHarness.start(context, { prompt: 'wait for timeout' }),
+    ResumeRejectedError,
+  );
+
+  const failedChild = new EventEmitter();
+  failedChild.stdout = new EventEmitter();
+  failedChild.stderr = new EventEmitter();
+  failedChild.stdin = { end: () => {} };
+  failedChild.kill = () => {};
+  const failedHarness = new CodexHarness({
+    cwd: 'fixture-repository',
+    model: 'gpt-5-codex',
+    sandbox: 'workspace-write',
+    reasoningEffort: 'high',
+    timeoutMs: 1000,
+    spawn: () => {
+      queueMicrotask(() => failedChild.emit('error', new Error('spawn failed')));
+      return failedChild;
+    },
+  });
+
+  await assert.rejects(
+    () => failedHarness.start(context, { prompt: 'fail to spawn' }),
+    /spawn failed/,
+  );
+});
+
+test('CodexHarness kills a child process when its output streams are unavailable', async () => {
+  const childWithoutOutput = new EventEmitter();
+  childWithoutOutput.stderr = new EventEmitter();
+  childWithoutOutput.kill = () => {
+    childWithoutOutput.wasKilled = true;
+  };
+  const harness = new CodexHarness({
+    cwd: 'fixture-repository',
+    model: 'gpt-5-codex',
+    sandbox: 'workspace-write',
+    reasoningEffort: 'high',
+    timeoutMs: 1000,
+    spawn: () => childWithoutOutput,
+  });
+
+  await assert.rejects(
+    () => harness.start(context, { prompt: 'missing streams' }),
+    /Codex process streams were not created/,
+  );
+  assert.equal(childWithoutOutput.wasKilled, true);
 });
 
 test('resumes the stored session for the same run issue and role', async () => {
@@ -223,6 +309,24 @@ test('resumes the stored session for the same run issue and role', async () => {
     persisted[`run-a${String.fromCharCode(0)}114${String.fromCharCode(0)}worker`],
     'opaque-a',
   );
+});
+
+test('session store rejects keys without a valid run identifier', async () => {
+  const store = new SessionStore(join(tmpdir(), 'sloop-invalid-session-key.json'));
+
+  await assert.rejects(
+    () => store.get({ run: ' ', issue: 114, role: 'worker' }),
+    /session key requires a run, positive issue, and role/,
+  );
+});
+
+test('session store reports malformed persisted JSON instead of treating it as missing', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-harness-invalid-json-'));
+  const sessionFile = join(root, 'sessions.json');
+  await import('node:fs/promises').then(({ writeFile }) => writeFile(sessionFile, '{invalid'));
+  const store = new SessionStore(sessionFile);
+
+  await assert.rejects(() => store.get({ run: 'run-a', issue: 114, role: 'worker' }), SyntaxError);
 });
 
 test('starts a separate session for a different run key', async () => {

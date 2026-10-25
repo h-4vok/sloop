@@ -1,14 +1,17 @@
-import type { CliCommand } from '../../runtime.js';
+import type { CliCommand } from './CliCommand.js';
 import type { CliExecutionContext } from './CliExecutionContext.js';
 import type { CliModules } from './CliModules.js';
 
 type ReadOnlyCliCommand = Extract<CliCommand, { kind: 'read-only' }>;
 type CliRuntime = NonNullable<CliModules['runtime']>;
 
-export async function runCliReadOnlyCommand(
-  command: ReadOnlyCliCommand,
-  runtime: CliRuntime,
-  context: CliExecutionContext,
-): Promise<number> {
-  return runtime.runReadOnlyCommand(command.command, context.runtimeIo);
-}
+/** Executes a parsed read-only command through the runtime boundary. */
+export const runCliReadOnlyCommand = Object.freeze({
+  async run(
+    command: ReadOnlyCliCommand,
+    runtime: CliRuntime,
+    context: CliExecutionContext,
+  ): Promise<number> {
+    return runtime.runReadOnlyCommand(command.command, context.runtimeIo);
+  },
+});

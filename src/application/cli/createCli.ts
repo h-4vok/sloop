@@ -16,7 +16,7 @@ export function createCli(dependencies: CliDependencies): Readonly<{
   };
   const commandHandlers = createCliCommandHandlers(context);
   const cli = {
-    runCliCommand: (args: readonly string[]) => runCliCommand(args, context, commandHandlers),
+    runCliCommand: (args: readonly string[]) => runCliCommand.run(args, context, commandHandlers),
   };
 
   return cli;

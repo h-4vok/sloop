@@ -4,7 +4,8 @@ import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
+import { ExternalServiceError } from '../src/core/ExternalServiceError.js';
 import { CliFailure } from '../src/dispatcher.js';
 import {
   createCli,
@@ -14,6 +15,7 @@ import {
   startCli,
 } from '../src/application/cli/index.js';
 import { createNodeHost } from '../src/infrastructure/host/index.js';
+import { EXIT, resultOutput } from '../src/runtime.js';
 
 const cli = resolve('dist/cli.js');
 const versionPattern = /^\d+\.\d+\.\d+$/;
@@ -27,11 +29,35 @@ async function runCli(args, nodeVersion = process.version, modules) {
     log: (message) => output.stdout.push(message),
     error: (message) => output.stderr.push(message),
   };
+  const compatibleModules = modules?.runtime?.parseCliCommand
+    ? {
+        ...modules,
+        runtime: {
+          ...modules.runtime,
+          parseCliCommand: (...parseArgs) => {
+            try {
+              const parsed = modules.runtime.parseCliCommand(...parseArgs);
+              return parsed && typeof parsed === 'object' && 'ok' in parsed
+                ? parsed
+                : { ok: true, value: parsed };
+            } catch (error) {
+              return { ok: false, error: error instanceof Error ? error.message : String(error) };
+            }
+          },
+          discoverRepository: (...runtimeArgs) => {
+            const discovered = modules.runtime.discoverRepository?.(...runtimeArgs);
+            return discovered && typeof discovered === 'object' && 'ok' in discovered
+              ? discovered
+              : { ok: true, value: discovered };
+          },
+        },
+      }
+    : modules;
   const cliRunner = createCli({
     host: { ...createNodeHost(), nodeVersion },
     logger,
     version: packageVersion,
-    modules,
+    modules: compatibleModules,
   });
   process.exitCode = await cliRunner.runCliCommand(args);
 }
@@ -63,7 +89,7 @@ test('CLI bootstrap connects the production runner to its injected host and logg
   const stderr = [];
   process.exitCode = undefined;
 
-  await startCli(['--version'], packageVersion, process.version, {
+  await startCli.start(['--version'], packageVersion, process.version, {
     host: createNodeHost(),
     logger: {
       log: (message) => stdout.push(message),
@@ -234,9 +260,11 @@ test('runCli routes config commands through injected config adapters after disco
           calls.push(['reconciler', root]);
           return async () => {};
         },
-        runConfigCommand: async (root, args, reconciler) => {
-          calls.push(['run', root, args, typeof reconciler]);
-          return 0;
+        runConfigCommand: {
+          run: async (root, args, reconciler) => {
+            calls.push(['run', root, args, typeof reconciler]);
+            return 0;
+          },
         },
       },
     });
@@ -250,6 +278,40 @@ test('runCli routes config commands through injected config adapters after disco
   ]);
 });
 
+test('config command emits a discovery diagnostic when repository discovery fails', async () => {
+  const output = captureCliOutput();
+  process.exitCode = undefined;
+
+  try {
+    await runCli(['config', 'show'], process.version, {
+      runtime: {
+        emitNodeVersionFailure: assert.fail,
+        emitUsageFailure: assert.fail,
+        parseCliCommand: () => ({ ok: true, value: { kind: 'config', args: ['show'] } }),
+        discoverRepository: () => ({
+          ok: false,
+          error: {
+            check: 'repository',
+            message: 'The current directory is not inside a Git repository.',
+            remediation: 'Change to the target repository.',
+          },
+        }),
+        resultOutput,
+        EXIT,
+        runDispatcherPreflight: assert.fail,
+        runReadOnlyCommand: assert.fail,
+      },
+    });
+
+    assert.equal(process.exitCode, EXIT.preflight);
+    assert.match(output.stderr[0], /Repository startup failed/);
+    assert.match(output.stderr[0], /\[repository\]/);
+  } finally {
+    process.exitCode = undefined;
+    output.restore();
+  }
+});
+
 test('runCli stops dispatcher execution when preflight fails', async () => {
   let exitCode;
   process.exitCode = undefined;
@@ -258,7 +320,10 @@ test('runCli stops dispatcher execution when preflight fails', async () => {
       runtime: {
         emitNodeVersionFailure: assert.fail,
         emitUsageFailure: assert.fail,
-        parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+        parseCliCommand: () => ({
+          ok: true,
+          value: { kind: 'dispatcher', command: { kind: 'list' } },
+        }),
         runDispatcherPreflight: () => ({ code: 6, diagnostics: [] }),
         runReadOnlyCommand: assert.fail,
       },
@@ -282,7 +347,10 @@ test('runner loads production dispatcher modules for dispatcher commands', async
       runtime: {
         emitNodeVersionFailure: assert.fail,
         emitUsageFailure: assert.fail,
-        parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+        parseCliCommand: () => ({
+          ok: true,
+          value: { kind: 'dispatcher', command: { kind: 'list' } },
+        }),
         runDispatcherPreflight: () => ({ code: 6, diagnostics: [] }),
         runReadOnlyCommand: assert.fail,
       },
@@ -420,6 +488,22 @@ test('public dispatcher failure emitter preserves busy exit and stream contract'
   assert.deepEqual(stderr, ['[sloop] Issue is already owned.']);
 });
 
+test('public dispatcher failure emitter maps external service errors to exit 5', () => {
+  const stdout = [];
+  const stderr = [];
+  const logger = {
+    log: (message) => stdout.push(message),
+    error: (message) => stderr.push(message),
+  };
+  const externalServiceError = new ExternalServiceError('github', 'GitHub request failed.');
+
+  const exitCode = emitDispatcherFailure(externalServiceError, logger);
+
+  assert.equal(exitCode, 5);
+  assert.deepEqual(stdout, []);
+  assert.deepEqual(stderr, ['[sloop] GitHub request failed.']);
+});
+
 function captureCliOutput() {
   const output = { stdout: [], stderr: [] };
   activeOutput = output;
@@ -538,4 +622,46 @@ test('runCli handles injected help and version commands without preflight', asyn
   assert.equal(output.stdout[0], 'Usage: sloop status [--verbose] [--json]');
   assert.match(output.stdout[1], versionPattern);
   assert.deepEqual(output.stderr, []);
+});
+
+test('the executable CLI wrapper forwards arguments and reports rejected startup', async () => {
+  const originalArgv = process.argv;
+  const originalExitCode = process.exitCode;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalTestNodeVersion = process.env.SLOOP_TEST_NODE_VERSION;
+  const startCli = { start: vi.fn(async () => {}) };
+  const loggerError = vi.fn();
+
+  vi.doMock('../src/application/cli/index.js', () => ({ startCli }));
+  vi.doMock('../src/infrastructure/index.js', () => ({
+    consoleLogger: { error: loggerError },
+  }));
+
+  try {
+    process.argv = [process.execPath, '/test/not-the-entrypoint.js'];
+    vi.resetModules();
+    const cliModule = await import('../src/cli.js');
+    await cliModule.cli.runCli(['--version'], 'v22.1.0');
+
+    assert.deepEqual(startCli.start.mock.calls[0], [['--version'], packageVersion, 'v22.1.0']);
+
+    startCli.start.mockRejectedValueOnce(new Error('startup failed'));
+    process.argv = [process.execPath, '/test/cli.js', 'status', '--json'];
+    vi.resetModules();
+    await import('../src/cli.js');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(process.exitCode, 2);
+    assert.deepEqual(loggerError.mock.calls, [['[sloop] startup failed']]);
+  } finally {
+    process.argv = originalArgv;
+    process.exitCode = originalExitCode;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalTestNodeVersion === undefined) delete process.env.SLOOP_TEST_NODE_VERSION;
+    else process.env.SLOOP_TEST_NODE_VERSION = originalTestNodeVersion;
+    vi.doUnmock('../src/application/cli/index.js');
+    vi.doUnmock('../src/infrastructure/index.js');
+    vi.resetModules();
+  }
 });

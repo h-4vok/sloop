@@ -6,7 +6,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const loadWorkspaceModule = () => import('../src/workspace.ts');
+const loadWorkspaceModule = async () => {
+  const { workspaceAdapter } = await import('../src/workspace.ts');
+
+  return workspaceAdapter;
+};
 const runGitCommand = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 const createRepository = () => {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-workspace-'));
@@ -26,6 +30,16 @@ const createWorkspaceOptions = (root, extra = {}) => ({
   issue: 32,
   runId: 'run-12345678',
   ...extra,
+});
+
+test('workspace root exports preserve the named compatibility API', async () => {
+  const workspaceModule = await import('../src/workspace.ts');
+
+  assert.equal(
+    workspaceModule.prepareWorktreeWorkspace,
+    workspaceModule.workspaceAdapter.prepareWorktreeWorkspace,
+  );
+  assert.equal(workspaceModule.cleanupWorkspace, workspaceModule.workspaceAdapter.cleanupWorkspace);
 });
 
 test('checkout preparation uses the configured base SHA and rejects dirty trees', async () => {
@@ -68,6 +82,21 @@ test('worktree preparation persists facts, supports recovery, listing, and clean
   ]);
   cleanupWorkspace(facts, root);
   assert.equal(listWorkspaces(root).length, 0);
+});
+
+test('worktree preparation refuses to overwrite an existing execution directory', async () => {
+  const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const options = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
+  const createdWorkspace = prepareWorktreeWorkspace(options);
+
+  assert.throws(() => prepareWorktreeWorkspace(options), /worktree target already exists/);
+
+  cleanupWorkspace(createdWorkspace, root);
 });
 
 test('recovery and cleanup use the persisted base when the remote advances', async () => {
@@ -224,6 +253,109 @@ test('recovery and cleanup preserve unknown untracked files and reject unmatched
     'keep this too\n',
   );
   assert.equal(listWorkspaces(root).length, 1);
+});
+
+test('remote recovery rejects a workspace unrelated to the current base branch', async () => {
+  const { prepareWorktreeWorkspace, recoverWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const options = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(options);
+  const stateFile = join(root, '.sloop', 'state.json');
+  writeFileSync(stateFile, '{"workspaces":[]}\n');
+  runGitCommand(root, 'checkout', '--orphan', 'unrelated-base');
+  runGitCommand(root, 'rm', '-rf', '.');
+  writeFileSync(join(root, 'UNRELATED.md'), 'unrelated base\n');
+  runGitCommand(root, 'add', '.');
+  runGitCommand(root, 'commit', '-m', 'create unrelated base');
+  runGitCommand(root, 'push', '--force', 'origin', 'unrelated-base:main');
+  runGitCommand(root, 'fetch', 'origin', 'main');
+
+  assert.equal(recoverWorkspace({ ...options, branch: facts.branch }), undefined);
+  assert.equal(existsSync(facts.executionRoot), true);
+});
+
+test('cleanup rejects generated Serena directories containing files under ignored memories', async () => {
+  const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const options = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(options);
+  const serenaDirectory = join(facts.executionRoot, '.serena');
+  mkdirSync(join(serenaDirectory, 'memories'), { recursive: true });
+  writeFileSync(join(serenaDirectory, '.gitignore'), 'project.yml\nproject.local.yml\nmemories/\n');
+  writeFileSync(join(serenaDirectory, 'project.yml'), 'project: sloop\n');
+  writeFileSync(join(serenaDirectory, 'project.local.yml'), 'local: true\n');
+  writeFileSync(join(serenaDirectory, 'memories', 'user.md'), 'keep this file\n');
+
+  assert.throws(() => cleanupWorkspace(facts, root), /workspace is dirty/);
+  assert.equal(existsSync(join(serenaDirectory, 'memories', 'user.md')), true);
+});
+
+test('cleanup preserves nested Serena data outside the generated metadata contract', async () => {
+  const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const options = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(options);
+  const serenaDirectory = join(facts.executionRoot, '.serena');
+  mkdirSync(join(serenaDirectory, 'nested'), { recursive: true });
+  writeFileSync(join(serenaDirectory, '.gitignore'), 'project.yml\nproject.local.yml\nmemories/\n');
+  writeFileSync(join(serenaDirectory, 'project.yml'), 'project: sloop\n');
+  writeFileSync(join(serenaDirectory, 'project.local.yml'), 'local: true\n');
+
+  assert.throws(() => cleanupWorkspace(facts, root), /workspace is dirty/);
+  assert.equal(existsSync(join(serenaDirectory, 'nested')), true);
+});
+
+test('cleanup preserves a remote-owned workspace that contains unrecognized files', async () => {
+  const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const options = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(options);
+  writeFileSync(join(facts.executionRoot, 'user.txt'), 'preserve this workspace');
+  writeFileSync(join(root, '.sloop', 'state.json'), '{"workspaces":[]}\n');
+
+  assert.throws(
+    () => cleanupWorkspace(facts, root),
+    /remote-owned workspace could not be verified/,
+  );
+  assert.equal(existsSync(join(facts.executionRoot, 'user.txt')), true);
+});
+
+test('cleanup rejects registered facts when their ancestry cannot be verified', async () => {
+  const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
+  const root = createRepository();
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  const options = createWorkspaceOptions(root, { worktreeRoot: join(root, 'isolated') });
+  const facts = prepareWorktreeWorkspace(options);
+  facts.baseSha = 'not-a-commit';
+  const stateFile = join(root, '.sloop', 'state.json');
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  state.workspaces[0].baseSha = facts.baseSha;
+  writeFileSync(stateFile, JSON.stringify(state));
+
+  assert.throws(
+    () => cleanupWorkspace(facts, root),
+    /workspace registration or facts could not be verified/,
+  );
+  assert.equal(existsSync(facts.executionRoot), true);
 });
 
 test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {

@@ -59,6 +59,16 @@ for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
   });
 }
 
+test('arbiter decisions stop when the intervention limit has been reached', () => {
+  const currentState = { interventions: 2, decisions: [] };
+  const findings = [];
+
+  assert.throws(
+    () => applyArbiterDecisions(currentState, findings, [], 2),
+    /arbiter intervention limit reached/,
+  );
+});
+
 const malformedDecisions = [
   ['null decision', null],
   ['array decision', []],

@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { accessSync, constants, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { stdin, stdout } from 'node:process';
 import type { NodeHost } from './NodeHost.js';
 
@@ -9,6 +10,7 @@ export function createNodeHost(): NodeHost {
     cwd: process.cwd(),
     platform: process.platform,
     nodeVersion: process.version,
+    homeDirectory: homedir(),
     stdin,
     stdout,
     run(file, args, cwd) {
@@ -25,6 +27,14 @@ export function createNodeHost(): NodeHost {
       return commandOutput;
     },
     readFile: (file) => readFileSync(file, 'utf8'),
+    canRead(file) {
+      try {
+        accessSync(file, constants.R_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
 
   return nodeHost;

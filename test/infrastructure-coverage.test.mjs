@@ -4,10 +4,14 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { productionConfigReconciler, productionDependencies } from '../src/adapters.js';
+import { activeRunReconcilerFactory } from '../src/infrastructure/adapters/createActiveRunReconciler.js';
+import { dispatcherControlsFactory } from '../src/infrastructure/adapters/createDispatcherControls.js';
+import { createNodeHost } from '../src/infrastructure/host/createNodeHost.js';
+import { createProductionRuntimeIo } from '../src/infrastructure/host/createProductionRuntimeIo.js';
 import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
-import { CliFailure } from '../src/dispatcher.js';
+import { ExternalServiceError } from '../src/core/ExternalServiceError.js';
 import { withEphemeralMutex, withEphemeralMutexAsync } from '../src/mutex.js';
 import { RunLogger, applyRunRetention, runDirectory } from '../src/run-log.js';
 import { runManifestMarker } from '../src/remote-state.js';
@@ -39,6 +43,30 @@ function createAdapterDependenciesWithMockGitHubCommand(execute, repository = 'o
       execFileSync: execute,
     },
   );
+}
+
+function createAlignedWorkerRepository(branch) {
+  const root = createTemporaryDirectory('sloop-active-run-reconcile-');
+  const remote = createTemporaryDirectory('sloop-active-run-remote-');
+  const runGitCommand = (directory, ...args) =>
+    execFileSync('git', args, { cwd: directory, encoding: 'utf8' }).trim();
+
+  runGitCommand(root, 'init', '-b', 'main');
+  runGitCommand(root, 'config', 'user.email', 'test@example.com');
+  runGitCommand(root, 'config', 'user.name', 'Sloop Test');
+  writeFileSync(join(root, 'README.md'), 'base\n');
+  runGitCommand(root, 'add', '.');
+  runGitCommand(root, 'commit', '-m', 'base');
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
+  runGitCommand(root, 'checkout', '-b', branch);
+  writeFileSync(join(root, 'worker.txt'), 'worker change\n');
+  runGitCommand(root, 'add', 'worker.txt');
+  runGitCommand(root, 'commit', '-m', 'worker change');
+  runGitCommand(root, 'push', '-u', 'origin', branch);
+
+  return root;
 }
 
 test('remote snapshot normalizes issue and pull-request state', () => {
@@ -291,13 +319,81 @@ test('production adapter methods preserve non-Error failures', () => {
   assert.throws(() => rawFailure.remote.publish(81, createTestRunManifest()), /raw failure/);
 });
 
-test('production adapters preserve already-normalized CLI failures', () => {
-  const cliFailure = createAdapterDependenciesWithMockGitHubCommand(() => {
-    throw new CliFailure(5, 'already normalized');
+test('production adapters preserve typed external-service failures', () => {
+  const githubFailure = createAdapterDependenciesWithMockGitHubCommand(() => {
+    throw new ExternalServiceError('github', 'already normalized');
   });
   assert.throws(
-    () => cliFailure.list(),
-    (error) => error instanceof CliFailure && error.message === 'already normalized',
+    () => githubFailure.list(),
+    (error) =>
+      error instanceof ExternalServiceError &&
+      error.service === 'github' &&
+      error.message === 'already normalized',
+  );
+});
+
+test('issue creation normalizes command failures and records the adapter error', () => {
+  const events = [];
+  const adapterDependencies = createAdapterDependenciesWithMockGitHubCommand(() => {
+    throw new Error('issue creation denied');
+  });
+  adapterDependencies.setRunLogger({ write: (type, data) => events.push({ type, data }) });
+
+  assert.throws(
+    () => adapterDependencies.createIssue('title', 'body'),
+    (error) => {
+      assert.ok(error instanceof ExternalServiceError);
+      assert.equal(error.service, 'github');
+      assert.equal(error.message, 'issue creation denied');
+      return true;
+    },
+  );
+  assert.ok(
+    events.some(({ type, data }) => type === 'github-error' && data.operation === 'issue.create'),
+  );
+});
+
+test('issue creation returns IDs from GitHub URLs and reuses idempotent issues', () => {
+  const calls = [];
+  const adapterDependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
+    calls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list')
+      return JSON.stringify([{ number: 52, body: 'Idempotency key: request-52' }]);
+    if (args[0] === 'issue' && args[1] === 'create')
+      return 'https://github.com/owner/repo/issues/51\n';
+    return '';
+  });
+
+  const createdIssue = adapterDependencies.createIssue('new issue', 'description');
+  const reusedIssue = adapterDependencies.createIssue(
+    'same request',
+    'Idempotency key: request-52',
+  );
+
+  assert.equal(createdIssue, 51);
+  assert.equal(reusedIssue, 52);
+  assert.equal(calls.filter((args) => args[1] === 'create').length, 1);
+});
+
+test('production harness rejects roles with an unsupported harness type', () => {
+  const validatedConfig = loadConfigText(canonicalConfigYaml());
+  const config = {
+    ...validatedConfig,
+    agents: {
+      ...validatedConfig.agents,
+      worker: { ...validatedConfig.agents.worker, harness: 'unsupported' },
+    },
+  };
+  const adapterDependencies = productionDependencies(
+    createTemporaryDirectory('sloop-invalid-harness-'),
+    config,
+    'owner/repository',
+    { execFileSync: () => '{}' },
+  );
+
+  assert.throws(
+    () => adapterDependencies.harness('worker', { timeoutMs: 1000 }, {}, { write: () => {} }),
+    /unsupported harness for role worker/,
   );
 });
 
@@ -386,4 +482,129 @@ test('run logger restores sequence after a corrupt tail and records event payloa
   const next = new RunLogger(restoredRunDirectory);
   next.write('next', { value: true });
   assert.equal(JSON.parse(readFileSync(next.file, 'utf8').trim().split(/\r?\n/).at(-1)).seq, 5);
+});
+
+test('active-run reconciliation classifies open and unverifiable runs', () => {
+  const config = loadConfigText(canonicalConfigYaml());
+  let issueState = 'OPEN';
+  let pullRequest = {
+    number: 9,
+    state: 'OPEN',
+    baseRefName: config.repository.baseBranch,
+    headRefName: 'codex/issue-81-x',
+    body: 'Fixes #81',
+  };
+  const client = {
+    runJson: (args) => (args[0] === 'issue' ? { state: issueState } : pullRequest),
+  };
+  const workerRoot = createAlignedWorkerRepository('codex/issue-81-x');
+  const reconcile = activeRunReconcilerFactory.create({ client, config, root: workerRoot });
+
+  const openResult = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
+  issueState = 'CLOSED';
+  pullRequest = { ...pullRequest, body: 'Unrelated change' };
+  const missingClosingReference = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
+  pullRequest = { ...pullRequest, body: 'Fixes #81' };
+  const verifiedIdentity = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
+  const unavailableReconcile = activeRunReconcilerFactory.create({
+    client,
+    config,
+    root: tmpdir(),
+  })({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
+  pullRequest = { ...pullRequest, state: 'MERGED' };
+  issueState = 'OPEN';
+  const mergedPullRequest = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
+  pullRequest = {
+    number: 9,
+    state: 'MERGED',
+    baseRefName: config.repository.baseBranch,
+    body: 'Fixes #81',
+  };
+  const missingBranch = reconcile({ issue: 81, pr: 9 });
+
+  assert.deepEqual(openResult, {
+    outcome: 'open',
+    reason: 'issue and associated PR are not terminal',
+  });
+  assert.deepEqual(missingClosingReference, {
+    outcome: 'blocked',
+    reason: 'issue, PR, and branch identity could not be verified',
+  });
+  assert.equal(verifiedIdentity.outcome, 'terminal');
+  assert.equal(verifiedIdentity.reason, 'issue closed; branch aligned');
+  assert.match(unavailableReconcile.reason, /^could not verify local\/remote branch:/);
+  assert.equal(mergedPullRequest.outcome, 'terminal');
+  assert.equal(mergedPullRequest.reason, 'PR merged; branch aligned');
+  assert.deepEqual(missingBranch, {
+    outcome: 'blocked',
+    reason: 'persisted worker branch is missing',
+  });
+});
+
+test('dispatcher controls list delegates to its eligible-issues port', () => {
+  const eligibleIssues = [{ number: 7, title: 'Repair adapter boundary' }];
+  const controls = dispatcherControlsFactory.create({
+    root: tmpdir(),
+    stateFile: join(tmpdir(), 'sloop-dispatcher-controls-state.json'),
+    repository: 'owner/repository',
+    remoteAuthority: {},
+    config: loadConfigText(canonicalConfigYaml()),
+    listEligibleIssues: () => eligibleIssues,
+    loadPullRequest: () => ({ number: 7 }),
+  });
+
+  assert.equal(controls.list(), eligibleIssues);
+});
+
+test('Node host exposes readable-file checks and command outcomes', () => {
+  const directory = createTemporaryDirectory('sloop-node-host-');
+  const readableFile = join(directory, 'readable.txt');
+  writeFileSync(readableFile, 'host fixture');
+  const nodeHost = createNodeHost();
+
+  assert.equal(nodeHost.canRead(readableFile), true);
+  assert.equal(nodeHost.canRead(join(directory, 'missing.txt')), false);
+  assert.equal(nodeHost.readFile(readableFile), 'host fixture');
+  assert.deepEqual(nodeHost.run(process.execPath, ['-e', 'process.stdout.write("host-ok")']), {
+    stdout: 'host-ok',
+    stderr: '',
+    status: 0,
+  });
+});
+
+test('production runtime I/O exposes file, stream, and command boundaries', () => {
+  const directory = createTemporaryDirectory('sloop-runtime-io-');
+  const readableFile = join(directory, 'readable.txt');
+  writeFileSync(readableFile, 'runtime fixture');
+  const runtimeIo = createProductionRuntimeIo();
+  const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+  try {
+    assert.equal(runtimeIo.canRead(readableFile), true);
+    assert.equal(runtimeIo.canRead(join(directory, 'missing.txt')), false);
+    assert.equal(runtimeIo.readFile(readableFile), 'runtime fixture');
+    runtimeIo.stdout('stdout fixture');
+    runtimeIo.stderr('stderr fixture');
+    assert.deepEqual(
+      runtimeIo.run(process.execPath, ['-e', 'process.stdout.write("runtime-ok")']),
+      {
+        stdout: 'runtime-ok',
+        stderr: '',
+        status: 0,
+      },
+    );
+    assert.deepEqual(
+      runtimeIo.run(process.execPath, [
+        '-e',
+        'process.stderr.write("runtime-failure"); process.exit(7)',
+      ]),
+      { stdout: '', stderr: 'runtime-failure', status: 7 },
+    );
+    assert.equal(stdoutWrite.mock.calls[0][0], 'stdout fixture\n');
+    assert.equal(stderrWrite.mock.calls[0][0], 'stderr fixture\n');
+  } finally {
+    stdoutWrite.mockRestore();
+    stderrWrite.mockRestore();
+  }
 });

@@ -5,6 +5,7 @@ export type NodeHost = Readonly<{
   cwd: string;
   platform: NodeJS.Platform;
   nodeVersion: string;
+  homeDirectory: string;
   stdin: Readable & { isTTY?: boolean };
   stdout: Writable & { isTTY?: boolean };
   run: (
@@ -17,4 +18,5 @@ export type NodeHost = Readonly<{
     status: number;
   };
   readFile: (file: string) => string;
+  canRead: (file: string) => boolean;
 }>;

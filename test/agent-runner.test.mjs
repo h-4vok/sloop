@@ -162,6 +162,24 @@ test('arbitrary runner executes the production child-process adapter for a valid
   ]);
 });
 
+test('default process adapter reports a timeout as an operational failure', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-timeout-'));
+  const runner = new ArbitraryCommandRunner(
+    process.execPath,
+    ['-e', 'setTimeout(() => {}, 1000)'],
+    { cwd: root, timeoutMs: 10 },
+  );
+
+  await assert.rejects(
+    () => runner.run('input', context),
+    (error) => {
+      assert.ok(error instanceof AgentContractError);
+      assert.equal(error.code, 'operational-failure');
+      return true;
+    },
+  );
+});
+
 test('Codex runner builds separated structured-output argv and captures a result', async () => {
   let seen;
   const runner = new CodexAgentRunner({

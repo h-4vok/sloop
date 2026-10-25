@@ -9,6 +9,7 @@ import {
   canonicalConfigYaml,
   configFingerprint,
   configRegistry,
+  configFileStore,
   loadConfigFile,
   loadConfigText,
   updateConfigFile,
@@ -17,8 +18,12 @@ import {
   configPaths,
   configValue,
   getConfigField,
+  loadConfigTextResult,
   parseConfig,
+  parseConfigResult,
   parseConfigValue,
+  parseConfigValueResult,
+  updateConfigTextResult,
 } from '../src/config.js';
 
 const canonical = canonicalConfigYaml();
@@ -128,6 +133,131 @@ test('invalid documents provide exact YAML paths', () => {
       (error) => error instanceof ConfigValidationError && error.message.includes(expected),
     );
   assert.throws(() => loadConfigText('schemaVersion: ['), /\$: invalid YAML:/);
+});
+
+test('configuration parser returns validation failures as structured results', () => {
+  const invalidConfiguration = { schemaVersion: 2 };
+
+  const parseResult = parseConfigResult(invalidConfiguration);
+
+  assert.equal(parseResult.ok, false);
+  if (!parseResult.ok) {
+    assert.ok(parseResult.error instanceof ConfigValidationError);
+    assert.match(parseResult.error.message, /unsupported schema version/);
+  }
+});
+
+test('configuration parser returns validated values as successful results', () => {
+  const parseResult = parseConfigResult({ schemaVersion: 1 });
+
+  assert.equal(parseResult.ok, true);
+  if (parseResult.ok) assert.equal(parseResult.value.schemaVersion, 1);
+});
+
+test('configuration parser ignores unknown keys when no warning callback is supplied', () => {
+  const parseResult = parseConfigResult({ schemaVersion: 1, futureSetting: true });
+
+  assert.equal(parseResult.ok, true);
+  if (parseResult.ok) assert.equal(parseResult.value.schemaVersion, 1);
+});
+
+test('configuration parser returns a structured failure for non-mapping input', () => {
+  const parseResult = parseConfigResult(null);
+
+  assert.equal(parseResult.ok, false);
+  if (!parseResult.ok) assert.match(parseResult.error.message, /expected a YAML mapping/);
+});
+
+test('configuration parser propagates unexpected unknown-key callback failures', () => {
+  const callbackFailure = new Error('warning logger failed');
+
+  assert.throws(
+    () =>
+      parseConfigResult({ schemaVersion: 1, futureSetting: true }, () => {
+        throw callbackFailure;
+      }),
+    callbackFailure,
+  );
+});
+
+test('registry string parser reports invalid values at the supplied path', () => {
+  const expressionField = configRegistry.find(({ path }) => path === 'schedule.expression');
+
+  assert.throws(
+    () => expressionField.parser(42, '$.schedule.expression'),
+    (error) =>
+      error instanceof ConfigValidationError &&
+      error.message === '$.schedule.expression: expected a string',
+  );
+});
+
+test('Node configuration file store removes a file that was rolled back', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-remove-'));
+  const removedFile = join(root, 'sloop.config.yaml');
+  writeFileSync(removedFile, canonical);
+
+  configFileStore.remove(removedFile);
+
+  assert.equal(configFileStore.exists(removedFile), false);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('Node configuration file store warns when loading unknown keys', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-warning-'));
+  const configurationFile = join(root, 'sloop.config.yaml');
+  const warnings = [];
+  const originalWarn = console.warn;
+  writeFileSync(configurationFile, 'schemaVersion: 1\nfutureSetting: true\n');
+  console.warn = (message) => warnings.push(message);
+
+  try {
+    const configuration = loadConfigFile(configurationFile);
+
+    assert.equal(configuration.schemaVersion, 1);
+    assert.deepEqual(warnings, ['$.futureSetting: unknown configuration key; ignoring it']);
+  } finally {
+    console.warn = originalWarn;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('configuration text operations return expected failures as structured results', () => {
+  const malformedYamlResult = loadConfigTextResult('schemaVersion: [');
+  const unknownPathResult = updateConfigTextResult(canonical, 'missing.path', 'value');
+
+  assert.equal(malformedYamlResult.ok, false);
+  assert.equal(unknownPathResult.ok, false);
+  if (!malformedYamlResult.ok)
+    assert.ok(malformedYamlResult.error instanceof ConfigValidationError);
+  if (!unknownPathResult.ok)
+    assert.match(unknownPathResult.error.message, /unknown configuration key/);
+});
+
+test('configuration text update returns malformed YAML as a structured failure', () => {
+  const updateResult = updateConfigTextResult('schemaVersion: [', 'workspace.path', 'checkout');
+
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok) assert.match(updateResult.error.message, /invalid YAML/);
+});
+
+test('configuration text update returns known-field validation failures as data', () => {
+  const updateResult = updateConfigTextResult(canonical, 'workspace.path', '');
+
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok)
+    assert.equal(updateResult.error.message, '$.workspace.path: expected a non-empty string');
+});
+
+test('configuration value result rethrows unexpected parser failures', () => {
+  const unexpectedFailure = new Error('parser implementation failed');
+  const field = {
+    path: 'workspace.path',
+    parser: () => {
+      throw unexpectedFailure;
+    },
+  };
+
+  assert.throws(() => parseConfigValueResult(field, 'checkout'), unexpectedFailure);
 });
 
 test('argv rejects shell interpreters across supported platforms', () => {

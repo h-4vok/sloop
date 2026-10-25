@@ -1,4 +1,4 @@
-import type { CliCommand } from '../../runtime.js';
+import type { CliCommand } from './CliCommand.js';
 import type { CliModules } from './CliModules.js';
 
 // Exposes the command execution boundary used by the CLI runner.

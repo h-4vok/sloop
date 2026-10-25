@@ -41,7 +41,7 @@ import type {
   RunEventLogger,
   ActiveRunReconciliation,
 } from './core/boundaries.js';
-import type { DispatcherCommand } from './runtime.js';
+import type { DispatcherCommand } from './application/dispatcher/DispatcherCommand.js';
 import type { RemoteSnapshot, RunManifest, WorkflowProjection } from './remote-state.js';
 import { issueLabelNames } from './issue-selection.js';
 import { validateAgentEnvelope, type RunContext as AgentRunContext } from './agent-runner.js';

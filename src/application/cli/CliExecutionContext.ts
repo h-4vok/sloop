@@ -1,4 +1,4 @@
-import type { RuntimeIo } from '../../runtime.js';
+import type { RuntimeIo } from './RuntimeIo.js';
 import type { CliDependencies } from './CliDependencies.js';
 import type { createHelp } from './createHelp.js';
 

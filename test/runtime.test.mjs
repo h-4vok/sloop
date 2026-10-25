@@ -2,26 +2,67 @@ import { createIsolatedTemporaryDirectory } from './support/temporary-directory.
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { test } from 'vitest';
 import {
-  discoverRepository,
+  discoverRepository as discoverRepositoryResult,
   EXIT,
-  parseCliCommand,
-  parseReadOnlyCommand,
-  parseDispatcherCommand,
+  parseCliCommand as parseCliCommandResult,
+  parseReadOnlyCommand as parseReadOnlyCommandResult,
+  parseDispatcherCommand as parseDispatcherCommandResult,
   emitNodeVersionFailure,
   emitUsageFailure,
+  resultOutput,
   runDispatcherPreflight,
   runReadOnlyCommand,
 } from '../src/runtime.js';
 import { canonicalConfigYaml } from '../src/config.js';
 
 const config = canonicalConfigYaml();
+const unwrap = (parsed) => {
+  if (parsed.ok) return parsed.value;
+  throw new Error(parsed.error);
+};
+const parseCliCommand = (args) => unwrap(parseCliCommandResult(args));
+const parseReadOnlyCommand = (args) => unwrap(parseReadOnlyCommandResult(args));
+const parseDispatcherCommand = (args) => unwrap(parseDispatcherCommandResult(args));
+const discoverRepository = (io) => unwrap(discoverRepositoryResult(io));
+
+test('CLI parsing returns a usage error result for unsupported arguments', () => {
+  const unsupportedArguments = ['--unknown'];
+
+  const parseResult = parseCliCommandResult(unsupportedArguments);
+
+  assert.equal(parseResult.ok, false);
+  assert.match(parseResult.error, /unsupported/);
+});
+
+test.each([
+  [['--resolve-review-cap', '--steer'], /--steer requires a value/],
+  [
+    [
+      '--resolve-review-cap',
+      '--steer',
+      'go',
+      '--additional-rounds',
+      '1',
+      '--additional-rounds',
+      '2',
+    ],
+    /--additional-rounds cannot be repeated/,
+  ],
+  [['--resolve-review-cap', '--steer', '  ', '--abandon'], /non-empty --steer/],
+])('review-cap parser returns a Result for invalid value options %j', (args, expectedMessage) => {
+  const parseResult = parseCliCommandResult(args);
+
+  assert.equal(parseResult.ok, false);
+  assert.match(parseResult.error, expectedMessage);
+});
 function createMockRuntimeHarness(overrides = {}) {
   const calls = [];
   const stdout = [];
   const stderr = [];
+  const readableFiles = new Set(overrides.readableFiles ?? []);
   const responses = {
     'git rev-parse --show-toplevel': { stdout: '/repo\n', stderr: '', status: 0 },
     'git --version': { stdout: 'git version 2.50', stderr: '', status: 0 },
@@ -63,6 +104,7 @@ function createMockRuntimeHarness(overrides = {}) {
     cwd: '/repo/nested',
     platform: 'linux',
     nodeVersion: 'v22.1.0',
+    homeDirectory: homedir(),
     run(file, args, cwd) {
       calls.push({ file, args: [...args], cwd });
       return (
@@ -70,6 +112,7 @@ function createMockRuntimeHarness(overrides = {}) {
       );
     },
     readFile: () => overrides.localConfig ?? config,
+    canRead: (file) => readableFiles.has(file),
     stdout: (value) => stdout.push(value),
     stderr: (value) => stderr.push(value),
   };
@@ -157,6 +200,124 @@ test('top-level parser rejects unknown argv before a dispatcher command can exis
     );
 });
 
+test.each([
+  [['--resolve-review-cap', '--unknown'], /unsupported command arguments/],
+  [['--resolve-review-cap', '--waive-all-outstanding'], /exactly one --steer/],
+  [
+    ['--resolve-review-cap', '--steer', 'go', '--additional-rounds', 'many'],
+    /non-negative integer/,
+  ],
+  [['--resolve-review-cap', '--steer', 'go', '--waive', 'Q1,invalid'], /comma-separated/],
+  [['--resolve-review-cap', '--steer', 'go', '--abandon', '--waive', 'Q1'], /cannot be combined/],
+  [['--resolve-review-cap', '--steer', 'go'], /choose --additional-rounds/],
+])('review-cap parser rejects invalid argument form %j', (args, expectedError) => {
+  assert.throws(() => parseCliCommand(args), expectedError);
+});
+
+test('CLI parser rejects mixing legacy dispatcher flags', () => {
+  const cliArgs = ['--list', '--status'];
+
+  assert.throws(() => parseCliCommand(cliArgs), /mixed, duplicate/);
+});
+
+test('human result output includes diagnostics and a read-only next action', () => {
+  const runtimeHarness = createMockRuntimeHarness();
+  const diagnostic = resultOutput.createDiagnostic(
+    'state',
+    'The state file cannot be read.',
+    'Inspect the recorded state.',
+  );
+  const result = resultOutput.createEnvelope(
+    'status',
+    'blocked',
+    'result',
+    'Workflow is blocked.',
+    {
+      nextAction: {
+        command: 'sloop status --verbose',
+        description: 'Inspect the recorded blocker.',
+        mutates: false,
+      },
+    },
+    [diagnostic],
+  );
+
+  const exitCode = resultOutput.emit(result, false, EXIT.blocked, runtimeHarness.io);
+
+  assert.equal(exitCode, EXIT.blocked);
+  assert.deepEqual(runtimeHarness.stderr, [
+    'Workflow is blocked.\n[state] The state file cannot be read. Remediation: Inspect the recorded state.\nNext: sloop status --verbose (Inspect the recorded blocker.; read-only)',
+  ]);
+});
+
+test('status blocks when readable workflow state is not a JSON object', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-state-shape-'));
+  try {
+    const statePath = join(root, '.sloop', 'state.json');
+    mkdirSync(join(root, '.sloop'), { recursive: true });
+    writeFileSync(statePath, '[]');
+    const runtimeHarness = createMockRuntimeHarness({
+      'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+      readableFiles: [statePath],
+    });
+    runtimeHarness.io.cwd = root;
+    runtimeHarness.io.readFile = (file) =>
+      file === statePath ? readFileSync(file, 'utf8') : config;
+
+    const exitCode = runReadOnlyCommand(
+      parseReadOnlyCommand(['status', '--json']),
+      runtimeHarness.io,
+    );
+
+    assert.equal(exitCode, EXIT.blocked);
+    const result = JSON.parse(runtimeHarness.stdout[0]);
+    assert.equal(result.status, 'blocked');
+    assert.equal(result.diagnostics[0].check, 'state');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('issues list reports a GitHub command failure as an external diagnostic', () => {
+  const runtimeHarness = createMockRuntimeHarness({
+    'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
+      {
+        stdout: '',
+        stderr: 'network unavailable',
+        status: 1,
+      },
+  });
+  const parsedCommand = parseReadOnlyCommand(['issues', 'list', '--json']);
+
+  const exitCode = runReadOnlyCommand(parsedCommand, runtimeHarness.io);
+
+  assert.equal(exitCode, EXIT.external);
+  const result = JSON.parse(runtimeHarness.stdout[0]);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0].check, 'github');
+  assert.match(result.diagnostics[0].message, /did not return issues/);
+});
+
+test('issues list reports malformed GitHub JSON as an external diagnostic', () => {
+  const runtimeHarness = createMockRuntimeHarness({
+    'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
+      {
+        stdout: '{invalid',
+        stderr: '',
+        status: 0,
+      },
+  });
+  const parsedCommand = parseReadOnlyCommand(['issues', 'list', '--json']);
+
+  const exitCode = runReadOnlyCommand(parsedCommand, runtimeHarness.io);
+
+  assert.equal(exitCode, EXIT.external);
+  const result = JSON.parse(runtimeHarness.stdout[0]);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.diagnostics[0].check, 'github');
+  assert.match(result.diagnostics[0].message, /could not be parsed/);
+});
+
 test('dispatcher parser defaults to the workflow command', () => {
   const dispatcherArgs = [];
   const expectedCommand = { kind: 'workflow' };
@@ -228,10 +389,39 @@ test('repository discovery rejects a Git-selected worktree that does not contain
   const runtimeHarness = createMockRuntimeHarness();
   runtimeHarness.io.cwd = resolve('/outside');
 
-  assert.throws(
-    () => discoverRepository(runtimeHarness.io),
-    (error) => error.check === 'repository' && /does not contain/.test(error.message),
+  const discoveryResult = discoverRepositoryResult(runtimeHarness.io);
+  assert.equal(discoveryResult.ok, false);
+  assert.equal(discoveryResult.error.check, 'repository');
+  assert.match(discoveryResult.error.message, /does not contain/);
+});
+
+test('dispatcher preflight emits a typed discovery diagnostic when Git cannot find a repository', () => {
+  const runtimeHarness = createMockRuntimeHarness({
+    'git rev-parse --show-toplevel': { stdout: '', stderr: 'not a repository', status: 1 },
+  });
+  const dispatcherCommand = parseDispatcherCommand(['--list']);
+
+  const preflightResult = runDispatcherPreflight(dispatcherCommand, runtimeHarness.io);
+
+  assert.equal(preflightResult.code, EXIT.preflight);
+  assert.match(runtimeHarness.stderr[0], /current directory is not inside a Git repository/);
+  assert.equal(
+    runtimeHarness.calls.some(({ file, args }) => file === 'git' && args[0] === 'remote'),
+    false,
   );
+});
+
+test('workflow dispatcher preflight runs the full doctor prerequisite set', () => {
+  const runtimeHarness = createMockRuntimeHarness();
+  const workflowCommand = { kind: 'workflow' };
+
+  const preflightResult = runDispatcherPreflight(workflowCommand, runtimeHarness.io);
+
+  assert.equal(preflightResult.code, EXIT.preflight);
+  assert.ok(
+    runtimeHarness.calls.some(({ file, args }) => file === 'codex' && args[0] === '--version'),
+  );
+  assert.ok(runtimeHarness.calls.some(({ file, args }) => file === 'git' && args[0] === 'status'));
 });
 
 test('outside a repository is a preflight failure on stderr without later calls', () => {
@@ -344,6 +534,7 @@ test('public status result boundary emits blocked JSON and exit 4 for unreadable
     writeFileSync(join(root, '.sloop', 'state.json'), '{invalid');
     const runtimeHarness = createMockRuntimeHarness({
       'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+      readableFiles: [join(root, '.sloop', 'state.json')],
     });
     runtimeHarness.io.cwd = root;
     const readOnlyArgs = ['status', '--json'];
@@ -689,6 +880,7 @@ test.each([
   writeFileSync(join(root, '.sloop', 'state.json'), JSON.stringify({ status, issue: 7, pr: 8 }));
   const runtimeHarness = createMockRuntimeHarness({
     'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+    readableFiles: [join(root, '.sloop', 'state.json')],
   });
   runtimeHarness.io.cwd = root;
   runtimeHarness.io.readFile = (file) =>
@@ -761,6 +953,28 @@ test('issues list rejects a remote URL outside GitHub', () => {
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
   assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, badRemote.io), EXIT.preflight);
   assert.equal(JSON.parse(badRemote.stdout[0]).diagnostics.at(-1).check, 'repository-identity');
+});
+
+test('issues list reports a remote that changes to a non-GitHub URL after preflight', () => {
+  const runtimeHarness = createMockRuntimeHarness();
+  const originalRun = runtimeHarness.io.run;
+  let remoteLookupCount = 0;
+  runtimeHarness.io.run = (file, args, cwd) => {
+    if (file === 'git' && args.join(' ') === 'remote get-url origin') {
+      remoteLookupCount += 1;
+      if (remoteLookupCount === 3) {
+        return { stdout: 'https://example.test/not-github', stderr: '', status: 0 };
+      }
+    }
+    return originalRun(file, args, cwd);
+  };
+  const readOnlyCommand = parseReadOnlyCommand(['issues', 'list', '--json']);
+
+  const exitCode = runReadOnlyCommand(readOnlyCommand, runtimeHarness.io);
+
+  assert.equal(exitCode, EXIT.preflight);
+  assert.equal(JSON.parse(runtimeHarness.stdout[0]).diagnostics[0].check, 'repository-identity');
+  assert.equal(remoteLookupCount, 3);
 });
 
 test('doctor rejects a branch that violates the configured branch policy', () => {
@@ -863,6 +1077,7 @@ test('status recovery guidance remains safe and contextual when issue or PR data
     writeFileSync(join(root, '.sloop', 'state.json'), JSON.stringify({ status: 'ci_failed' }));
     const runtimeHarness = createMockRuntimeHarness({
       'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+      readableFiles: [join(root, '.sloop', 'state.json')],
     });
     runtimeHarness.io.cwd = root;
     runtimeHarness.io.readFile = (file) =>
@@ -904,6 +1119,7 @@ test('status diagnoses every recovery observation with contextual safe guidance'
       );
       const runtimeHarness = createMockRuntimeHarness({
         'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+        readableFiles: [join(root, '.sloop', 'state.json')],
       });
       runtimeHarness.io.cwd = root;
       runtimeHarness.io.readFile = (file) =>
@@ -972,6 +1188,30 @@ test('diagnostic commands remain read-only across local, GitHub, and scheduler b
       `${args.join(' ')} must not mutate remote state or scheduler`,
     );
   }
+});
+
+test('issues list normalizes GitHub labels and selects configured priorities', () => {
+  const runtimeHarness = createMockRuntimeHarness({
+    'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
+      {
+        stdout: JSON.stringify([
+          { number: 42, title: 'Prioritized', labels: [{ name: 'Priority: P0' }] },
+          { number: 43, title: 'Unprioritized', labels: [{ name: 'Automation Ready' }] },
+        ]),
+        stderr: '',
+        status: 0,
+      },
+  });
+  const parsedCommand = parseReadOnlyCommand(['issues', 'list', '--json']);
+
+  const exitCode = runReadOnlyCommand(parsedCommand, runtimeHarness.io);
+
+  assert.equal(exitCode, EXIT.ok);
+  const result = JSON.parse(runtimeHarness.stdout[0]);
+  assert.deepEqual(
+    result.result.issues.map(({ number }) => number),
+    [42, 43],
+  );
 });
 
 test('runtime reports insufficient permissions and missing doctor skills', () => {

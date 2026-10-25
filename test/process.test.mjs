@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
-const loadProcessAdapter = () => import('../src/process.ts');
+const loadProcessAdapter = async () => {
+  const { processAdapter } = await import('../src/process.ts');
+
+  return processAdapter;
+};
+
+test('process root exports preserve the named compatibility API', async () => {
+  const processModule = await import('../src/process.ts');
+
+  assert.equal(processModule.resolveExecutable, processModule.processAdapter.resolveExecutable);
+  assert.equal(processModule.runSyncCommand, processModule.processAdapter.runSyncCommand);
+});
 
 test('resolveExecutable keeps explicit paths and extensions unchanged', async () => {
   const { resolveExecutable } = await loadProcessAdapter();

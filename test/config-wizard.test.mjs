@@ -1,13 +1,19 @@
 import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PassThrough, Writable } from 'node:stream';
-import { canonicalConfigYaml } from '../src/config.js';
+import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
 import { configPaths } from '../src/config.js';
-import { reconcileConfig, runConfigCommand } from '../src/config-wizard.js';
+import { reconcileConfig, runConfigCommand, setConfigValue } from '../src/config-wizard.js';
+import { runConfigWizard } from '../src/config-wizard.js';
+import {
+  runConfigCommand as runConfigCommandService,
+  runConfigWizard as runConfigWizardService,
+  setConfigValue as setConfigValueService,
+} from '../src/application/config/index.js';
 import { getConfigField } from '../src/config.js';
 import { productionConfigReconciler } from '../src/adapters.js';
 import { parseCliCommand } from '../src/runtime.js';
@@ -42,6 +48,49 @@ function createMockScriptedIo(answers, end = true) {
   return { input, output, text: () => captured };
 }
 
+test('application config service objects are available through the application barrel', () => {
+  assert.equal(typeof runConfigCommandService.run, 'function');
+  assert.equal(typeof runConfigWizardService.run, 'function');
+  assert.equal(typeof setConfigValueService.run, 'function');
+});
+
+test('root scalar setter compatibility export reports an unknown path', async () => {
+  const { root, file } = createConfigFixture();
+  const errorMessages = [];
+  const logger = { log: () => undefined, error: (message) => errorMessages.push(message) };
+  const fileStore = {
+    exists: vi.fn(() => true),
+    read: vi.fn(() => canonicalConfigYaml()),
+    writeAtomically: vi.fn(),
+    remove: vi.fn(),
+  };
+  const io = {
+    input: new PassThrough(),
+    output: new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    }),
+  };
+  const reconciler = async () => undefined;
+
+  const exitCode = await setConfigValue(
+    root,
+    file,
+    'unknown.setting',
+    'value',
+    '--no-sync',
+    reconciler,
+    io,
+    logger,
+    fileStore,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.match(errorMessages[0], /^unknown path unknown\.setting; valid paths:/);
+  assert.equal(fileStore.exists.mock.calls.length, 0);
+});
+
 test('config command rejects invalid flag combinations and unknown paths without TTY', async () => {
   const { root } = createConfigFixture();
   const io = {
@@ -56,6 +105,428 @@ test('config command rejects invalid flag combinations and unknown paths without
   assert.equal(await runConfigCommand(root, ['--sync', '--no-sync'], undefined, io), 2);
   assert.equal(await runConfigCommand(root, ['schedule.cron'], undefined, io), 2);
   assert.equal(await runConfigCommand(root, ['--wizard'], undefined, io), 2);
+});
+
+test('config show reads through the injected configuration file store', async () => {
+  const configurationText = canonicalConfigYaml();
+  const loggerMessages = [];
+  const fileStore = {
+    exists: vi.fn(() => true),
+    read: vi.fn(() => configurationText),
+    writeAtomically: vi.fn(),
+    remove: vi.fn(),
+  };
+  const logger = {
+    log: (message) => loggerMessages.push(message),
+    error: (message) => loggerMessages.push(message),
+  };
+  const io = {
+    input: new PassThrough(),
+    output: new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    }),
+  };
+
+  const exitCode = await runConfigCommand(
+    'mock-root',
+    ['show', 'repository.remote'],
+    undefined,
+    io,
+    logger,
+    fileStore,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(loggerMessages, ['"origin"']);
+  assert.equal(fileStore.exists.mock.calls.length, 1);
+  assert.equal(fileStore.read.mock.calls.length, 1);
+});
+
+test('config show reports ignored unknown keys through the error logger', async () => {
+  const { root, file } = createConfigFixture();
+  const configWithUnknownKey = `${readFileSync(file, 'utf8')}futureSetting: true\n`;
+  writeFileSync(file, configWithUnknownKey);
+  const errorMessages = [];
+  const logger = {
+    log: () => undefined,
+    error: (message) => errorMessages.push(message),
+  };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['show', 'repository.remote'],
+    undefined,
+    undefined,
+    logger,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(errorMessages, ['$.futureSetting: unknown configuration key; ignoring it']);
+});
+
+test('interactive wizard reports unknown keys through the injected error logger', async () => {
+  const { root, file } = createConfigFixture();
+  writeFileSync(file, `${readFileSync(file, 'utf8')}futureSetting: true\n`);
+  const errorMessages = [];
+  const logger = { log: () => undefined, error: (message) => errorMessages.push(message) };
+  const io = createMockScriptedIo(['']);
+
+  const exitCode = await runConfigWizard(
+    root,
+    file,
+    'repository.baseBranch',
+    false,
+    '--no-sync',
+    undefined,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(errorMessages, [
+    '$.futureSetting: unknown configuration key; ignoring it',
+    '$.futureSetting: unknown configuration key; ignoring it',
+  ]);
+});
+
+test('scalar setter reports ignored unknown keys through the injected error logger', async () => {
+  const { root, file } = createConfigFixture();
+  writeFileSync(file, `${readFileSync(file, 'utf8')}futureSetting: true\n`);
+  const errorMessages = [];
+  const logger = { log: () => undefined, error: (message) => errorMessages.push(message) };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['repository.baseBranch', 'develop', '--no-sync'],
+    undefined,
+    undefined,
+    logger,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(errorMessages, [
+    '$.futureSetting: unknown configuration key; ignoring it',
+    '$.futureSetting: unknown configuration key; ignoring it',
+  ]);
+});
+
+test('interactive wizard uses the default reconciler when sync is requested', async () => {
+  const { root, file } = createConfigFixture();
+  const errorMessages = [];
+  const logger = { log: () => undefined, error: (message) => errorMessages.push(message) };
+  const io = createMockScriptedIo(['develop', 'y']);
+
+  const exitCode = await runConfigWizard(
+    root,
+    file,
+    'repository.baseBranch',
+    false,
+    '--sync',
+    undefined,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.match(errorMessages[0], /No production reconciler is available for github/);
+  assert.equal(loadConfigText(readFileSync(file, 'utf8')).repository.baseBranch, 'develop');
+});
+
+test('interactive init prompts for sync with injected IO when requested', async () => {
+  const { root, file } = createConfigFixture();
+  const reconciledKinds = [];
+  const reconciler = async (_root, kind) => reconciledKinds.push(kind);
+  const errorMessages = [];
+  const logger = { log: () => undefined, error: (message) => errorMessages.push(message) };
+  const scriptedIo = createMockScriptedIo(['develop', 'y', 'n', 'y']);
+  const io = { ...scriptedIo, promptForSync: true, useColor: true };
+
+  const exitCode = await runConfigWizard(
+    root,
+    file,
+    'repository.baseBranch',
+    true,
+    undefined,
+    reconciler,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(reconciledKinds, ['github', 'skills']);
+  assert.deepEqual(errorMessages, []);
+  assert.match(scriptedIo.text(), /\u001b\[36mrepository\.baseBranch\u001b\[0m/);
+  assert.equal(loadConfigText(readFileSync(file, 'utf8')).repository.baseBranch, 'develop');
+});
+
+test('interactive init can skip the post-init sync prompt with injected IO', async () => {
+  const { root, file } = createConfigFixture();
+  const logs = [];
+  const reconciledKinds = [];
+  const reconciler = async (_root, kind) => reconciledKinds.push(kind);
+  const logger = { log: (message) => logs.push(message), error: () => undefined };
+  const scriptedIo = createMockScriptedIo(['develop', 'y', 'n', 'n']);
+  const io = { ...scriptedIo, promptForSync: true };
+
+  const exitCode = await runConfigWizard(
+    root,
+    file,
+    'repository.baseBranch',
+    true,
+    undefined,
+    reconciler,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(reconciledKinds, []);
+  assert.ok(
+    logs.includes(
+      'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
+    ),
+  );
+});
+
+test('config show and scalar set report a missing configuration file', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-missing-'));
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+
+  const showExitCode = await runConfigCommand(root, ['show'], undefined, undefined, logger);
+  const setExitCode = await runConfigCommand(
+    root,
+    ['workspace.path', 'checkout', '--no-sync'],
+    undefined,
+    undefined,
+    logger,
+  );
+
+  assert.deepEqual([showExitCode, setExitCode], [2, 2]);
+  assert.deepEqual(errors, [
+    'No valid sloop.config.yaml; run sloop config init',
+    'No valid sloop.config.yaml; run sloop config init',
+  ]);
+});
+
+test('config show reports unknown paths with valid-path guidance', async () => {
+  const { root } = createConfigFixture();
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['show', 'not.a.config.path'],
+    undefined,
+    undefined,
+    logger,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.match(errors[0], /unknown path not\.a\.config\.path; valid paths:/);
+});
+
+test('scalar setter cancellation preserves the original configuration bytes', async () => {
+  const { root, file } = createConfigFixture();
+  const original = readFileSync(file);
+  const io = createMockScriptedIo(['n']);
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['workspace.path', 'checkout', '--no-sync'],
+    undefined,
+    io,
+  );
+
+  assert.equal(exitCode, 0, io.text());
+  assert.deepEqual(readFileSync(file), original);
+});
+
+test('first-time config init removes its YAML when the gitignore write fails', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-rollback-'));
+  const io = createMockScriptedIo(['checkout', 'y', 'y']);
+  const errors = [];
+  let removedConfigCount = 0;
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+  const fileStore = {
+    exists: () => false,
+    read: () => '',
+    writeAtomically: (file) => {
+      if (file.endsWith('.gitignore')) throw new Error('gitignore write failed');
+    },
+    remove: () => {
+      removedConfigCount++;
+    },
+  };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['--init', '--wizard', 'workspace.path'],
+    undefined,
+    io,
+    logger,
+    fileStore,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.equal(removedConfigCount, 1);
+  assert.deepEqual(errors, ['gitignore write failed']);
+});
+
+test('existing config init restores its prior YAML when the gitignore write fails', async () => {
+  const { root, file } = createConfigFixture();
+  const originalText = readFileSync(file, 'utf8');
+  const storedFiles = new Map([[file, originalText]]);
+  const io = createMockScriptedIo(['checkout', 'y', 'y']);
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+  const fileStore = {
+    exists: (path) => storedFiles.has(path),
+    read: (path) => storedFiles.get(path),
+    writeAtomically: (path, content) => {
+      if (path.endsWith('.gitignore')) throw new Error('gitignore write failed');
+      storedFiles.set(path, content);
+    },
+    remove: (path) => storedFiles.delete(path),
+  };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['--init', '--wizard', 'workspace.path'],
+    undefined,
+    io,
+    logger,
+    fileStore,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.equal(storedFiles.get(file), originalText);
+  assert.deepEqual(errors, ['gitignore write failed']);
+});
+
+test('direct config init reports a storage failure without claiming success', async () => {
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+  const fileStore = {
+    exists: () => false,
+    read: () => '',
+    writeAtomically: () => {
+      throw new Error('configuration disk is unavailable');
+    },
+    remove: () => undefined,
+  };
+
+  const exitCode = await runConfigCommand(
+    'unused-root',
+    ['--init'],
+    undefined,
+    undefined,
+    logger,
+    fileStore,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.deepEqual(errors, ['configuration disk is unavailable']);
+});
+
+test('wizard identifies legacy JSON and canonical fields without modifying config', async () => {
+  const { root, file } = createConfigFixture();
+  const legacyFile = join(root, 'sloop.config.json');
+  writeFileSync(legacyFile, '{"legacy":true}\n');
+  const logs = [];
+  const logger = { log: (message) => logs.push(message), error: () => undefined };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['--init', '--wizard', 'github.labels.eligible'],
+    undefined,
+    createMockScriptedIo([]),
+    logger,
+  );
+
+  assert.equal(exitCode, 0);
+  assert.match(logs.join('\n'), /Legacy JSON detected/);
+  assert.match(logs.join('\n'), /github\.labels\.eligible: canonical read-only/);
+  assert.equal(readFileSync(file, 'utf8'), canonicalConfigYaml());
+  assert.equal(readFileSync(legacyFile, 'utf8'), '{"legacy":true}\n');
+});
+
+test('wizard skips dependent settings after their companion is disabled', async () => {
+  const { root, file } = createConfigFixture();
+  const disabledConfiguration = readFileSync(file, 'utf8').replace(
+    '  enabled:\n    # Whether base health gates new work.\n    true',
+    '  enabled:\n    # Whether base health gates new work.\n    false',
+  );
+  writeFileSync(file, disabledConfiguration);
+  const io = createMockScriptedIo(['']);
+  const logs = [];
+  const logger = { log: (message) => logs.push(message), error: () => undefined };
+
+  const exitCode = await runConfigCommand(root, ['health', '--no-sync'], undefined, io, logger);
+
+  assert.equal(exitCode, 0, io.text());
+  assert.match(logs.join('\n'), /health\.command is inactive because health\.enabled=true/);
+  assert.equal(loadConfigText(readFileSync(file, 'utf8')).health.enabled, false);
+});
+
+test('wizard retries blank and invalid dependency answers before canceling', async () => {
+  const { root, file } = createConfigFixture();
+  const io = createMockScriptedIo(['', 'invalid-mode', 'worktree', '.sloop/worktrees', 'n']);
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['workspace.worktreeRoot', '--no-sync'],
+    undefined,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 0, io.text());
+  assert.match(errors.join('\n'), /requires companion path workspace\.mode=worktree/);
+  assert.match(errors.join('\n'), /expected one of: checkout, worktree/);
+  assert.equal(loadConfigText(readFileSync(file, 'utf8')).workspace.mode, 'checkout');
+});
+
+test('wizard rejects a valid but unsatisfied workspace dependency', async () => {
+  const { root } = createConfigFixture();
+  const io = createMockScriptedIo(['checkout']);
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['workspace.worktreeRoot', '--no-sync'],
+    undefined,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 2);
+  assert.match(errors.join('\n'), /requires companion path workspace\.mode=worktree/);
+});
+
+test('wizard retries invalid argv JSON without changing the configuration', async () => {
+  const { root, file } = createConfigFixture();
+  const original = readFileSync(file, 'utf8');
+  const io = createMockScriptedIo(['not-json', '["git","status"]', 'n']);
+  const errors = [];
+  const logger = { log: () => undefined, error: (message) => errors.push(message) };
+
+  const exitCode = await runConfigCommand(
+    root,
+    ['health.command', '--no-sync'],
+    undefined,
+    io,
+    logger,
+  );
+
+  assert.equal(exitCode, 0, io.text());
+  assert.match(errors.join('\n'), /expected valid JSON/);
+  assert.equal(readFileSync(file, 'utf8'), original);
 });
 
 test('non-interactive init supports forced synchronization success and failure', async () => {
@@ -278,31 +749,38 @@ test('complex and canonical setters fail before changing bytes', async () => {
 });
 
 test('config init/install retain distinct command identity', () => {
+  const getCliCommand = (args) => {
+    const parseResult = parseCliCommand(args);
+    assert.equal(parseResult.ok, true);
+    return parseResult.value;
+  };
   const cliArgs = ['config', 'init'];
-  const parsedCliCommand = parseCliCommand(cliArgs);
+  const parsedCliCommand = getCliCommand(cliArgs);
   assert.deepEqual(parsedCliCommand, { kind: 'config', args: ['--init'] });
   const cliArgs2 = ['config', 'init', '--wizard'];
-  const parsedCliCommand2 = parseCliCommand(cliArgs2);
+  const parsedCliCommand2 = getCliCommand(cliArgs2);
   assert.deepEqual(parsedCliCommand2, {
     kind: 'config',
     args: ['--init', '--wizard'],
   });
   const cliArgs3 = ['config', 'install'];
-  const parsedCliCommand3 = parseCliCommand(cliArgs3);
+  const parsedCliCommand3 = getCliCommand(cliArgs3);
   assert.deepEqual(parsedCliCommand3, { kind: 'config', args: ['--install'] });
   const cliArgs4 = ['config', 'install', '--force'];
-  const parsedCliCommand4 = parseCliCommand(cliArgs4);
+  const parsedCliCommand4 = getCliCommand(cliArgs4);
   assert.deepEqual(parsedCliCommand4, {
     kind: 'config',
     args: ['--install', '--force'],
   });
   const cliArgs5 = ['init'];
-  assert.throws(() => parseCliCommand(cliArgs5), /unsupported|usage/i);
+  const invalidCommandResult = parseCliCommand(cliArgs5);
+  assert.equal(invalidCommandResult.ok, false);
+  assert.match(invalidCommandResult.error, /unsupported|usage/i);
   const cliArgs6 = ['config'];
-  const parsedCliCommand5 = parseCliCommand(cliArgs6);
+  const parsedCliCommand5 = getCliCommand(cliArgs6);
   assert.deepEqual(parsedCliCommand5, { kind: 'config', args: [] });
   const cliArgs7 = ['config', 'workspace'];
-  const parsedCliCommand6 = parseCliCommand(cliArgs7);
+  const parsedCliCommand6 = getCliCommand(cliArgs7);
   assert.deepEqual(parsedCliCommand6, {
     kind: 'config',
     args: ['workspace'],
@@ -546,4 +1024,17 @@ test('interactive init writes gitignore, list and argv wizard values, and synchr
   assert.match(configurationText, /command:\n    - git\n    - status/);
   assert.match(gitignoreText, /\.sloop\//);
   assert.deepEqual(events, []);
+});
+
+test('wizard trims comma-separated required skill names before persisting them', async () => {
+  const { root, file } = createConfigFixture();
+  const io = createMockScriptedIo(['sloop-worker, sloop-qa', 'y']);
+
+  const exitCode = await runConfigCommand(root, ['skills.required', '--no-sync'], undefined, io);
+
+  assert.equal(exitCode, 0, io.text());
+  assert.deepEqual(loadConfigText(readFileSync(file, 'utf8')).skills.required, [
+    'sloop-worker',
+    'sloop-qa',
+  ]);
 });

@@ -1,4 +1,4 @@
-import type { RuntimeIo } from '../../runtime.js';
+import type { RuntimeIo } from './RuntimeIo.js';
 import type { CliModules } from './CliModules.js';
 import { requireSupportedNode } from './requireSupportedNode.js';
 

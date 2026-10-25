@@ -11,7 +11,7 @@ const packageJson = JSON.parse(
 
 export const cli = Object.freeze({
   runCli(args: readonly string[], nodeVersion = process.version): Promise<void> {
-    return startCli(args, packageJson.version, nodeVersion);
+    return startCli.start(args, packageJson.version, nodeVersion);
   },
 });
 
