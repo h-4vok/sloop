@@ -95,23 +95,30 @@ export const activeRunReconcilerFactory = Object.freeze({
         if (!branchFacts.aligned)
           return {
             outcome: 'blocked',
+
             reason: branchFacts.diagnostic,
+
             localSha: branchFacts.localSha,
+
             remoteSha: branchFacts.remoteSha,
           };
 
         return {
           outcome: 'terminal',
+
           reason:
             issueResponse.state?.toUpperCase() === 'CLOSED'
               ? 'issue closed; branch aligned'
               : 'PR merged; branch aligned',
+
           localSha: branchFacts.localSha,
+
           remoteSha: branchFacts.remoteSha,
         };
       } catch (error) {
         return {
           outcome: 'blocked',
+
           reason: `reconciliation could not verify state: ${error instanceof Error ? error.message : String(error)}`,
         };
       }

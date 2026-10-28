@@ -16,9 +16,13 @@ type CliRuntime = NonNullable<CliModules['runtime']>;
 export function createCliCommandHandlers(context: CliExecutionContext): CliCommandHandlers {
   const commandHandlerMap: CliCommandHandlerMap = {
     help: (command) => runCliHelpCommand.run(command, context),
+
     version: (command) => runCliVersionCommand.run(command, context),
+
     'read-only': (command, runtime) => runCliReadOnlyCommand.run(command, runtime, context),
+
     config: (command, runtime) => runCliConfigCommand.run(command, runtime, context),
+
     dispatcher: (command, runtime) => runCliDispatcherCommand.run(command, runtime, context),
   };
 

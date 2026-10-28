@@ -6,6 +6,7 @@ type ExecutableLocator = (commandName: string) => readonly string[];
 const locateExecutable: ExecutableLocator = (commandName) =>
   execFileSync('where.exe', [commandName], {
     encoding: 'utf8',
+
     stdio: ['ignore', 'pipe', 'ignore'],
   })
     .trim()
@@ -49,6 +50,7 @@ function childProcessInvocation(
       throw new Error('Windows batch command contains unsafe cmd.exe syntax');
     return {
       command: commandProcessor || 'cmd.exe',
+
       args: [
         '/d',
         '/s',
@@ -56,6 +58,7 @@ function childProcessInvocation(
         '/c',
         `""${executable}" ${args.map((arg) => `"${arg}"`).join(' ')}"`,
       ],
+
       windowsVerbatimArguments: true,
     };
   }
@@ -85,8 +88,11 @@ function runSyncCommand(
   const launch = childProcessInvocation(executable, args, platform, commandProcessor);
   return execute(launch.command, launch.args, {
     cwd,
+
     encoding: 'utf8',
+
     stdio: ['ignore', 'pipe', 'pipe'],
+
     windowsVerbatimArguments: launch.windowsVerbatimArguments,
   }).trim();
 }
@@ -94,6 +100,8 @@ function runSyncCommand(
 /** Process launching helpers for direct executables and Windows command shims. */
 export const processAdapter = Object.freeze({
   resolveExecutable,
+
   childProcessInvocation,
+
   runSyncCommand,
 });

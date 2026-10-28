@@ -89,6 +89,7 @@ function crossFieldDiagnostics(output: Record<string, unknown>): ConfigDiagnosti
   if (getPath(output, 'schemaVersion') !== 1)
     diagnostics.push({
       path: '$.schemaVersion',
+
       message: 'unsupported schema version; expected 1',
     });
   const order = getPath(output, 'workflow.reviewOrder');
@@ -101,6 +102,7 @@ function crossFieldDiagnostics(output: Record<string, unknown>): ConfigDiagnosti
   if (Array.isArray(priorities) && new Set(priorities).size !== priorities.length)
     diagnostics.push({
       path: '$.github.labels.priority',
+
       message: 'priority labels must be unique',
     });
   return diagnostics;
@@ -111,6 +113,7 @@ function dependencyDiagnostics(output: Record<string, unknown>): ConfigDiagnosti
   if (getPath(output, 'workspace.mode') === 'checkout' && !getPath(output, 'workspace.path'))
     diagnostics.push({
       path: '$.workspace.path',
+
       message: 'is required when workspace.mode is checkout',
     });
   if (
@@ -119,11 +122,13 @@ function dependencyDiagnostics(output: Record<string, unknown>): ConfigDiagnosti
   )
     diagnostics.push({
       path: '$.workspace.worktreeRoot',
+
       message: 'is required when workspace.mode is worktree',
     });
   if (getPath(output, 'schedule.enabled') === true && !getPath(output, 'schedule.expression'))
     diagnostics.push({
       path: '$.schedule.expression',
+
       message: 'is required when schedule.enabled is true',
     });
   for (const path of [
@@ -144,6 +149,7 @@ function parseConfigResult(
   if (!plainObject(value))
     return {
       ok: false,
+
       error: new ConfigValidationError([{ path: '$', message: 'expected a YAML mapping' }]),
     };
   const allowed = allowedTree();

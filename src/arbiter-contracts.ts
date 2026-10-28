@@ -97,11 +97,17 @@ export function validateArbiterDecisions(
     seen.add(finding.id);
     return {
       findingId: finding.id,
+
       owner: finding.owner,
+
       action,
+
       rationale: value.rationale,
+
       direction: (value.direction ?? undefined) as string | undefined,
+
       verification: (value.verification ?? undefined) as string | undefined,
+
       followUp: (value.followUp ?? undefined) as ArbiterDecision['followUp'],
     };
   });
@@ -119,7 +125,9 @@ export function applyArbiterDecisions(
   const decisions = validateArbiterDecisions(findings, raw, state.interventions + 1);
   return {
     interventions: state.interventions + 1,
+
     decisions: [...state.decisions, ...decisions],
+
     terminal: decisions.some((d) => d.action === 'escalate') ? 'human_review_required' : undefined,
   };
 }

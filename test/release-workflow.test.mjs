@@ -20,7 +20,9 @@ test('reads all linked issue titles from the GitHub GraphQL API', async () => {
   const cursors = [];
   const api = createGitHubApi({
     token: 'test-token',
+
     repository: 'owner/repo',
+
     fetchImpl: async (_url, options) => {
       const after = JSON.parse(options.body).variables.after;
       cursors.push(after);
@@ -31,6 +33,7 @@ test('reads all linked issue titles from the GitHub GraphQL API', async () => {
               pullRequest: {
                 closingIssuesReferences: {
                   nodes: [{ title: after ? '[major] break' : '[patch] fix' }],
+
                   pageInfo: { hasNextPage: !after, endCursor: after ? null : 'next' },
                 },
               },
@@ -55,6 +58,7 @@ test('falls back to PR body references when the linked list is unavailable', asy
     closingIssueTitles: async () => {
       throw new Error('unavailable');
     },
+
     issueTitle: async (number) => {
       lookedUp.push(number);
       if (number === 112) return '[patch] fix';
@@ -76,10 +80,15 @@ test('calculates a patch version from the linked issue title', async () => {
 
   const patch = await calculateRelease({
     api: { closingIssueTitles: async () => ['[patch] fix'] },
+
     number: 113,
+
     body: '',
+
     tags: ['v0.2.0'],
+
     readTagMetadata: getReleaseMetadata,
+
     packageVersion: '0.2.0',
   });
 
@@ -91,10 +100,15 @@ test('defaults to a minor version when no linked issue title resolves', async ()
 
   const fallback = await calculateRelease({
     api: { closingIssueTitles: async () => [], issueTitle: async () => null },
+
     number: 113,
+
     body: 'Closes #999',
+
     tags: ['v0.2.0'],
+
     readTagMetadata: getReleaseMetadata,
+
     packageVersion: '0.2.0',
   });
 
@@ -111,10 +125,15 @@ test('the same merged PR reuses its tagged version on a later run', async () => 
   );
   const result = await calculateRelease({
     api: { closingIssueTitles: async () => ['[patch] fix'] },
+
     number: 113,
+
     body: '',
+
     tags: ['v0.2.1', 'v0.2.0'],
+
     readTagMetadata: (tag) => (tag === 'v0.2.1' ? released : null),
+
     packageVersion: '0.2.1',
   });
 
@@ -125,6 +144,7 @@ test('existing release consistency is checked before any creation', async () => 
   let creations = 0;
   const api = {
     releaseByTag: async () => ({ tagName: 'v0.2.1', targetCommitish: 'wrong-target' }),
+
     createRelease: async () => {
       creations++;
     },
@@ -143,6 +163,7 @@ test('publishing a second time reuses the tag without changing metadata', async 
   let hasRelease = false;
   const api = {
     releaseByTag: async () => (hasRelease ? { tagName: 'v0.2.1', targetCommitish: 'main' } : null),
+
     createRelease: async (tag) => {
       calls.push(['release', tag]);
       hasRelease = true;
@@ -161,11 +182,17 @@ test('publishing a second time reuses the tag without changing metadata', async 
   const recordMetadataWrite = () => calls.push(['metadata']);
   const inputs = {
     api,
+
     version: '0.2.1',
+
     pr: 113,
+
     date: '2026-10-01',
+
     gitCommand,
+
     readFile: (file) => (file === 'package.json' ? '{"version":"0.2.0"}' : '# Changelog\n'),
+
     updateMetadata: recordMetadataWrite,
   };
 

@@ -118,6 +118,7 @@ function reconcileBranch(
     if (current !== expected)
       return {
         aligned: false,
+
         diagnostic: `local checkout is on ${current}, expected ${expected}`,
       };
     const dirty = git(['status', '--porcelain=v1'], root);
@@ -133,8 +134,11 @@ function reconcileBranch(
     if (behind !== 0 || ahead !== 0)
       return {
         aligned: false,
+
         diagnostic: `local branch diverges from ${remote}/${expected} (ahead=${ahead}, behind=${behind})`,
+
         localSha,
+
         remoteSha,
       };
     try {
@@ -142,8 +146,11 @@ function reconcileBranch(
     } catch {
       return {
         aligned: false,
+
         diagnostic: `branch is not based on ${remote}/${baseBranch}`,
+
         localSha,
+
         remoteSha,
       };
     }
@@ -151,6 +158,7 @@ function reconcileBranch(
   } catch (error) {
     return {
       aligned: false,
+
       diagnostic: `could not verify local/remote branch: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
@@ -197,10 +205,15 @@ function prepareCheckoutWorkspace(o: WorkspaceOptions): WorkspaceFacts {
   git(['checkout', '-b', name, baseSha], root);
   return {
     workspaceRoot: root,
+
     executionRoot: root,
+
     branch: name,
+
     baseSha,
+
     headSha: baseSha,
+
     ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
   };
 }
@@ -218,11 +231,17 @@ function prepareWorktreeWorkspace(o: WorkspaceOptions): WorkspaceFacts {
   git(['worktree', 'add', '-b', name, executionRoot, baseSha], root);
   const facts = {
     workspaceRoot: root,
+
     executionRoot,
+
     worktreeRoot: parent,
+
     branch: name,
+
     baseSha,
+
     headSha: baseSha,
+
     ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
   };
   const file = o.stateFile ?? resolve(root, '.sloop/state.json');
@@ -364,11 +383,17 @@ function recoverRemoteWorkspace(
 
   return {
     workspaceRoot: root,
+
     executionRoot: live.path,
+
     worktreeRoot: parent,
+
     branch: options.branch,
+
     baseSha,
+
     headSha: live.head,
+
     ownership: { runId: options.runId, issue: options.issue, protocol: 'sloop-workspace-v1' },
   };
 }
@@ -394,8 +419,11 @@ function listWorkspaces(
     .filter((x) => x.repositoryRoot === resolve(repositoryRoot))
     .map((x) => ({
       path: x.executionRoot,
+
       branch: x.branch,
+
       issue: x.ownership.issue,
+
       pr: x.pr ?? '—',
     }));
 }
@@ -504,10 +532,16 @@ function cleanupRegisteredWorkspace(entry: Registered, file: string, root: strin
 /** Git and filesystem operations for preparing and managing owned workspaces. */
 export const workspaceAdapter = Object.freeze({
   reconcileBranch,
+
   prepareCheckoutWorkspace,
+
   prepareWorktreeWorkspace,
+
   recoverWorkspace,
+
   listWorkspaces,
+
   clearWorkspaces,
+
   cleanupWorkspace,
 });

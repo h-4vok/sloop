@@ -61,7 +61,9 @@ export const readOnlyCommandRunner = Object.freeze({
     }
     return {
       root: repositoryResult.value,
+
       config: configResult.value.config,
+
       ref: configResult.value.ref,
     };
   },
@@ -196,6 +198,7 @@ export const readOnlyCommandRunner = Object.freeze({
     }[];
     const issues = rawIssues.map((issue) => ({
       ...issue,
+
       labels: issue.labels?.map(({ name }) => name),
     }));
 
@@ -248,6 +251,7 @@ export const readOnlyCommandRunner = Object.freeze({
     } catch {
       return {
         workflow: {},
+
         failure: resultOutput.createDiagnostic(
           'state',
           'The local workflow state is invalid JSON.',
@@ -288,9 +292,13 @@ export const readOnlyCommandRunner = Object.freeze({
     const displayedWorkflow = this.workflowDetails(parsed.verbose, workflow);
     const result = {
       repository: context.root,
+
       configRef: context.ref,
+
       workflow: displayedWorkflow,
+
       ...(parsed.verbose ? { config: context.config } : {}),
+
       ...(recovery ? { nextAction: recovery } : {}),
     };
     const diagnostics = recoveryDiagnostics.toDiagnostics(workflow);
@@ -324,17 +332,21 @@ export const readOnlyCommandRunner = Object.freeze({
         ...(issue && pullRequest
           ? { command: `sloop --prepare-recovery ${issue} --pr ${pullRequest}` }
           : { command: 'sloop status --verbose' }),
+
         description:
           issue && pullRequest
             ? 'Prepare local recovery for the recorded issue and PR.'
             : 'Inspect the recovery state; issue or PR context is unavailable.',
+
         mutates: Boolean(issue && pullRequest),
       };
     }
     if (workflowStatus === 'blocked' || workflowStatus === 'abandoned') {
       return {
         command: 'sloop status --verbose',
+
         description: 'Inspect the recorded blocker and available context.',
+
         mutates: false,
       };
     }
@@ -358,8 +370,11 @@ export const readOnlyCommandRunner = Object.freeze({
 
     return {
       issue: workflow.issue,
+
       pr: workflow.pr,
+
       status: workflow.status,
+
       lastError: workflow.lastError,
     };
   },

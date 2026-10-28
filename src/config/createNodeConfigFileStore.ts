@@ -41,10 +41,14 @@ export const configFileStore = Object.freeze({
         ],
         {
           stdio: 'ignore',
+
           env: {
             ...process.env,
+
             SLOOP_CONFIG_TEMP: temporaryFile,
+
             SLOOP_CONFIG_DEST: file,
+
             SLOOP_CONFIG_BACKUP: backupFile,
           },
         },
@@ -60,6 +64,7 @@ export const configFileStore = Object.freeze({
       throw new ConfigValidationError([
         {
           path: '$',
+
           message:
             'pre-alpha JSON configuration is unsupported; run ' +
             String.fromCharCode(96) +

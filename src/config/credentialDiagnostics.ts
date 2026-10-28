@@ -25,6 +25,7 @@ function credentialStringDiagnostics(value: string, path: string): ConfigDiagnos
   return [
     {
       path,
+
       message: 'credentials are not accepted in sloop.config.yaml; use the external environment',
     },
   ];
@@ -47,6 +48,7 @@ function credentialArrayDiagnostics(
       return [
         {
           path: `${path}[${index}]`,
+
           message:
             'credentials are not accepted in sloop.config.yaml; use the external environment',
         },

@@ -77,6 +77,7 @@ function readPullRequestDetails(
 
   return {
     pullRequest,
+
     inlineThreads: threadNodes.map((thread) => ({ resolved: thread.isResolved })),
   };
 }
@@ -113,25 +114,43 @@ function createRemoteSnapshot(
 
   return {
     issue,
+
     issueState: issueSnapshot.state,
+
     labels: (issueSnapshot.labels ?? []).map((label) => label.name),
+
     pr: pullRequest.number ?? latestManifest?.pr,
+
     prState: pullRequest.state,
+
     prMergedAt: pullRequest.mergedAt,
+
     prBaseBranch: pullRequest.baseRefName,
+
     comments: comments.map((comment) => ({
       body: comment.body,
+
       ...(comment.createdAt ? { createdAt: comment.createdAt } : {}),
+
       ...(comment.id ? { id: comment.id } : {}),
     })),
+
     markers: extractMarkers(comments),
+
     manifest: latestManifest,
+
     branch: pullRequest.headRefName ?? latestManifest?.branch,
+
     sha: pullRequest.headRefOid,
+
     checks: pullRequest.statusCheckRollup,
+
     reviews: pullRequest.reviews,
+
     inlineThreads: pullRequestDetails.inlineThreads,
+
     now: Date.now(),
+
     leaseOwner: `${process.pid}:${issue}`,
   };
 }
@@ -141,6 +160,7 @@ function createClaimBody(issue: number, key: string, manifest: RunManifest | str
 
   return `${runManifestMarker({
     ...manifest,
+
     artifacts: [...new Set([...(manifest.artifacts ?? []), key])],
   })}\nsloop/v1/run/${manifest.runId}\n${key}\nsloop/v1/lease/${issue}/${manifest.lease?.owner ?? key}/${manifest.lease?.expiresAt ?? ''}`;
 }
@@ -241,8 +261,11 @@ export const remoteAuthorityFactory = Object.freeze({
   ): RemoteAuthority {
     return {
       snapshot: createSnapshotHandler(client, repository, logGithub),
+
       reconcile: createReconcileHandler(client, logGithub),
+
       claim: createClaimHandler(client, logGithub),
+
       publish: createPublishHandler(client, logGithub),
     };
   },

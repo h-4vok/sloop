@@ -27,13 +27,16 @@ async function runCli(args, nodeVersion = process.version, modules) {
   const output = activeOutput ?? { stdout: [], stderr: [] };
   const logger = {
     log: (message) => output.stdout.push(message),
+
     error: (message) => output.stderr.push(message),
   };
   const compatibleModules = modules?.runtime?.parseCliCommand
     ? {
         ...modules,
+
         runtime: {
           ...modules.runtime,
+
           parseCliCommand: (...parseArgs) => {
             try {
               const parsed = modules.runtime.parseCliCommand(...parseArgs);
@@ -44,6 +47,7 @@ async function runCli(args, nodeVersion = process.version, modules) {
               return { ok: false, error: error instanceof Error ? error.message : String(error) };
             }
           },
+
           discoverRepository: (...runtimeArgs) => {
             const discovered = modules.runtime.discoverRepository?.(...runtimeArgs);
             return discovered && typeof discovered === 'object' && 'ok' in discovered
@@ -55,8 +59,11 @@ async function runCli(args, nodeVersion = process.version, modules) {
     : modules;
   const cliRunner = createCli({
     host: { ...createNodeHost(), nodeVersion },
+
     logger,
+
     version: packageVersion,
+
     modules: compatibleModules,
   });
   process.exitCode = await cliRunner.runCliCommand(args);
@@ -91,8 +98,10 @@ test('CLI bootstrap connects the production runner to its injected host and logg
 
   await startCli.start(['--version'], packageVersion, process.version, {
     host: createNodeHost(),
+
     logger: {
       log: (message) => stdout.push(message),
+
       error: (message) => stderr.push(message),
     },
   });
@@ -124,14 +133,20 @@ test('unknown argv fails before dispatcher loading or preflight', async () => {
     await runCli(['--tuvieja'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: () => 2,
+
         parseCliCommand: () => {
           throw new Error('unknown option --tuvieja');
         },
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
     });
     assert.equal(process.exitCode, 2);
@@ -154,12 +169,18 @@ test('runCli emits the public node-version failure through injected runtime seam
           received = [args, version];
           return 7;
         },
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: assert.fail,
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
     });
     exitCode = process.exitCode;
@@ -180,17 +201,23 @@ test('runCli reports non-Error usage failures', async () => {
     await runCli(['unknown'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: (args, message) => {
           usageFailures.push([args, message]);
           return 9;
         },
+
         parseCliCommand: () => {
           throw 'plain failure';
         },
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
     });
     exitCode = process.exitCode;
@@ -210,12 +237,18 @@ test('runCli falls back to general help for an unknown help target', async () =>
     await runCli(['help'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({ kind: 'help', target: 'unknown-target' }),
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
     });
   } finally {
@@ -241,10 +274,15 @@ test('runCli routes config commands through injected config adapters after disco
     await runCli(['config', 'show'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({ kind: 'config', args: ['show'] }),
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: assert.fail,
+
         discoverRepository: (io) => {
           assert.equal(typeof io.run, 'function');
           assert.equal(typeof io.readFile, 'function');
@@ -253,13 +291,17 @@ test('runCli routes config commands through injected config adapters after disco
           return 'C:/isolated';
         },
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
+
       config: {
         productionConfigReconciler: (root) => {
           calls.push(['reconciler', root]);
           return async () => {};
         },
+
         runConfigCommand: {
           run: async (root, args, reconciler) => {
             calls.push(['run', root, args, typeof reconciler]);
@@ -286,19 +328,29 @@ test('config command emits a discovery diagnostic when repository discovery fail
     await runCli(['config', 'show'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({ ok: true, value: { kind: 'config', args: ['show'] } }),
+
         discoverRepository: () => ({
           ok: false,
+
           error: {
             check: 'repository',
+
             message: 'The current directory is not inside a Git repository.',
+
             remediation: 'Change to the target repository.',
           },
         }),
+
         resultOutput,
+
         EXIT,
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: assert.fail,
       },
     });
@@ -319,15 +371,22 @@ test('runCli stops dispatcher execution when preflight fails', async () => {
     await runCli(['--list'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({
           ok: true,
+
           value: { kind: 'dispatcher', command: { kind: 'list' } },
         }),
+
         runDispatcherPreflight: () => ({ code: 6, diagnostics: [] }),
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
     });
     exitCode = process.exitCode;
@@ -341,17 +400,25 @@ test('runCli stops dispatcher execution when preflight fails', async () => {
 test('runner loads production dispatcher modules for dispatcher commands', async () => {
   const cliRunner = createCli({
     host: { ...createNodeHost(), nodeVersion: process.version },
+
     logger: { log: assert.fail, error: assert.fail },
+
     version: packageVersion,
+
     modules: {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({
           ok: true,
+
           value: { kind: 'dispatcher', command: { kind: 'list' } },
         }),
+
         runDispatcherPreflight: () => ({ code: 6, diagnostics: [] }),
+
         runReadOnlyCommand: assert.fail,
       },
     },
@@ -368,23 +435,33 @@ test('runCli dispatches commands after successful preflight', async () => {
     await runCli(['--list'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+
         runDispatcherPreflight: () => ({
           code: 0,
+
           diagnostics: [],
+
           root: '/repo',
+
           config: { mode: 'test' },
+
           repository: 'owner/repo',
         }),
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: {
         runDispatcherCli: async (command, dependencies) => {
           calls.push(['dispatcher', command, dependencies]);
           return 0;
         },
       },
+
       adapters: {
         productionDependencies: (root, config, repository) => {
           calls.push(['dependencies', root, config, repository]);
@@ -439,6 +516,7 @@ test('legacy dispatcher executable delegates through repository discovery', () =
   try {
     const result = spawnSync(process.execPath, [resolve('dist/dispatcher.js'), '--status'], {
       cwd: outside,
+
       encoding: 'utf8',
     });
     assert.equal(result.status, 2);
@@ -453,6 +531,7 @@ test('unsupported Node stops before dispatcher loading', () => {
   assert.throws(() => requireSupportedNode('v21.9.0'), /requires Node\.js 22 or newer.*v21\.9\.0/);
   const result = spawnSync(process.execPath, [cli, '--help'], {
     encoding: 'utf8',
+
     env: { ...process.env, NODE_ENV: 'test', SLOOP_TEST_NODE_VERSION: 'v20.0.0' },
   });
   assert.equal(result.status, 2);
@@ -463,6 +542,7 @@ test('unsupported Node stops before dispatcher loading', () => {
 test('unsupported Node emits the global envelope when JSON was requested', () => {
   const result = spawnSync(process.execPath, [cli, 'status', '--json'], {
     encoding: 'utf8',
+
     env: { ...process.env, NODE_ENV: 'test', SLOOP_TEST_NODE_VERSION: 'v20.0.0' },
   });
 
@@ -480,6 +560,7 @@ test('public dispatcher failure emitter preserves busy exit and stream contract'
   const stderr = [];
   const logger = {
     log: (message) => stdout.push(message),
+
     error: (message) => stderr.push(message),
   };
 
@@ -493,6 +574,7 @@ test('public dispatcher failure emitter maps external service errors to exit 5',
   const stderr = [];
   const logger = {
     log: (message) => stdout.push(message),
+
     error: (message) => stderr.push(message),
   };
   const externalServiceError = new ExternalServiceError('github', 'GitHub request failed.');
@@ -509,6 +591,7 @@ function captureCliOutput() {
   activeOutput = output;
   return {
     ...output,
+
     restore() {
       activeOutput = undefined;
     },
@@ -523,22 +606,32 @@ test('runCli preserves the public busy exit and human stream contract', async ()
     await runCli(['--list'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+
         runDispatcherPreflight: () => ({
           code: 0,
+
           diagnostics: [],
+
           root: '/repo',
+
           config: {},
+
           repository: 'owner/repo',
         }),
+
         runReadOnlyCommand: assert.fail,
       },
+
       dispatcher: {
         runDispatcherCli: async () => {
           throw new CliFailure(3, 'Issue is already owned.');
         },
       },
+
       adapters: { productionDependencies: () => ({}) },
     });
     assert.equal(process.exitCode, 3);
@@ -558,28 +651,41 @@ test('runCli preserves the public blocked exit and JSON stream contract', async 
     await runCli(['status', '--json'], process.version, {
       runtime: {
         emitNodeVersionFailure: assert.fail,
+
         emitUsageFailure: assert.fail,
+
         parseCliCommand: () => ({
           kind: 'read-only',
+
           command: { command: 'status', json: true, verbose: false },
         }),
+
         runDispatcherPreflight: assert.fail,
+
         runReadOnlyCommand: (_command, io) => {
           io.stdout(
             JSON.stringify({
               command: 'status',
+
               status: 'blocked',
+
               phase: 'workflow',
+
               summary: 'Workflow is blocked.',
+
               result: null,
+
               diagnostics: [],
+
               references: { issues: [31], pullRequests: [54] },
             }),
           );
           return 4;
         },
       },
+
       dispatcher: { runDispatcherCli: assert.fail },
+
       adapters: { productionDependencies: assert.fail },
     });
     assert.equal(process.exitCode, 4);
@@ -605,12 +711,18 @@ test('runCli handles injected help and version commands without preflight', asyn
       await runCli(['status'], process.version, {
         runtime: {
           emitNodeVersionFailure: assert.fail,
+
           emitUsageFailure: assert.fail,
+
           parseCliCommand: () => command,
+
           runDispatcherPreflight: assert.fail,
+
           runReadOnlyCommand: assert.fail,
         },
+
         dispatcher: { runDispatcherCli: assert.fail },
+
         adapters: { productionDependencies: assert.fail },
       });
       assert.equal(process.exitCode, 0);

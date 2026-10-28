@@ -103,11 +103,16 @@ test('runSyncCommand trims output and passes direct-process options', async () =
   assert.deepEqual(calls, [
     {
       command: 'node',
+
       args: ['--version'],
+
       options: {
         cwd: 'C:\\checkout',
+
         encoding: 'utf8',
+
         stdio: ['ignore', 'pipe', 'pipe'],
+
         windowsVerbatimArguments: undefined,
       },
     },
@@ -141,7 +146,9 @@ test('batch invocation quotes safe arguments when using cmd.exe', async () => {
 
   assert.deepEqual(invocation, {
     command: 'cmd.exe',
+
     args: ['/d', '/s', '/v:off', '/c', '\"\"npm.cmd\" \"run\" \"test\"\"'],
+
     windowsVerbatimArguments: true,
   });
 });
@@ -153,6 +160,7 @@ test('batch invocation leaves executable calls unchanged when there are no argum
 
   assert.deepEqual(invocation, {
     command: 'npm.exe',
+
     args: [],
   });
 });
@@ -170,6 +178,7 @@ test.skipIf(process.platform !== 'win32')('NodeHost runs Windows batch executabl
       { stdout: result.stdout.trim(), status: result.status },
       {
         stdout: 'shim works',
+
         status: 0,
       },
     );

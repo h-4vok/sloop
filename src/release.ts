@@ -73,6 +73,7 @@ export function updateMetadata(
   const entry = `## ${version} - ${date}\n\n- Merged pull request #${pr}.\n\n`;
   return {
     packageText: updatedPackage,
+
     changelog: `${entry}${changelog.replace(/^# Changelog\s*\n?/, '# Changelog\n\n')}`,
   };
 }

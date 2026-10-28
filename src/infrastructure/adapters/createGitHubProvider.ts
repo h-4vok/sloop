@@ -56,28 +56,46 @@ function loadPullRequest(client: GitHubCommandClient, pullRequestNumber: number)
 
   return {
     number: raw.number,
+
     state: raw.state,
+
     baseRefOid: raw.baseRefOid,
+
     baseRefName: raw.baseRefName,
+
     headRefName: raw.headRefName,
+
     headRefOid: raw.headRefOid,
+
     body: raw.body ?? '',
+
     mergeStateStatus: raw.mergeStateStatus ?? raw.merge_state_status,
+
     mergeable: raw.mergeable,
+
     reviews: (raw.reviews ?? []).map((review: any) => ({
       body: review.body,
+
       state: review.state,
+
       submittedAt: review.submittedAt ?? review.submitted_at,
+
       commitId: review.commit?.oid ?? review.commitId ?? review.commit_id,
     })),
+
     comments: (raw.comments ?? []).map((comment: any) => ({
       body: comment.body,
+
       createdAt: comment.createdAt ?? comment.created_at,
     })),
+
     statusCheckRollup: (raw.statusCheckRollup ?? []).map((check: any) => ({
       name: check.name ?? check.context ?? check.workflowName ?? '',
+
       status: check.status ?? check.state,
+
       conclusion: check.conclusion ?? check.state,
+
       detailsUrl: check.detailsUrl ?? check.details_url,
     })),
   };
@@ -298,6 +316,7 @@ function createIssueListHandler(options: GitHubProviderOptions, loadEligibleIssu
       return selectIssues(loadEligibleIssues(), options.priorityLabels).map(
         ({ number, title }) => ({
           number,
+
           title,
         }),
       );
@@ -331,12 +350,19 @@ export const gitHubProviderFactory = Object.freeze({
 
     return {
       eligible: loadEligibleIssuesWithPriority,
+
       createIssue: (title, body) => createIssue(client, title, body, options.logGithub),
+
       comment: commentOnIssue,
+
       pullRequest: loadPullRequestForDispatcher,
+
       updatePullRequestBody: updatePullRequestBodyForDispatcher,
+
       pullRequestBody: loadPullRequestBody,
+
       prComment: commentOnPullRequest,
+
       list: listEligibleIssues,
     };
   },

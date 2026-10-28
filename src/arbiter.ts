@@ -81,16 +81,27 @@ export function formatClarificationComment(item: ArbiterEvent): string {
 export function createSession(issue: number, sessionId: string = randomUUID()): EngineeringSession {
   return {
     sessionId,
+
     issue,
+
     status: 'running',
+
     round: 1,
+
     agents: {},
+
     processedEventIds: [],
+
     unclassifiedFeedback: [],
+
     feedback: [],
+
     pendingClarifications: [],
+
     answeredClarificationIds: [],
+
     classifications: [],
+
     updatedAt: new Date().toISOString(),
   };
 }
@@ -135,10 +146,15 @@ export function restoreSession(
 ): EngineeringSession {
   const restored = {
     ...base,
+
     agents: { ...base.agents },
+
     processedEventIds: [...base.processedEventIds],
+
     pendingClarifications: [...(base.pendingClarifications ?? [])],
+
     answeredClarificationIds: [...(base.answeredClarificationIds ?? [])],
+
     classifications: [...(base.classifications ?? [])],
   };
   for (const item of journal.read()) {
@@ -149,11 +165,16 @@ export function restoreSession(
     if (item.type === 'clarification_requested') {
       const pending = {
         eventId: item.id,
+
         sessionId: item.sessionId,
+
         question: String(item.payload.question ?? 'Please provide clarification.'),
+
         target: typeof item.payload.target === 'string' ? item.payload.target : undefined,
+
         instructions:
           typeof item.payload.instructions === 'string' ? item.payload.instructions : undefined,
+
         createdAt: item.emittedAt,
       };
       if (!restored.pendingClarifications.some((value) => value.eventId === item.id))
@@ -205,9 +226,13 @@ export function classifyFeedback(items: readonly HumanFeedback[], raw: unknown):
     return [
       {
         sourceId: item.sourceId,
+
         intent: item.intent as Classification['intent'],
+
         confidence,
+
         target: typeof item.target === 'string' ? item.target : undefined,
+
         rationale: typeof item.rationale === 'string' ? item.rationale : undefined,
       },
     ];
@@ -283,11 +308,17 @@ export async function runLoggedProcess(spec: ProcessSpec): Promise<{
       logFile,
       JSON.stringify({
         sessionId: spec.sessionId,
+
         issue: spec.issue,
+
         role: spec.role,
+
         round: spec.round,
+
         stream,
+
         at: new Date().toISOString(),
+
         data: redact(text),
       }) + '\n',
     );
@@ -295,8 +326,11 @@ export async function runLoggedProcess(spec: ProcessSpec): Promise<{
   return await new Promise((resolve, reject) => {
     const child = spawn(launch.command, launch.args, {
       cwd: spec.cwd,
+
       windowsHide: true,
+
       env: spec.env ? { ...process.env, ...spec.env } : process.env,
+
       windowsVerbatimArguments: launch.windowsVerbatimArguments,
     });
     let stdout = '',

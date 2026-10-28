@@ -144,8 +144,11 @@ test('recognizes metadata already committed after a partial publication push', (
 test('accepts matching tag and release targets', () => {
   const state = {
     tagName: 'v0.1.2',
+
     tagTarget: 'abc123',
+
     releaseTagName: 'v0.1.2',
+
     releaseTarget: 'abc123',
   };
 
@@ -157,8 +160,11 @@ test('accepts matching tag and release targets', () => {
 test('accepts an existing release that points to the current branch', () => {
   const state = {
     tagName: 'v0.1.2',
+
     tagTarget: 'abc123',
+
     releaseTagName: 'v0.1.2',
+
     releaseTarget: 'abc123',
   };
 
@@ -171,8 +177,11 @@ test('accepts an existing release that points to the current branch', () => {
 test('rejects an existing tag that points to a different commit', () => {
   const state = {
     tagName: 'v0.1.2',
+
     tagTarget: 'different',
+
     releaseTagName: 'v0.1.2',
+
     releaseTarget: 'abc123',
   };
 
@@ -184,8 +193,11 @@ test('rejects an existing tag that points to a different commit', () => {
 test('rejects a release with a different tag name', () => {
   const state = {
     tagName: 'v0.1.2',
+
     tagTarget: 'abc123',
+
     releaseTagName: 'v0.1.3',
+
     releaseTarget: 'abc123',
   };
 
@@ -197,8 +209,11 @@ test('rejects a release with a different tag name', () => {
 test('rejects a release that points to a different commit', () => {
   const state = {
     tagName: 'v0.1.2',
+
     tagTarget: 'abc123',
+
     releaseTagName: 'v0.1.2',
+
     releaseTarget: 'different',
   };
 
@@ -240,6 +255,7 @@ test('repository metadata writer reads and updates only the release files throug
       file === 'package.json'
         ? '{"name":"sloop","version":"0.1.1"}\n'
         : '# Changelog\n\nprevious\n',
+
     writeFile: (file, content) => writes.set(file, content),
   });
 

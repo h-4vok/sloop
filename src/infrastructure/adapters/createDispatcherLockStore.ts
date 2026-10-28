@@ -27,7 +27,9 @@ export const dispatcherLockStoreFactory = Object.freeze({
           return false;
         }
       },
+
       readOwner: () => JSON.parse(readFileSync(ownerFile, 'utf8')) as LockOwner,
+
       tryBeginReclaim: (owner) => {
         try {
           mkdirSync(reclaimDirectory);
@@ -38,13 +40,18 @@ export const dispatcherLockStoreFactory = Object.freeze({
           return false;
         }
       },
+
       readReclaimOwner: () => JSON.parse(readFileSync(reclaimOwnerFile, 'utf8')) as LockOwner,
+
       reclaimAgeMs: (now) => now - statSync(reclaimDirectory).mtimeMs,
+
       finishReclaim: (owner) => {
         writeLockOwner(ownerFile, owner);
         rmSync(reclaimDirectory, { recursive: true, force: true });
       },
+
       abandonReclaim: () => rmSync(reclaimDirectory, { recursive: true, force: true }),
+
       release: (token) => {
         try {
           const owner = JSON.parse(readFileSync(ownerFile, 'utf8')) as LockOwner;

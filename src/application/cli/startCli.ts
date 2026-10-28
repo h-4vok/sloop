@@ -19,8 +19,11 @@ export const startCli = Object.freeze({
   ): Promise<void> {
     const cli = createCli({
       host: { ...(overrides.host ?? createNodeHost()), nodeVersion },
+
       logger: overrides.logger ?? consoleLogger,
+
       version,
+
       modules: overrides.modules,
     });
 

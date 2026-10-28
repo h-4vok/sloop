@@ -19,6 +19,7 @@ function loadConfigTextResult(
   if (document.errors.length)
     return {
       ok: false,
+
       error: new ConfigValidationError(
         document.errors.map((error) => ({ path: '$', message: `invalid YAML: ${error.message}` })),
       ),
@@ -30,6 +31,7 @@ function loadConfigTextResult(
   if (aliasFound)
     return {
       ok: false,
+
       error: new ConfigValidationError([
         { path: '$', message: 'YAML aliases are not supported in sloop.config.yaml' },
       ]),
@@ -48,6 +50,7 @@ function updateConfigTextResult(
   if (!metadata)
     return {
       ok: false,
+
       error: new ConfigValidationError([
         { path: `$.${path}`, message: 'unknown configuration key' },
       ]),
@@ -59,6 +62,7 @@ function updateConfigTextResult(
   if (document.errors.length)
     return {
       ok: false,
+
       error: new ConfigValidationError(
         document.errors.map((error) => ({ path: '$', message: `invalid YAML: ${error.message}` })),
       ),
@@ -104,6 +108,8 @@ function formatDuration(milliseconds: number): string {
 /** Groups YAML document operations that preserve the editable configuration format. */
 export const configYaml = Object.freeze({
   loadConfigTextResult,
+
   updateConfigTextResult,
+
   canonicalConfigYaml,
 });

@@ -34,16 +34,24 @@ for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
     const findings = [{ id: 'Q1', owner: 'qa', summary: 'Trim surrounding whitespace' }];
     const decision = {
       findingId: 'Q1',
+
       owner: 'qa',
+
       action,
+
       rationale: 'El requisito exige recortar los espacios.',
+
       direction: action === 'uphold' ? 'Trim the input.' : null,
+
       verification: action === 'uphold' ? 'Check surrounding and internal spaces.' : null,
+
       followUp:
         action === 'defer'
           ? {
               title: 'Trim names',
+
               acceptance: 'Surrounding spaces are removed.',
+
               context: 'Issue #41 / Q1',
             }
           : null,
@@ -97,6 +105,7 @@ const malformedDecisions = [
     'unknown follow-up field',
     {
       action: 'defer',
+
       followUp: { title: 'Trim', acceptance: 'Trim.', context: 'Q1', extra: true },
     },
   ],
@@ -110,9 +119,13 @@ for (const [condition, patch] of malformedDecisions) {
         ? patch
         : {
             findingId: 'Q1',
+
             owner: 'qa',
+
             action: 'overrule',
+
             rationale: 'Outside the agreed scope.',
+
             ...patch,
           };
     // Act / Assert
@@ -129,8 +142,11 @@ test('Arbiter rejects duplicate decisions for an open finding', () => {
   ];
   const decision = {
     findingId: 'Q1',
+
     owner: 'qa',
+
     action: 'overrule',
+
     rationale: 'Outside scope.',
   };
 
@@ -144,10 +160,15 @@ test('Arbiter rejects uphold on the second intervention', () => {
   const findings = [{ id: 'Q1', owner: 'qa', summary: 'Names' }];
   const decision = {
     findingId: 'Q1',
+
     owner: 'qa',
+
     action: 'uphold',
+
     rationale: 'Trim names.',
+
     direction: 'Trim.',
+
     verification: 'Check spaces.',
   };
 
@@ -167,17 +188,26 @@ test('terminating arbiter validates complete atomic mixed decisions and follow-u
   const raw = [
     {
       findingId: 'Q1',
+
       owner: 'qa',
+
       action: 'uphold',
+
       rationale,
+
       direction: 'fix it',
+
       verification: 'test it',
     },
     {
       findingId: 'S1',
+
       owner: 'staff',
+
       action: 'defer',
+
       rationale,
+
       followUp: { title: 'later', acceptance: 'contract', context: 'source' },
     },
   ];
@@ -198,6 +228,7 @@ test('arbiter session, events, clarification and current review contracts', () =
   assert.match(
     formatClarificationComment({
       ...item,
+
       payload: { question: 'Why?', target: 'PR', instructions: 'Explain.' },
     }),
     /Target: PR/,
@@ -215,12 +246,19 @@ test('journal is append-only, ignores malformed records, and restores events', (
   const journal = new JsonlJournal(file);
   const first = {
     id: 'e1',
+
     sessionId: 's',
+
     issue: 1,
+
     type: 'review_started',
+
     sha: 'abc',
+
     round: 2,
+
     emittedAt: '2020-01-01T00:00:00Z',
+
     payload: {},
   };
 
@@ -242,18 +280,28 @@ test('journal is append-only, ignores malformed records, and restores events', (
   assert.deepEqual(minimal.pendingClarifications, []);
   journal.append({
     id: 'e3',
+
     sessionId: 's',
+
     issue: 1,
+
     type: 'clarification_answered',
+
     emittedAt: '2020-01-01T00:00:02Z',
+
     payload: { eventId: 'e2' },
   });
   journal.append({
     id: 'e4',
+
     sessionId: 's',
+
     issue: 1,
+
     type: 'feedback_classified',
+
     emittedAt: '2020-01-01T00:00:03Z',
+
     payload: { classifications: [null, { sourceId: 'r' }] },
   });
   const answered = restoreSession(base, journal);
@@ -263,34 +311,54 @@ test('journal is append-only, ignores malformed records, and restores events', (
   const extraJournal = new JsonlJournal(extra);
   extraJournal.append({
     id: 'q',
+
     sessionId: 'other',
+
     issue: 1,
+
     type: 'clarification_requested',
+
     emittedAt: 'x',
+
     payload: {},
   });
   extraJournal.append({
     id: 'q2',
+
     sessionId: 's',
+
     issue: 1,
+
     type: 'clarification_requested',
+
     emittedAt: 'x',
+
     payload: { instructions: 'Read this' },
   });
   extraJournal.append({
     id: 'a',
+
     sessionId: 's',
+
     issue: 1,
+
     type: 'clarification_answered',
+
     emittedAt: 'x',
+
     payload: {},
   });
   extraJournal.append({
     id: 'f',
+
     sessionId: 's',
+
     issue: 1,
+
     type: 'feedback_classified',
+
     emittedAt: 'x',
+
     payload: {},
   });
   const extraRestored = restoreSession(
@@ -303,12 +371,14 @@ test('journal is append-only, ignores malformed records, and restores events', (
 test('feedback collection and classification reject unknown or invalid input', () => {
   const feedback = collectHumanFeedback({
     processedIds: ['old'],
+
     reviews: [
       { id: 'old', body: 'skip' },
       { id: 'r1', state: 'APPROVED', body: 'Looks good' },
       { id: 'r2', body: 'Fix this problem' },
       { body: '  ' },
     ],
+
     comments: [
       { id: 'c1', body: '[Staff Review] internal' },
       { id: 'c2', body: 'A concern', createdAt: 'now' },
@@ -335,11 +405,14 @@ test('feedback collection and classification reject unknown or invalid input', (
   ]);
   assert.deepEqual(collectHumanFeedback({}), {
     items: [],
+
     formalApprovals: [],
+
     textualObjections: [],
   });
   const generated = collectHumanFeedback({
     reviews: [{ body: 'ok', submittedAt: 't' }],
+
     comments: [{ body: 'ok', createdAt: 't' }, { body: ' ' }],
   });
   assert.equal(generated.items.length, 2);
@@ -352,21 +425,32 @@ test('arbiter consumes only valid matching lines and classifies with retry prese
   const seen = [];
   const context = {
     session,
+
     journal,
+
     save: (value) => {
       context.saved = value;
     },
+
     project: (value) => seen.push(value),
   };
   const item = {
     id: 'x',
+
     sessionId: 's3',
+
     issue: 3,
+
     role: 'arbiter',
+
     type: 'worker_ready',
+
     sha: 'abc',
+
     round: 1,
+
     emittedAt: new Date().toISOString(),
+
     payload: {},
   };
 
@@ -424,15 +508,25 @@ test('logged process captures streams, lines, redactions, input, timeout, and la
     errors = [];
   const base = {
     logDirectory: dir,
+
     sessionId: 's',
+
     issue: 1,
+
     role: 'worker',
+
     round: 1,
+
     command: process.execPath,
+
     args: ['-e', "process.stdout.write('hello SECRET\\nlast'); process.stderr.write('oops')"],
+
     timeoutMs: 5000,
+
     redactions: ['SECRET'],
+
     onStdoutLine: (line) => lines.push(line),
+
     onStderr: (text) => errors.push(text),
   };
   const result = await runLoggedProcess({ ...base, env: { SLOOP_TEST: '1' } });
@@ -443,14 +537,19 @@ test('logged process captures streams, lines, redactions, input, timeout, and la
   assert.match((await import('node:fs')).readFileSync(result.logFile, 'utf8'), /\[REDACTED\]/);
   const input = await runLoggedProcess({
     ...base,
+
     args: ['-e', "process.stdin.on('data', d => process.stdout.write(d))"],
+
     input: 'input',
+
     onStdoutLine: undefined,
   });
   assert.equal(input.stdout, 'input');
   const newline = await runLoggedProcess({
     ...base,
+
     redactions: [null],
+
     args: ['-e', "process.stdout.write('line\\n')"],
   });
   assert.equal(newline.code, 0);
@@ -475,7 +574,9 @@ test('logged process captures streams, lines, redactions, input, timeout, and la
   }
   const timed = await runLoggedProcess({
     ...base,
+
     args: ['-e', 'setTimeout(() => {}, 1000)'],
+
     timeoutMs: 10,
   });
   assert.equal(timed.timedOut, true);

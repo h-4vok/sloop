@@ -152,11 +152,17 @@ export function projectRemoteState(s: RemoteSnapshot): WorkflowProjection {
     gates.push('lease:owned');
   return {
     protocol: REMOTE_PROTOCOL,
+
     phase,
+
     openGates: gates,
+
     runId: manifest.runId,
+
     manifest,
+
     artifactKeys: sorted([...markers, ...manifest.artifacts]),
+
     ...(lease ? { lease } : {}),
   };
 }

@@ -26,7 +26,9 @@ type DispatcherControls = CliControl<Config> & Workspace<State>;
 function mapRecoveryPullRequest(pullRequest: PullRequest) {
   return {
     baseRefOid: pullRequest.baseRefOid,
+
     headRefName: pullRequest.headRefName,
+
     headRefOid: pullRequest.headRefOid,
   };
 }
@@ -63,9 +65,13 @@ export const dispatcherControlsFactory = Object.freeze({
   create(options: DispatcherControlOptions): DispatcherControls {
     return {
       root: options.root,
+
       load: () => readState(options.stateFile),
+
       save: (state) => writeState(state, options.stateFile),
+
       loadConfig: () => options.config,
+
       status: (verbose) => {
         const currentState = readState(options.stateFile);
 
@@ -73,18 +79,25 @@ export const dispatcherControlsFactory = Object.freeze({
           ? currentState
           : {
               issue: currentState.issue,
+
               pr: currentState.pr,
+
               status: currentState.status,
+
               lastError: currentState.lastError,
             };
       },
+
       list: () => options.listEligibleIssues(),
+
       recoverLock: () => recoverStaleLock(options.root, defaultProcessAlive),
+
       reset: () =>
         writeState(
           resetRunState(readState(options.stateFile), defaultProcessAlive),
           options.stateFile,
         ),
+
       resolveReviewCap: (args, config) =>
         resolveReviewCap(
           args,
@@ -95,8 +108,10 @@ export const dispatcherControlsFactory = Object.freeze({
           {},
           options.remoteAuthority,
         ),
+
       linkIssue: (issue) =>
         linkIssueToActiveRun(issue, options.stateFile, options.root, options.repository),
+
       prepareRecovery: (issue, pullRequest, config) =>
         prepareIssueRecovery(options, issue, pullRequest, config),
     };
