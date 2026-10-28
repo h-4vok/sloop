@@ -7,9 +7,13 @@ description: Create and manually run one minimal Sloop end-to-end issue in h-4vo
 
 Run one manual smoke cycle in PowerShell. Do not create scripts or automate the loop.
 
+## Target repository context
+
+This skill may be invoked from `C:\src\sloop` or any other directory. The test fixture is always `C:\src\sloop-test-empty`; never treat the caller's current repository, branch, or dirty status as a fixture precondition. Before any GitHub, Git, or Sloop fixture check, run `$targetRoot = 'C:\src\sloop-test-empty'; Push-Location -LiteralPath $targetRoot` and keep that location for the full cycle. All clean-worktree and active-run checks refer only to this target checkout. Restore the caller's location with `Pop-Location` after recording the result, including when a check fails. Do not clean, switch, or otherwise mutate the caller's checkout.
+
 ## Preconditions
 
-- Require repo identity `h-4vok/sloop-test-empty`, root `C:\src\sloop-test-empty`, branch `main`, and clean `git status --short`.
+- From the target location, require repo identity `h-4vok/sloop-test-empty`, root `C:\src\sloop-test-empty`, branch `main`, and clean `git status --short`.
 - Require `sloop.config.yaml` to set both Worker and QA sandboxes to `danger-full-access`.
 - Require no open PR or issue labeled `Sloop E2E`; run `sloop-test-cleanup` first if any remain.
 - Refuse to start if `MANUAL-E2E.md` already exists on `main` or another Sloop run is active.

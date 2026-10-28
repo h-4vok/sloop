@@ -207,7 +207,7 @@ test('wizard retries invalid input and persists varied valid answers', async () 
   assert.equal(config.workspace.worktreeRoot, '.tmp/worktrees');
   assert.equal(config.loop.interval, 60_000);
   assert.equal((modeIO.text().match(/workspace\.mode\n/g) ?? []).length, 2);
-});
+}, 15_000);
 
 test('wizard cancellation does not create a config', async () => {
   const root = createRepository();

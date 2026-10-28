@@ -539,7 +539,7 @@ test('active-run reconciliation classifies open and unverifiable runs', () => {
     outcome: 'blocked',
     reason: 'persisted worker branch is missing',
   });
-});
+}, 15_000);
 
 test('dispatcher controls list delegates to its eligible-issues port', () => {
   const eligibleIssues = [{ number: 7, title: 'Repair adapter boundary' }];

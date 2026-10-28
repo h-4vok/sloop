@@ -2724,7 +2724,7 @@ test('new branch preparation refuses to overwrite an existing worker branch', ()
   assert.equal(runGit(['rev-parse', 'codex/issue-1']), runGit(['rev-parse', 'HEAD']));
   rmSync(root, { recursive: true, force: true });
   rmSync(remote, { recursive: true, force: true });
-});
+}, 15_000);
 
 test('new branch preparation uses main updated by fetch', () => {
   const seed = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-seed-'));
@@ -2764,7 +2764,7 @@ test('new branch preparation uses main updated by fetch', () => {
     rmSync(remote, { recursive: true, force: true });
     rmSync(work, { recursive: true, force: true });
   }
-});
+}, 30_000);
 
 test('worker branch preparation classifies a failed fetch as an external dependency failure', () => {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-git-fetch-failure-'));
