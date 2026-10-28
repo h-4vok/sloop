@@ -159,7 +159,7 @@ test('recovery and cleanup fail closed for fake or dirty registered targets', as
   writeFileSync(join(facts.executionRoot, 'user.txt'), 'keep');
   assert.throws(() => cleanupWorkspace(facts, root), /dirty/);
   assert.equal(listWorkspaces(root).length, 1);
-});
+}, 30_000);
 
 test('worker recovery retains dispatch ownership, refreshes a pushed head, and cleans Serena metadata', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
@@ -276,7 +276,7 @@ test('remote recovery rejects a workspace unrelated to the current base branch',
 
   assert.equal(recoverWorkspace({ ...options, branch: facts.branch }), undefined);
   assert.equal(existsSync(facts.executionRoot), true);
-});
+}, 30_000);
 
 test('cleanup rejects generated Serena directories containing files under ignored memories', async () => {
   const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();

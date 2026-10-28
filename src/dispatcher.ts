@@ -43,6 +43,7 @@ import type {
 } from './core/boundaries.js';
 import type { DispatcherCommand } from './application/dispatcher/DispatcherCommand.js';
 import type { RemoteSnapshot, RunManifest, WorkflowProjection } from './remote-state.js';
+import { runDispatcherCli as executeDispatcherCli } from './application/cli/runDispatcherCli.js';
 import { issueLabelNames } from './issue-selection.js';
 import { validateAgentEnvelope, type RunContext as AgentRunContext } from './agent-runner.js';
 import {
@@ -2784,81 +2785,7 @@ export async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
 }
 
 export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Promise<0 | 4> {
-  switch (command.kind) {
-    case 'status':
-      {
-        const result = d.status(command.verbose) as {
-          issue?: number;
-          pr?: number;
-          status?: Status;
-          nextAction?: {
-            command: string;
-            description: string;
-            mutates: boolean;
-          };
-          [key: string]: unknown;
-        };
-        const issue = result.issue;
-        const pr = result.pr;
-        if (
-          !command.verbose &&
-          result.status === 'worker_recovery_pending' &&
-          typeof issue === 'number' &&
-          Number.isInteger(issue) &&
-          issue > 0 &&
-          typeof pr === 'number' &&
-          Number.isInteger(pr) &&
-          pr > 0
-        ) {
-          result.nextAction = {
-            command: `sloop --prepare-recovery ${issue} --pr ${pr}`,
-            description: 'Prepare local recovery for the failed Worker.',
-            mutates: true,
-          };
-        }
-        console.log(JSON.stringify(result, null, 2));
-      }
-      return 0;
-    case 'list':
-      console.log(JSON.stringify(d.list(), null, 2));
-      return 0;
-    case 'recover-lock':
-      console.log(d.recoverLock());
-      return 0;
-    case 'reset':
-      d.reset();
-      console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
-      return 0;
-    case 'resolve-review-cap': {
-      const cfg = d.loadConfig();
-      d.resolveReviewCap(command.options, cfg);
-      console.log('Resolución HITL registrada.');
-      return 0;
-    }
-    case 'link-issue':
-      d.linkIssue(command.issue);
-      console.log(`Issue #${command.issue} vinculada al PR activo.`);
-      return 0;
-    case 'list-all-worktrees':
-      console.log(JSON.stringify(d.listAllWorktrees?.() ?? [], null, 2));
-      return 0;
-    case 'clear-all-worktrees':
-      d.clearAllWorktrees?.();
-      console.log('Sloop worktrees cleared.');
-      return 0;
-    case 'prepare-recovery': {
-      const cfg = d.loadConfig();
-      const pr = d.prepareRecovery(command.issue, command.pr, cfg);
-      console.log(
-        `Recovery preparado para issue #${command.issue}, PR #${pr}. Ejecutá npm run sloop.`,
-      );
-      return 0;
-    }
-    case 'workflow': {
-      const cfg = d.loadConfig();
-      return dispatch(cfg, d);
-    }
-  }
+  return executeDispatcherCli.run(command, d, dispatch);
 }
 
 // The legacy path remains callable for compatibility, but crosses the same startup boundary.
