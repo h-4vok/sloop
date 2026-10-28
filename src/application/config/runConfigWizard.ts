@@ -388,19 +388,23 @@ function parseWizardValueResult(
   raw: string,
 ): Result<unknown, ConfigValidationError> {
   if (field.type !== 'list' && field.type !== 'argv') return parseConfigValueResult(field, raw);
+  if (field.type === 'list')
+    return field.parser(
+      raw.split(',').map((item) => item.trim()),
+      `$.${field.path}`,
+    );
+
+  let parsedArgv: unknown;
   try {
-    const parsedValue =
-      field.type === 'list' ? raw.split(',').map((item) => item.trim()) : JSON.parse(raw);
-    return { ok: true, value: field.parser(parsedValue, `$.${field.path}`) };
+    parsedArgv = JSON.parse(raw);
   } catch (error) {
-    if (error instanceof ConfigValidationError) return { ok: false, error };
-    if (error instanceof SyntaxError)
-      return {
-        ok: false,
-        error: new ConfigValidationError([
-          { path: `$.${field.path}`, message: `expected valid JSON: ${error.message}` },
-        ]),
-      };
-    throw error;
+    if (!(error instanceof SyntaxError)) throw error;
+    return {
+      ok: false,
+      error: new ConfigValidationError([
+        { path: `$.${field.path}`, message: `expected valid JSON: ${error.message}` },
+      ]),
+    };
   }
+  return field.parser(parsedArgv, `$.${field.path}`);
 }

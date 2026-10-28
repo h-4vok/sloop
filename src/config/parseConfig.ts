@@ -74,16 +74,12 @@ function collectFieldDiagnostics(
   const diagnostics: ConfigDiagnostic[] = [];
   for (const metadata of configRegistry) {
     const raw = getPath(value as Record<string, unknown>, metadata.path);
-    try {
-      setPath(
-        output,
-        metadata.path,
-        metadata.parser(raw === undefined ? metadata.default : raw, `$.${metadata.path}`),
-      );
-    } catch (error) {
-      if (error instanceof ConfigValidationError) diagnostics.push(...error.diagnostics);
-      else throw error;
-    }
+    const parsed = metadata.parser(
+      raw === undefined ? metadata.default : raw,
+      `$.${metadata.path}`,
+    );
+    if (parsed.ok) setPath(output, metadata.path, parsed.value);
+    else diagnostics.push(...parsed.error.diagnostics);
   }
   return diagnostics;
 }
@@ -141,9 +137,15 @@ function dependencyDiagnostics(output: Record<string, unknown>): ConfigDiagnosti
   return diagnostics;
 }
 
-function parseConfigOrThrow(value: unknown, onUnknownKey: (path: string) => void): SloopConfig {
+function parseConfigResult(
+  value: unknown,
+  onUnknownKey: (path: string) => void,
+): Result<SloopConfig, ConfigValidationError> {
   if (!plainObject(value))
-    throw new ConfigValidationError([{ path: '$', message: 'expected a YAML mapping' }]);
+    return {
+      ok: false,
+      error: new ConfigValidationError([{ path: '$', message: 'expected a YAML mapping' }]),
+    };
   const allowed = allowedTree();
   for (const unknownPath of unknownKeys(value, allowed)) onUnknownKey(unknownPath);
   const diagnostics = [
@@ -153,21 +155,12 @@ function parseConfigOrThrow(value: unknown, onUnknownKey: (path: string) => void
   const output: Record<string, unknown> = {};
   diagnostics.push(...collectFieldDiagnostics(output, value));
   diagnostics.push(...crossFieldDiagnostics(output), ...dependencyDiagnostics(output));
-  if (diagnostics.length) throw new ConfigValidationError(diagnostics);
-  return deepFreeze(output as SloopConfig);
-}
-
-function parseConfigResult(
-  value: unknown,
-  onUnknownKey: (path: string) => void = () => undefined,
-): Result<SloopConfig, ConfigValidationError> {
-  try {
-    return { ok: true, value: parseConfigOrThrow(value, onUnknownKey) };
-  } catch (error) {
-    if (error instanceof ConfigValidationError) return { ok: false, error };
-    throw error;
-  }
+  if (diagnostics.length) return { ok: false, error: new ConfigValidationError(diagnostics) };
+  return { ok: true, value: deepFreeze(output as SloopConfig) };
 }
 
 /** Validates raw input and returns expected configuration failures as data. */
-export const configValidator = Object.freeze({ parseConfigResult });
+export const configValidator = Object.freeze({
+  parseConfigResult: (value: unknown, onUnknownKey: (path: string) => void = () => undefined) =>
+    parseConfigResult(value, onUnknownKey),
+});

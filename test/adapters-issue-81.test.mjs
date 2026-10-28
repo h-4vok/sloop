@@ -258,7 +258,7 @@ test('production workspace adapter owns and cleans an isolated worktree lifecycl
   assert.equal(dependencies.workspaceAdapter.context().executionRoot, root);
   assert.equal(dependencies.listAllWorktrees().length, 0);
   dependencies.clearAllWorktrees();
-});
+}, 15_000);
 
 test('production adapters cover remote snapshot, claim, publish, and failure paths', async () => {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-remote-'));

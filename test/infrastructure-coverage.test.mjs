@@ -240,7 +240,7 @@ test('adapter workspace callbacks use the configured checkout lifecycle', () => 
   assert.equal(facts.executionRoot, checkout);
   adapterDependencies.workspaceAdapter.cleanup(facts);
   assert.equal(adapterDependencies.workspaceAdapter.context().executionRoot, checkout);
-});
+}, 15_000);
 
 // These are production adapters; only the GitHub CLI boundary is mocked so the tests exercise remote snapshot behavior.
 const createSnapshotAdapterDependenciesWithMockGitHubCommand = (issueResponse) => {

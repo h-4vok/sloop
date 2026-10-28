@@ -3,7 +3,7 @@ import { configQueries } from './configQueries.js';
 import { configYaml } from './configYaml.js';
 import { configValidator } from './parseConfig.js';
 import { ConfigValidationError } from './types.js';
-import type { FieldMetadata, SloopConfig } from './types.js';
+import type { SloopConfig } from './types.js';
 import type { Result } from './Result.js';
 
 export { ConfigValidationError, configFileStore, configQueries, configValidator, configYaml };
@@ -28,9 +28,6 @@ export const configFingerprint = configQueries.configFingerprint;
 export const configValue = configQueries.configValue;
 export const configPaths = configQueries.configPaths;
 
-/** Preserves the original throwing API for callers that have not migrated. */
-export const parseConfigValue = (field: FieldMetadata, value: string): unknown =>
-  requireConfigSuccess(configQueries.parseConfigValueResult(field, value));
 export const parseConfig = (value: unknown): SloopConfig =>
   requireConfigSuccess(configValidator.parseConfigResult(value, warnUnknownConfigKey));
 export const loadConfigText = (source: string): SloopConfig =>

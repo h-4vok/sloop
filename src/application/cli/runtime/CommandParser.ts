@@ -105,17 +105,13 @@ export const commandParser = Object.freeze({
     parsed: ReviewCapArguments,
   ): ParseResult<Extract<DispatcherCommand, { kind: 'resolve-review-cap' }>['options']> {
     const { counts, values } = parsed;
-    if ((counts.get('--steer') ?? 0) !== 1)
-      return result.failure('--resolve-review-cap requires exactly one --steer <text>');
-    for (const option of ['--additional-rounds', '--waive-all-outstanding', '--abandon']) {
-      if ((counts.get(option) ?? 0) > 1) return result.failure(`${option} cannot be repeated`);
-    }
     const rounds = values.get('--additional-rounds')?.[0];
-    if (rounds !== undefined && !/^\d+$/.test(rounds))
-      return result.failure('--additional-rounds must be a non-negative integer');
     const waivers = values.get('--waive') ?? [];
-    if (waivers.some((value) => !/^[QS]\d+(?:,[QS]\d+)*$/.test(value)))
-      return result.failure('--waive requires comma-separated Q<n> or S<n> finding IDs');
+    const countValidation = this.validateReviewCapOptionCounts(counts);
+    if (!countValidation.ok) return countValidation;
+    const valueValidation = this.validateReviewCapValues(rounds, waivers);
+    if (!valueValidation.ok) return valueValidation;
+
     const steer = values.get('--steer')?.[0]?.trim() ?? '';
     if (!steer) return result.failure('--resolve-review-cap requires non-empty --steer <text>');
     const additionalRounds = rounds === undefined ? 0 : Number(rounds);
@@ -135,6 +131,24 @@ export const commandParser = Object.freeze({
       waiveAllOutstanding,
       abandon,
     });
+  },
+  validateReviewCapOptionCounts(counts: ReadonlyMap<string, number>): ParseResult<void> {
+    if ((counts.get('--steer') ?? 0) !== 1)
+      return result.failure('--resolve-review-cap requires exactly one --steer <text>');
+    for (const option of ['--additional-rounds', '--waive-all-outstanding', '--abandon']) {
+      if ((counts.get(option) ?? 0) > 1) return result.failure(`${option} cannot be repeated`);
+    }
+    return result.success(undefined);
+  },
+  validateReviewCapValues(
+    rounds: string | undefined,
+    waivers: readonly string[],
+  ): ParseResult<void> {
+    if (rounds !== undefined && !/^\d+$/.test(rounds))
+      return result.failure('--additional-rounds must be a non-negative integer');
+    if (waivers.some((value) => !/^[QS]\d+(?:,[QS]\d+)*$/.test(value)))
+      return result.failure('--waive requires comma-separated Q<n> or S<n> finding IDs');
+    return result.success(undefined);
   },
   validateReviewCapCombinations(
     abandon: boolean,

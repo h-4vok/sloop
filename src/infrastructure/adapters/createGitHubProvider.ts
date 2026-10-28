@@ -105,6 +105,36 @@ function publishPullRequestBody(
   }
 }
 
+function findIssueByIdempotencyKey(client: GitHubCommandClient, body: string): number | undefined {
+  const idempotencyKey = body.match(/Idempotency key:\s*(\S+)/)?.[1];
+  if (!idempotencyKey) return undefined;
+
+  const existingIssues = client.runJson<{ number?: number; body?: string }[]>([
+    'issue',
+    'list',
+    '--state',
+    'all',
+    '--search',
+    idempotencyKey,
+    '--json',
+    'number,body',
+    '--limit',
+    '100',
+  ]);
+  return existingIssues.find((issue) => issue.body?.includes(idempotencyKey))?.number;
+}
+
+function createIssueNumber(client: GitHubCommandClient, title: string, body: string): number {
+  const rawIssueUrl = client
+    .run(['issue', 'create', '--title', title, '--body', publicationBody(body)], {
+      stdio: 'pipe',
+    })
+    .trim();
+  const issueMatch = rawIssueUrl.match(/\/issues\/(\d+)(?:\D|$)/);
+  if (!issueMatch) throw new Error(`gh issue create returned no issue number: ${rawIssueUrl}`);
+  return Number(issueMatch[1]);
+}
+
 function createIssue(
   client: GitHubCommandClient,
   title: string,
@@ -114,33 +144,10 @@ function createIssue(
   logGithub('request', 'issue.create', { title, body });
 
   try {
-    const idempotencyKey = body.match(/Idempotency key:\s*(\S+)/)?.[1];
-    if (idempotencyKey) {
-      const existingIssues = client.runJson<{ number?: number; body?: string }[]>([
-        'issue',
-        'list',
-        '--state',
-        'all',
-        '--search',
-        idempotencyKey,
-        '--json',
-        'number,body',
-        '--limit',
-        '100',
-      ]);
-      const existingIssue = existingIssues.find((issue) => issue.body?.includes(idempotencyKey));
-      if (existingIssue?.number) return existingIssue.number;
-    }
+    const existingIssue = findIssueByIdempotencyKey(client, body);
+    if (existingIssue) return existingIssue;
 
-    const rawIssueUrl = client
-      .run(['issue', 'create', '--title', title, '--body', publicationBody(body)], {
-        stdio: 'pipe',
-      })
-      .trim();
-    const issueMatch = rawIssueUrl.match(/\/issues\/(\d+)(?:\D|$)/);
-    if (!issueMatch) throw new Error(`gh issue create returned no issue number: ${rawIssueUrl}`);
-
-    const issueNumber = Number(issueMatch[1]);
+    const issueNumber = createIssueNumber(client, title, body);
     logGithub('response', 'issue.create', { issue: issueNumber });
     return issueNumber;
   } catch (error) {

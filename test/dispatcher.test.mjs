@@ -1523,6 +1523,42 @@ test('recovery consumes current Worker and QA comments without rerunning agents 
   assert.equal(dispatcherHarness.state().lastErrorVerbose, undefined);
 });
 
+test('recovery continues to QA when valid Worker evidence exists without a QA comment', async () => {
+  // Arrange
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
+    initialState: {
+      issue: 1,
+      pr: 14,
+      branch: 'codex/issue-1',
+      headSha: 'abc0',
+      workerRunId: 'recovery-run',
+      status: 'worker_recovery_pending',
+      reviewRound: 1,
+    },
+  });
+  const loadPullRequest = dispatcherHarness.dependencies.pullRequest;
+  const workerEvidence =
+    '[Worker] round=1 status=ready_for_review pr=14 base=main commit=abc0\n\n[Human Verification]\n\n1. Open the file.\n2. Confirm its content.';
+  dispatcherHarness.dependencies.pullRequest = async (...args) => {
+    const evidence = await loadPullRequest(...args);
+    return {
+      ...evidence,
+      comments: [
+        { body: workerEvidence, createdAt: '1' },
+        ...evidence.comments.filter((comment) => !comment.body?.startsWith('[Worker]')),
+      ],
+    };
+  };
+
+  // Act
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  // Assert
+  assert.equal(dispatcherHarness.counts().workerCount, 0);
+  assert.equal(dispatcherHarness.counts().qaCount, 1);
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+});
+
 for (const [condition, body] of [
   ['another round', '[QA/SDET Review] round=1 verdict=passed commit=HEAD'],
   ['another SHA', '[QA/SDET Review] round=2 verdict=passed commit=stale'],
@@ -1642,6 +1678,49 @@ test('dispatcher rejects a QA comment for another SHA even when QA exits success
   assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
   assert.match(dispatcherHarness.state().lastError, /round=1 commit=abc1/);
   assert.match(dispatcherHarness.state().lastError, /checked PR comments and GitHub reviews/);
+});
+
+test('dispatcher reconciles a PR when the Worker omits its result marker', async () => {
+  // Arrange
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }]);
+  const runWorkerRole = dispatcherHarness.dependencies.run;
+  dispatcherHarness.dependencies.run = async (spec) => {
+    const output = await runWorkerRole(spec);
+    return spec.input?.includes('Use the worker skill')
+      ? 'Done. PR [#14](https://github.com/example/repo/pull/14) targets main.'
+      : output;
+  };
+
+  // Act
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  // Assert
+  assert.equal(dispatcherHarness.state().pr, 14);
+  assert.equal(dispatcherHarness.state().status, 'ready_for_human_merge');
+  assert.deepEqual(
+    dispatcherHarness.runs.map(({ input }) => input.includes('Use the sloop-qa skill')),
+    [false, true],
+  );
+});
+
+test('dispatcher rejects an unrelated summary PR before changing its body', async () => {
+  // Arrange
+  const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
+    headRefName: 'codex/unrelated',
+  });
+  const runWorkerRole = dispatcherHarness.dependencies.run;
+  dispatcherHarness.dependencies.run = async (spec) => {
+    const output = await runWorkerRole(spec);
+    return spec.input?.includes('Use the worker skill') ? 'Done. PR #14 targets main.' : output;
+  };
+
+  // Act
+  await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
+
+  // Assert
+  assert.equal(dispatcherHarness.prBodyUpdates.length, 0);
+  assert.equal(dispatcherHarness.state().status, 'worker_recovery_pending');
+  assert.match(dispatcherHarness.state().lastError, /must use worker branch/);
 });
 
 test('HEAD changing during QA prevents acceptance of its passed comment', async () => {
@@ -2135,6 +2214,7 @@ test('create and recovery smoke paths capture the persisted claimed-issue PR bod
   const dispatcherHarness = createMockDispatcherHarness(
     [{ number: 17, title: 'seventeen', body: 'criteria' }],
     {
+      headRefName: 'codex/issue-17',
       prBody: 'Summary\n\nCloses #1\nClose #99',
     },
   );
@@ -2709,7 +2789,7 @@ test('worker branch preparation classifies a failed fetch as an external depende
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-});
+}, 15_000);
 
 test('dispatcher rejects a PR whose worker branch violates the convention', async () => {
   const dispatcherHarness = createMockDispatcherHarness(

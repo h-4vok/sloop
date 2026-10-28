@@ -90,15 +90,18 @@ export const repositoryPreflight = Object.freeze({
   },
 
   checkExecutable(name: string, io: RuntimeIo, root: string): Diagnostic | undefined {
-    const result = io.run(name, ['--version'], root);
+    const execution = io.run(name, ['--version'], root);
+    if (execution.status === 0) return undefined;
 
-    return result.status === 0
-      ? undefined
-      : this.diagnostic(
-          name,
-          `${name} is unavailable.`,
-          `Install ${name} and ensure it is on PATH.`,
-        );
+    const output = this.clean(execution.stderr || execution.stdout)
+      .replace(/\s+/g, ' ')
+      .slice(0, 200);
+    const details = output ? ` Output: ${output}` : '';
+    return this.diagnostic(
+      name,
+      `${name} --version failed with exit status ${execution.status}.${details}`,
+      `Install ${name} and ensure it is on PATH.`,
+    );
   },
 
   commonChecks(root: string, config: SloopConfig, io: RuntimeIo): Diagnostic[] {
@@ -237,39 +240,8 @@ export const repositoryPreflight = Object.freeze({
   },
 
   validateGitHubPermissions(response: string, allLabels: boolean): Diagnostic[] {
-    try {
-      const repository = JSON.parse(response) as {
-        nameWithOwner?: string;
-        viewerPermission?: string;
-      };
-      const failures: Diagnostic[] = [];
-      if (!repository.nameWithOwner) {
-        failures.push(
-          this.diagnostic(
-            'repository-identity',
-            'GitHub returned no repository identity.',
-            'Correct the configured remote.',
-          ),
-        );
-      }
-
-      const acceptedPermissions = allLabels
-        ? ['WRITE', 'MAINTAIN', 'ADMIN']
-        : ['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN'];
-      if (!acceptedPermissions.includes(repository.viewerPermission ?? '')) {
-        failures.push(
-          this.diagnostic(
-            'permissions',
-            allLabels
-              ? 'Repository write permission is unavailable.'
-              : 'Repository read permission is unavailable.',
-            `Request repository ${allLabels ? 'write' : 'read'} access.`,
-          ),
-        );
-      }
-
-      return failures;
-    } catch {
+    const repository = this.parseGitHubRepository(response);
+    if (!repository) {
       return [
         this.diagnostic(
           'repository-identity',
@@ -278,6 +250,54 @@ export const repositoryPreflight = Object.freeze({
         ),
       ];
     }
+
+    return [
+      ...this.validateGitHubIdentity(repository.nameWithOwner),
+      ...this.validateGitHubPermission(repository.viewerPermission, allLabels),
+    ];
+  },
+
+  parseGitHubRepository(response: string):
+    | {
+        nameWithOwner?: string;
+        viewerPermission?: string;
+      }
+    | undefined {
+    try {
+      const repository: unknown = JSON.parse(response);
+      if (!repository || typeof repository !== 'object' || Array.isArray(repository))
+        return undefined;
+      return repository as { nameWithOwner?: string; viewerPermission?: string };
+    } catch {
+      return undefined;
+    }
+  },
+
+  validateGitHubIdentity(nameWithOwner?: string): Diagnostic[] {
+    if (nameWithOwner) return [];
+    return [
+      this.diagnostic(
+        'repository-identity',
+        'GitHub returned no repository identity.',
+        'Correct the configured remote.',
+      ),
+    ];
+  },
+
+  validateGitHubPermission(viewerPermission: string | undefined, allLabels: boolean): Diagnostic[] {
+    const acceptedPermissions = allLabels
+      ? ['WRITE', 'MAINTAIN', 'ADMIN']
+      : ['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN'];
+    if (acceptedPermissions.includes(viewerPermission ?? '')) return [];
+    return [
+      this.diagnostic(
+        'permissions',
+        allLabels
+          ? 'Repository write permission is unavailable.'
+          : 'Repository read permission is unavailable.',
+        `Request repository ${allLabels ? 'write' : 'read'} access.`,
+      ),
+    ];
   },
 
   checkRequiredLabels(

@@ -234,68 +234,158 @@ function recoverWorkspace(o: WorkspaceOptions): WorkspaceFacts | undefined {
   const root = resolve(o.repositoryRoot);
   const parent = resolve(root, o.worktreeRoot ?? '.sloop/worktrees');
   const entries = read(file);
-  const found = entries.find(
-    (x) =>
-      x.repositoryRoot === root &&
-      x.workspaceRoot === root &&
-      x.ownership.issue === o.issue &&
-      x.ownership.protocol === 'sloop-workspace-v1' &&
-      (x.ownership.runId === o.runId || (o.branch !== undefined && x.branch === o.branch)) &&
-      inside(parent, x.executionRoot) &&
-      existsSync(x.executionRoot) &&
-      (o.branch === undefined || x.branch === o.branch),
-  );
-  if (found && found.headSha) {
-    if (exactWorkspace(root, found)) return found;
-    const live = registeredWorktree(root, found);
-    if (
-      !live ||
-      live.branch !== found.branch ||
-      live.head !== git(['rev-parse', `${found.branch}^{commit}`], root) ||
-      !inside(parent, found.executionRoot) ||
-      !onlyGeneratedSerenaMetadata(found)
-    )
-      return undefined;
-    try {
-      git(['merge-base', '--is-ancestor', found.baseSha, live.head], root);
-      git(['merge-base', '--is-ancestor', found.headSha, live.head], root);
-    } catch {
-      return undefined;
-    }
-    const refreshed = { ...found, headSha: live.head };
-    write(
-      file,
-      entries.map((entry) => (entry === found ? refreshed : entry)),
-    );
-    return refreshed;
-  }
+  const found = findRegisteredWorkspace(entries, o, root, parent);
+  if (found?.headSha) return recoverRegisteredWorkspace(found, entries, file, root, parent);
 
-  // Remote manifests are the durable authority. Reconstruct a worktree from
-  // Git when the local workspace registry was lost with state.json.
-  if (!o.branch || o.branch === 'pending') return undefined;
-  const live = worktrees(root).find((entry) => entry.branch === o.branch);
-  if (
-    !live ||
-    !inside(parent, live.path) ||
-    live.head !== git(['rev-parse', `${o.branch}^{commit}`], root)
-  )
-    return undefined;
-  const baseSha = git(['rev-parse', `${o.remote}/${o.baseBranch}^{commit}`], root);
+  return recoverRemoteWorkspace(o, root, parent);
+}
+
+function findRegisteredWorkspace(
+  entries: Registered[],
+  options: WorkspaceOptions,
+  root: string,
+  parent: string,
+): Registered | undefined {
+  return entries.find(
+    (entry) =>
+      matchesRecoveryOwnership(entry, options, root) &&
+      inside(parent, entry.executionRoot) &&
+      existsSync(entry.executionRoot),
+  );
+}
+
+function matchesRecoveryOwnership(
+  entry: Registered,
+  options: WorkspaceOptions,
+  root: string,
+): boolean {
+  return (
+    matchesRecoveryRepository(entry, options, root) &&
+    matchesRecoveryRun(entry, options) &&
+    matchesRequestedBranch(entry, options)
+  );
+}
+
+function matchesRecoveryRepository(
+  entry: Registered,
+  options: WorkspaceOptions,
+  root: string,
+): boolean {
+  return (
+    entry.repositoryRoot === root &&
+    entry.workspaceRoot === root &&
+    entry.ownership.issue === options.issue &&
+    entry.ownership.protocol === 'sloop-workspace-v1'
+  );
+}
+
+function matchesRecoveryRun(entry: Registered, options: WorkspaceOptions): boolean {
+  return (
+    entry.ownership.runId === options.runId ||
+    (options.branch !== undefined && entry.branch === options.branch)
+  );
+}
+
+function matchesRequestedBranch(entry: Registered, options: WorkspaceOptions): boolean {
+  return options.branch === undefined || entry.branch === options.branch;
+}
+
+function recoverRegisteredWorkspace(
+  found: Registered,
+  entries: Registered[],
+  file: string,
+  root: string,
+  parent: string,
+): WorkspaceFacts | undefined {
+  if (exactWorkspace(root, found)) return found;
+
+  const live = getRecoverableRegisteredWorktree(root, parent, found);
+  if (!live) return undefined;
+
+  const refreshed = { ...found, headSha: live.head };
+  write(
+    file,
+    entries.map((entry) => (entry === found ? refreshed : entry)),
+  );
+  return refreshed;
+}
+
+function getRecoverableRegisteredWorktree(
+  root: string,
+  parent: string,
+  found: Registered,
+): GitWorktree | undefined {
+  const live = registeredWorktree(root, found);
+  if (!live || !matchesRegisteredWorktree(live, found)) return undefined;
+  if (!hasSafeGeneratedWorkspacePath(parent, found)) return undefined;
+  if (!hasAncestorCommits(root, [found.baseSha, found.headSha], live.head)) return undefined;
+
+  return live;
+}
+
+function matchesRegisteredWorktree(live: GitWorktree, found: Registered): boolean {
+  return (
+    live.branch === found.branch &&
+    live.head === git(['rev-parse', `${found.branch}^{commit}`], found.repositoryRoot)
+  );
+}
+
+function hasSafeGeneratedWorkspacePath(parent: string, found: Registered): boolean {
+  return inside(parent, found.executionRoot) && onlyGeneratedSerenaMetadata(found) !== undefined;
+}
+
+function hasAncestorCommits(root: string, ancestorShas: string[], liveHead: string): boolean {
   try {
-    git(['merge-base', '--is-ancestor', baseSha, live.head], root);
+    for (const ancestorSha of ancestorShas) {
+      git(['merge-base', '--is-ancestor', ancestorSha, liveHead], root);
+    }
+
+    return true;
   } catch {
-    return undefined;
+    return false;
   }
+}
+
+// Remote manifests remain authoritative when local state.json is missing.
+function recoverRemoteWorkspace(
+  options: WorkspaceOptions,
+  root: string,
+  parent: string,
+): WorkspaceFacts | undefined {
+  if (!options.branch || options.branch === 'pending') return undefined;
+
+  const live = worktrees(root).find((entry) =>
+    matchesRemoteWorkspace(entry, options, root, parent),
+  );
+  if (!live) return undefined;
+
+  const baseSha = git(['rev-parse', `${options.remote}/${options.baseBranch}^{commit}`], root);
+  if (!hasAncestorCommits(root, [baseSha], live.head)) return undefined;
+
   return {
     workspaceRoot: root,
     executionRoot: live.path,
     worktreeRoot: parent,
-    branch: o.branch,
+    branch: options.branch,
     baseSha,
     headSha: live.head,
-    ownership: { runId: o.runId, issue: o.issue, protocol: 'sloop-workspace-v1' },
+    ownership: { runId: options.runId, issue: options.issue, protocol: 'sloop-workspace-v1' },
   };
 }
+
+function matchesRemoteWorkspace(
+  live: GitWorktree,
+  options: WorkspaceOptions,
+  root: string,
+  parent: string,
+): boolean {
+  return (
+    live.branch === options.branch &&
+    inside(parent, live.path) &&
+    live.head === git(['rev-parse', `${options.branch}^{commit}`], root)
+  );
+}
+
 function listWorkspaces(
   repositoryRoot: string,
   stateFile = resolve(repositoryRoot, '.sloop/state.json'),
@@ -341,53 +431,73 @@ function cleanupWorkspace(
 ): void {
   const root = resolve(repositoryRoot);
   const file = resolve(stateFile);
-  const entry = read(file).find(
-    (x) =>
-      x.repositoryRoot === root &&
-      x.executionRoot === facts.executionRoot &&
-      x.branch === facts.branch &&
-      x.baseSha === facts.baseSha &&
-      x.ownership.runId === facts.ownership.runId &&
-      x.ownership.issue === facts.ownership.issue &&
-      x.ownership.protocol === facts.ownership.protocol,
-  );
-  if (!entry) {
-    const parent = resolve(facts.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
-    if (!inside(parent, facts.executionRoot)) throw new Error('unsafe worktree target');
-    const live = worktrees(root).find(
-      (candidate) =>
-        resolve(candidate.path) === resolve(facts.executionRoot) &&
-        candidate.branch === facts.branch &&
-        candidate.head === facts.headSha,
-    );
-    const entry = { ...facts, repositoryRoot: root };
-    if (!live || !removeGeneratedSerenaMetadata(entry) || !cleanWorktree(entry))
-      throw new Error('remote-owned workspace could not be verified');
-    git(['worktree', 'remove', facts.executionRoot], root);
+  const entry = read(file).find((candidate) => matchesCleanupFacts(candidate, facts, root));
+
+  if (entry) {
+    cleanupRegisteredWorkspace(entry, file, root);
     return;
   }
+
+  cleanupRemoteWorkspace(facts, root);
+}
+
+function matchesCleanupFacts(entry: Registered, facts: WorkspaceFacts, root: string): boolean {
+  return matchesCleanupLocation(entry, facts, root) && matchesCleanupOwnership(entry, facts);
+}
+
+function matchesCleanupLocation(entry: Registered, facts: WorkspaceFacts, root: string): boolean {
+  return (
+    entry.repositoryRoot === root &&
+    entry.executionRoot === facts.executionRoot &&
+    entry.branch === facts.branch &&
+    entry.baseSha === facts.baseSha
+  );
+}
+
+function matchesCleanupOwnership(entry: Registered, facts: WorkspaceFacts): boolean {
+  return (
+    entry.ownership.runId === facts.ownership.runId &&
+    entry.ownership.issue === facts.ownership.issue &&
+    entry.ownership.protocol === facts.ownership.protocol
+  );
+}
+
+function cleanupRemoteWorkspace(facts: WorkspaceFacts, root: string): void {
+  const parent = resolve(facts.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
+  if (!inside(parent, facts.executionRoot)) throw new Error('unsafe worktree target');
+
+  const live = worktrees(root).find((candidate) => matchesCleanupWorktree(candidate, facts));
+  const entry = { ...facts, repositoryRoot: root };
+  if (!live || !removeGeneratedSerenaMetadata(entry) || !cleanWorktree(entry)) {
+    throw new Error('remote-owned workspace could not be verified');
+  }
+
+  git(['worktree', 'remove', facts.executionRoot], root);
+}
+
+function matchesCleanupWorktree(candidate: GitWorktree, facts: WorkspaceFacts): boolean {
+  return (
+    resolve(candidate.path) === resolve(facts.executionRoot) &&
+    candidate.branch === facts.branch &&
+    candidate.head === facts.headSha
+  );
+}
+
+function cleanupRegisteredWorkspace(entry: Registered, file: string, root: string): void {
   const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
   if (!inside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
-  if (!exactWorkspace(root, entry))
+  if (!exactWorkspace(root, entry)) {
     throw new Error('workspace registration or facts could not be verified');
-  if (!removeGeneratedSerenaMetadata(entry))
+  }
+  if (!removeGeneratedSerenaMetadata(entry)) {
     throw new Error('workspace is dirty (untracked or modified files); refusing cleanup');
+  }
   if (!cleanWorktree(entry)) throw new Error('workspace is dirty; refusing cleanup');
+
   git(['worktree', 'remove', entry.executionRoot], root);
   write(
     file,
-    read(file).filter(
-      (x) =>
-        !(
-          x.repositoryRoot === entry.repositoryRoot &&
-          x.executionRoot === entry.executionRoot &&
-          x.branch === entry.branch &&
-          x.baseSha === entry.baseSha &&
-          x.ownership.runId === entry.ownership.runId &&
-          x.ownership.issue === entry.ownership.issue &&
-          x.ownership.protocol === entry.ownership.protocol
-        ),
-    ),
+    read(file).filter((candidate) => !matchesCleanupFacts(candidate, entry, root)),
   );
 }
 

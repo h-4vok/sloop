@@ -1,5 +1,4 @@
 import type { ConfigValueType, FieldMetadata } from './types.js';
-import { ConfigValidationError } from './types.js';
 import { configValueParsers } from './valueParsers.js';
 
 const {
@@ -11,11 +10,8 @@ const {
   durationParser,
   argvParser,
   pathParser,
+  unrestrictedStringParser,
 } = configValueParsers;
-
-const fail = (path: string, message: string): never => {
-  throw new ConfigValidationError([{ path, message }]);
-};
 
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object') {
@@ -250,7 +246,7 @@ export const configRegistry = deepFreeze([
   f(
     'schedule.expression',
     'string',
-    (v, p) => (typeof v === 'string' ? v : fail(p, 'expected a string')),
+    unrestrictedStringParser,
     '',
     'Platform scheduler expression.',
     { dependencies: ['schedule.enabled=true'], requiredReconciler: 'scheduler' },

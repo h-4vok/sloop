@@ -1,5 +1,9 @@
 # Agent instructions
 
+## Engineering standards
+
+Before writing or reviewing code, read `docs/engineering-standards.md` and apply its architectural, design, naming, error-handling, and testing rules. These standards complement the repository verification instructions below; AAA is only one part of them.
+
 ## Sloop skills
 
 The canonical source for the distributed Sloop skills is `assets/skills/`:
@@ -8,6 +12,9 @@ The canonical source for the distributed Sloop skills is `assets/skills/`:
 - `assets/skills/sloop-worker/SKILL.md`
 - `assets/skills/sloop-qa/SKILL.md`
 - `assets/skills/product-lead/SKILL.md`
+- `assets/skills/sloop-e2e-prepare/SKILL.md`
+- `assets/skills/sloop-test-cleanup/SKILL.md`
+- `assets/skills/sloop-test-empty-e2e/SKILL.md`
 
 Treat `.codex/skills/` as a deployed working copy; do not edit those files directly. When changing a Sloop skill, edit the matching file under `assets/skills/`, then run `sloop config install` from the Sloop repository to deploy the change to `.codex/skills/`. Verify the deployed result before committing.
 

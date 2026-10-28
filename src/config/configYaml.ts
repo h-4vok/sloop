@@ -52,12 +52,8 @@ function updateConfigTextResult(
         { path: `$.${path}`, message: 'unknown configuration key' },
       ]),
     };
-  try {
-    metadata.parser(value, `$.${path}`);
-  } catch (error) {
-    if (error instanceof ConfigValidationError) return { ok: false, error };
-    throw error;
-  }
+  const parsedValue = metadata.parser(value, `$.${path}`);
+  if (!parsedValue.ok) return parsedValue;
 
   const document = parseDocument(source, { keepSourceTokens: true });
   if (document.errors.length)

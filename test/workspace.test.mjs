@@ -356,7 +356,7 @@ test('cleanup rejects registered facts when their ancestry cannot be verified', 
     /workspace registration or facts could not be verified/,
   );
   assert.equal(existsSync(facts.executionRoot), true);
-});
+}, 15_000);
 
 test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } =

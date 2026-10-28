@@ -21,12 +21,21 @@ import {
   loadConfigTextResult,
   parseConfig,
   parseConfigResult,
-  parseConfigValue,
   parseConfigValueResult,
   updateConfigTextResult,
 } from '../src/config.js';
 
 const canonical = canonicalConfigYaml();
+
+function assertParserFailure(parser, value, path, matchesMessage) {
+  const result = parser(value, path);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.ok(result.error instanceof ConfigValidationError);
+    assert.ok(matchesMessage(result.error.message), result.error.message);
+  }
+}
 
 function createConfigWithRemote(remote) {
   return canonical.replace(
@@ -96,7 +105,7 @@ test('defaults and every registered parser round trip through canonical YAML', (
   const config = loadConfigText(canonical);
 
   for (const entry of configRegistry)
-    assert.notEqual(entry.parser(entry.default, `$.${entry.path}`), undefined);
+    assert.equal(entry.parser(entry.default, `$.${entry.path}`).ok, true);
   assert.deepEqual(config.workflow.reviewOrder, ['qa']);
   assert.equal(config.workflow.humanMergeWait, true);
   assert.equal(config.arbiter.reviewRounds, 3);
@@ -182,13 +191,10 @@ test('configuration parser propagates unexpected unknown-key callback failures',
 
 test('registry string parser reports invalid values at the supplied path', () => {
   const expressionField = configRegistry.find(({ path }) => path === 'schedule.expression');
+  const result = expressionField.parser(42, '$.schedule.expression');
 
-  assert.throws(
-    () => expressionField.parser(42, '$.schedule.expression'),
-    (error) =>
-      error instanceof ConfigValidationError &&
-      error.message === '$.schedule.expression: expected a string',
-  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.message, '$.schedule.expression: expected a string');
 });
 
 test('Node configuration file store removes a file that was rolled back', () => {
@@ -261,6 +267,8 @@ test('configuration value result rethrows unexpected parser failures', () => {
 });
 
 test('argv rejects shell interpreters across supported platforms', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
+
   for (const [command, expectedPath] of [
     [['sh', '-c', 'rm -rf /tmp/x'], '$.health.command[0]'],
     [['/bin/bash', '-c', 'echo unsafe'], '$.health.command[0]'],
@@ -276,37 +284,32 @@ test('argv rejects shell interpreters across supported platforms', () => {
     [['env', 'zsh', '-c', 'echo unsafe'], '$.health.command[1]'],
     [['env', 'zsh-5.9', '-c', 'echo unsafe'], '$.health.command[1]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        (error.message.includes(`${expectedPath}: shell interpreters are forbidden`) ||
-          error.message.includes('$.health.command[0]: unsupported executable')),
+    assertParserFailure(
+      parser,
+      command,
+      '$.health.command',
+      (message) =>
+        message.includes(`${expectedPath}: shell interpreters are forbidden`) ||
+        message.includes('$.health.command[0]: unsupported executable'),
     );
 });
 
 test('argv uses bounded direct-process profiles', () => {
   const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
 
-  assert.deepEqual(parser(['git', 'show', 'README.english'], '$.health.command'), [
-    'git',
-    'show',
-    'README.english',
-  ]);
+  const validCommand = parser(['git', 'show', 'README.english'], '$.health.command');
+  assert.deepEqual(validCommand, {
+    ok: true,
+    value: ['git', 'show', 'README.english'],
+  });
   for (const command of [
     ['node', '-e', "require('node:child_process').execSync('echo unsafe')"],
     ['python', '-c', "__import__('os').system('echo unsafe')"],
     ['npm', 'exec', 'sh'],
     ['gh', 'alias', 'set', 'unsafe', '!echo unsafe'],
   ])
-    assert.throws(
-      () => parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        /unsupported executable|executable indirection is forbidden/.test(error.message),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      /unsupported executable|executable indirection is forbidden/.test(message),
     );
 });
 
@@ -336,50 +339,39 @@ test('sandbox configuration accepts explicit full access and rejects unknown pol
 });
 
 test('argv rejects env split-string command dispatch', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
   for (const [command, expectedPath] of [
     [['env', '-S', 'sh -c', '?'], '$.health.command[1]'],
     [['env', '-Ssh -c', '?'], '$.health.command[1]'],
     [['/usr/bin/env', '--split-string=sh -c', '?'], '$.health.command[1]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(`${expectedPath}: env split-string options are forbidden`),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      message.includes(`${expectedPath}: env split-string options are forbidden`),
     );
 });
 
 test('argv rejects embedded environment assignments', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
   for (const [command, expectedPath] of [
     [['env', 'GIT_SSH_COMMAND=ssh -o ProxyCommand=helper', 'git', 'fetch'], '$.health.command[1]'],
     [['/usr/bin/env', 'GIT_CONFIG_COUNT=1', 'git', 'fetch'], '$.health.command[1]'],
     [['env', 'LD_PRELOAD=/tmp/hook.so', 'tool'], '$.health.command[1]'],
     [['env', 'NODE_OPTIONS=--require=/tmp/hook.js', 'node', 'check.mjs'], '$.health.command[1]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(
-          `${expectedPath}: environment assignments are forbidden; inherit values from the external environment`,
-        ),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      message.includes(
+        `${expectedPath}: environment assignments are forbidden; inherit values from the external environment`,
+      ),
     );
 
-  assert.deepEqual(
-    configRegistry
-      .find(({ path }) => path === 'health.command')
-      .parser(['env', 'git', 'fetch'], '$.health.command'),
-    ['env', 'git', 'fetch'],
-  );
+  assert.deepEqual(parser(['env', 'git', 'fetch'], '$.health.command'), {
+    ok: true,
+    value: ['env', 'git', 'fetch'],
+  });
 });
 
 test('argv rejects Git configuration that dispatches a shell', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
   for (const [command, expectedPath] of [
     [['git', '-c', 'alias.x=!echo shell-bypass', 'x'], '$.health.command[2]'],
     [['git', '-c', 'alias.x= !script', 'x'], '$.health.command[2]'],
@@ -396,24 +388,14 @@ test('argv rejects Git configuration that dispatches a shell', () => {
     ],
     [['git', '-c', 'filter.clean.smudge=processor', 'checkout'], '$.health.command[2]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(
-          `${expectedPath}: Git configuration that dispatches a shell is forbidden`,
-        ),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      message.includes(`${expectedPath}: Git configuration that dispatches a shell is forbidden`),
     );
 
-  assert.deepEqual(
-    configRegistry
-      .find(({ path }) => path === 'health.command')
-      .parser(['git', '-c', 'fetch.prune=true', 'fetch'], '$.health.command'),
-    ['git', '-c', 'fetch.prune=true', 'fetch'],
-  );
+  assert.deepEqual(parser(['git', '-c', 'fetch.prune=true', 'fetch'], '$.health.command'), {
+    ok: true,
+    value: ['git', '-c', 'fetch.prune=true', 'fetch'],
+  });
 });
 
 test('malformed containers and list fields produce validation diagnostics', () => {
@@ -631,18 +613,30 @@ test('config path helpers return values and empty results for unknown paths', ()
 
 test('config value parser converts boolean, integer, and duration fields', () => {
   const parsedValues = [
-    parseConfigValue(getConfigField('health.enabled'), 'false'),
-    parseConfigValue(getConfigField('arbiter.decisions'), '4'),
-    parseConfigValue(getConfigField('loop.interval'), '3s'),
+    parseConfigValueResult(getConfigField('health.enabled'), 'false'),
+    parseConfigValueResult(getConfigField('arbiter.decisions'), '4'),
+    parseConfigValueResult(getConfigField('loop.interval'), '3s'),
   ];
 
-  assert.deepEqual(parsedValues, [false, 4, 3000]);
+  assert.ok(parsedValues.every((result) => result.ok));
+  assert.deepEqual(
+    parsedValues.map((result) => (result.ok ? result.value : undefined)),
+    [false, 4, 3000],
+  );
+});
+
+test('config value result rejects boolean text outside true and false', () => {
+  const result = parseConfigValueResult(getConfigField('health.enabled'), 'sometimes');
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.message, '$.health.enabled: expected a boolean');
 });
 
 test('config value parser rejects invalid list values', () => {
-  const parseInvalidRequiredSkills = () => parseConfigValue(getConfigField('skills.required'), 'x');
+  const parseResult = parseConfigValueResult(getConfigField('skills.required'), 'x');
 
-  assert.throws(parseInvalidRequiredSkills, ConfigValidationError);
+  assert.equal(parseResult.ok, false);
+  if (!parseResult.ok) assert.ok(parseResult.error instanceof ConfigValidationError);
 });
 
 test('config parser rejects structural violations at their exact paths', () => {

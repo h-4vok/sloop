@@ -1230,3 +1230,17 @@ test('runtime reports insufficient permissions and missing doctor skills', () =>
     EXIT.preflight,
   );
 });
+test('doctor includes a bounded executable failure status and output', () => {
+  const diagnosticOutput = 'x'.repeat(250);
+  const runtimeHarness = createMockRuntimeHarness({
+    'codex --version': { stdout: '', stderr: diagnosticOutput, status: 37 },
+  });
+  const parsedDoctorCommand = parseReadOnlyCommand(['doctor']);
+
+  runReadOnlyCommand(parsedDoctorCommand, runtimeHarness.io);
+
+  const diagnostic = runtimeHarness.stderr.find((line) => line.includes('[codex]'));
+  assert.match(diagnostic, /exit status 37/);
+  assert.ok(diagnostic.includes('x'.repeat(200)));
+  assert.ok(!diagnostic.includes('x'.repeat(201)));
+});

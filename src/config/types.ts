@@ -1,4 +1,5 @@
 import type { ConfigReconcilerKind } from '../core/config/ConfigReconcilerKind.js';
+import type { Result } from '../core/Result.js';
 
 /** Identifies the parser behavior and display format for one config field. */
 export type ConfigValueType =
@@ -21,7 +22,7 @@ export class ConfigValidationError extends Error {
 export type FieldMetadata<T = unknown> = Readonly<{
   path: string;
   type: ConfigValueType;
-  parser: (value: unknown, path: string) => T;
+  parser: (value: unknown, path: string) => Result<T, ConfigValidationError>;
   validation: string;
   explanation: string;
   choices: readonly unknown[];

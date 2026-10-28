@@ -33,7 +33,14 @@ test('sync installs each distributed Sloop skill', () => {
 
   syncPrerequisites(root, config, { runner });
 
-  for (const name of ['product-lead', 'sloop-worker', 'sloop-qa'])
+  for (const name of [
+    'product-lead',
+    'sloop-worker',
+    'sloop-qa',
+    'sloop-test-cleanup',
+    'sloop-e2e-prepare',
+    'sloop-test-empty-e2e',
+  ])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
 });
 
@@ -148,7 +155,9 @@ test('sync omits custom label keys from canonical output', () => {
 
   syncWithInjectedOutput();
 
-  assert.ok(outputMessages.some((message) => message.includes('Synchronized 4 labels')));
+  assert.ok(
+    outputMessages.some((message) => message.includes('Synchronized 4 labels and 6 Sloop skills')),
+  );
   assert.ok(!outputMessages.some((message) => message.includes("Label 'custom' installed")));
 });
 

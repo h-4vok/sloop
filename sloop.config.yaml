@@ -61,7 +61,7 @@ agents:
       gpt-5.6-luna
     sandbox:
       # worker sandbox policy.
-      workspace-write
+      danger-full-access
     reasoningEffort:
       # worker reasoning effort.
       high
@@ -80,7 +80,7 @@ agents:
       gpt-5.6-luna
     sandbox:
       # qa sandbox policy.
-      workspace-write
+      danger-full-access
     reasoningEffort:
       # qa reasoning effort.
       high

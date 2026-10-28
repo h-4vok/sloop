@@ -40,6 +40,7 @@ export type AgentEnvelope = Readonly<{
   status: RunStatus;
   payload: Record<string, unknown>;
 }>;
+const contextFields = ['run', 'issue', 'pr', 'round', 'sha', 'cursor'] as const;
 export type ProcessResult = Readonly<{
   stdout: string;
   stderr: string;
@@ -127,26 +128,43 @@ function context(value: unknown): RunContext {
     cursor: nonEmpty(c.cursor, 'cursor'),
   };
 }
-export function validateAgentEnvelope(value: unknown, expected?: RunContext): AgentEnvelope {
-  const e = object(value, 'envelope');
-  exactKeys(e, ['schema', 'context', 'producer', 'status', 'payload'], 'envelope');
-  if (e.schema !== AGENT_OUTPUT_VERSION) throw new AgentContractError('unknown-version');
-  const c = context(e.context);
-  if (
-    expected &&
-    (c.run !== expected.run ||
-      c.issue !== expected.issue ||
-      c.pr !== expected.pr ||
-      c.round !== expected.round ||
-      c.sha !== expected.sha ||
-      c.cursor !== expected.cursor)
-  )
-    throw new AgentContractError('wrong-context');
-  if (!['worker', 'qa', 'staff', 'arbiter'].includes(e.producer as string))
-    throw new AgentContractError('malformed', 'invalid producer');
-  if (
-    typeof e.status !== 'string' ||
-    ![
+const agentEnvelopeValidator = Object.freeze({
+  validate(value: unknown, expected?: RunContext): AgentEnvelope {
+    const envelope = object(value, 'envelope');
+    exactKeys(envelope, ['schema', 'context', 'producer', 'status', 'payload'], 'envelope');
+
+    if (envelope.schema !== AGENT_OUTPUT_VERSION) {
+      throw new AgentContractError('unknown-version');
+    }
+
+    const runContext = context(envelope.context);
+    this.validateExpectedContext(runContext, expected);
+    this.validateProducerAndStatus(envelope.producer, envelope.status);
+
+    const payload = object(envelope.payload, 'payload');
+    this.validatePayload(envelope.producer, envelope.status, payload);
+
+    return {
+      schema: AGENT_OUTPUT_VERSION,
+      context: runContext,
+      producer: envelope.producer as Role,
+      status: envelope.status as RunStatus,
+      payload,
+    };
+  },
+
+  validateExpectedContext(actual: RunContext, expected?: RunContext): void {
+    if (expected && !contextFields.every((field) => actual[field] === expected[field])) {
+      throw new AgentContractError('wrong-context');
+    }
+  },
+
+  validateProducerAndStatus(producer: unknown, status: unknown): void {
+    if (!['worker', 'qa', 'staff', 'arbiter'].includes(producer as string)) {
+      throw new AgentContractError('malformed', 'invalid producer');
+    }
+
+    const validStatuses = [
       'ready',
       'blocked',
       'accepted',
@@ -155,13 +173,27 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
       'overrule',
       'defer',
       'escalate',
-    ].includes(e.status)
-  )
-    throw new AgentContractError('malformed', 'invalid status');
-  const payload = object(e.payload, 'payload');
-  if (e.producer === 'worker') {
-    if (!['ready', 'blocked'].includes(e.status as string))
+    ];
+    if (typeof status !== 'string' || !validStatuses.includes(status)) {
+      throw new AgentContractError('malformed', 'invalid status');
+    }
+  },
+
+  validatePayload(producer: unknown, status: unknown, payload: Record<string, unknown>): void {
+    if (producer === 'worker') {
+      this.validateWorkerPayload(status, payload);
+    } else if (producer === 'qa' || producer === 'staff') {
+      this.validateReviewPayload(status, payload);
+    } else {
+      this.validateArbiterPayload(status, payload);
+    }
+  },
+
+  validateWorkerPayload(status: unknown, payload: Record<string, unknown>): void {
+    if (!['ready', 'blocked'].includes(status as string)) {
       throw new AgentContractError('contradictory');
+    }
+
     exactKeys(payload, ['summary', 'findingResolutions', 'verification', 'guide'], 'payload');
     nonEmpty(payload.summary, 'summary');
     requiredRecordFields(payload.findingResolutions, 'findingResolutions', [
@@ -170,52 +202,79 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
       'summary',
     ]);
     strings(payload.verification, 'verification');
-    const guide = object(payload.guide, 'guide');
+
+    this.validateGuide(payload.guide);
+  },
+
+  validateGuide(value: unknown): void {
+    const guide = object(value, 'guide');
     exactKeys(
       guide,
       ['summary', 'steps', 'expected', 'isolation', 'limitations', 'checklist'],
       'guide',
     );
-    for (const k of ['summary', 'isolation']) nonEmpty(guide[k], `guide.${k}`);
-    for (const k of ['steps', 'expected', 'limitations', 'checklist'])
-      if (
-        !Array.isArray(guide[k]) ||
-        !(guide[k] as unknown[]).length ||
-        (guide[k] as unknown[]).some((x) => typeof x !== 'string' || !x.trim())
-      )
-        throw new AgentContractError('malformed', `guide.${k} must be non-empty`);
-  } else if (e.producer === 'qa' || e.producer === 'staff') {
-    if (!['accepted', 'changes-requested', 'blocked'].includes(e.status as string))
+    this.validateGuideText(guide);
+    this.validateGuideLists(guide);
+  },
+
+  validateGuideText(guide: Record<string, unknown>): void {
+    for (const field of ['summary', 'isolation']) nonEmpty(guide[field], 'guide.' + field);
+  },
+
+  validateGuideLists(guide: Record<string, unknown>): void {
+    for (const field of ['steps', 'expected', 'limitations', 'checklist']) {
+      if (!this.hasNonEmptyStrings(guide[field])) {
+        throw new AgentContractError('malformed', 'guide.' + field + ' must be non-empty');
+      }
+    }
+  },
+
+  hasNonEmptyStrings(value: unknown): boolean {
+    return (
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((item) => typeof item === 'string' && Boolean(item.trim()))
+    );
+  },
+
+  validateReviewPayload(status: unknown, payload: Record<string, unknown>): void {
+    if (!['accepted', 'changes-requested', 'blocked'].includes(status as string)) {
       throw new AgentContractError('contradictory');
+    }
+
     exactKeys(payload, ['summary', 'evidence', 'newFindings', 'dispositions'], 'payload');
     nonEmpty(payload.summary, 'summary');
     strings(payload.evidence, 'evidence');
     requiredRecordFields(payload.newFindings, 'newFindings', ['id', 'summary', 'severity']);
     requiredRecordFields(payload.dispositions, 'dispositions', ['id', 'status', 'summary']);
+
     const findingIds = new Set(
       (payload.newFindings as Record<string, unknown>[]).map((finding) => finding.id),
     );
     for (const disposition of payload.dispositions as Record<string, unknown>[]) {
-      if (!findingIds.has(disposition.id))
+      if (!findingIds.has(disposition.id)) {
         throw new AgentContractError('malformed', 'disposition must reference a finding');
+      }
     }
-  } else {
-    if (!['uphold', 'overrule', 'defer', 'escalate'].includes(e.status as string))
+  },
+
+  validateArbiterPayload(status: unknown, payload: Record<string, unknown>): void {
+    if (!['uphold', 'overrule', 'defer', 'escalate'].includes(status as string)) {
       throw new AgentContractError('contradictory');
+    }
+
     exactKeys(payload, ['rationale', 'references', 'decisions'], 'payload');
     nonEmpty(payload.rationale, 'rationale');
     strings(payload.references, 'references');
     records(payload.decisions, 'decisions');
-    if (!(payload.decisions as unknown[]).length)
+    if (!(payload.decisions as unknown[]).length) {
       throw new AgentContractError('malformed', 'decisions must be non-empty');
-  }
-  return {
-    schema: AGENT_OUTPUT_VERSION,
-    context: c,
-    producer: e.producer as Role,
-    status: e.status as RunStatus,
-    payload,
-  };
+    }
+  },
+});
+
+export function validateAgentEnvelope(value: unknown, expected?: RunContext): AgentEnvelope {
+  return agentEnvelopeValidator.validate(value, expected);
 }
 
 const defaultExec: ProcessExecutor = (command, args, options) =>
@@ -265,40 +324,83 @@ export type RunnerOptions = Readonly<{
 export interface AgentRunner {
   run(input: string, context: RunContext): Promise<AgentEnvelope>;
 }
+type PreparedAgentRun = Readonly<{
+  outputPath: string;
+  environment: NodeJS.ProcessEnv;
+  persistedPath?: string;
+}>;
+
 export class ArbitraryCommandRunner implements AgentRunner {
   private readonly reconciled = new Map<string, AgentEnvelope>();
+
   constructor(
     private readonly command: string,
     protected readonly args: readonly string[],
     private readonly options: RunnerOptions,
   ) {}
+
   async run(input: string, context: RunContext): Promise<AgentEnvelope> {
     const invocationKey = JSON.stringify([input, context]);
-    const existing = this.reconciled.get(invocationKey);
-    if (existing) return existing;
-    const persistedPath = this.options.reconciliationDir
-      ? join(
-          this.options.reconciliationDir,
-          `${createHash('sha256').update(invocationKey).digest('hex')}.json`,
-        )
-      : undefined;
-    if (persistedPath) {
-      try {
-        const result = validateAgentEnvelope(
-          JSON.parse(await readFile(persistedPath, 'utf8')),
-          context,
-        );
-        this.reconciled.set(invocationKey, result);
-        return result;
-      } catch {
-        // A missing or invalid persisted result is not a reconciliation hit.
-      }
+    const cached = this.reconciled.get(invocationKey);
+    if (cached) return cached;
+
+    const persistedPath = this.getPersistedPath(invocationKey);
+    const persistedResult = await this.readPersistedResult(persistedPath, invocationKey, context);
+    if (persistedResult) return persistedResult;
+
+    const preparedRun = await this.prepareAgentRun(input, context, persistedPath);
+    return this.runWithRetries(input, context, invocationKey, preparedRun);
+  }
+
+  private getPersistedPath(invocationKey: string): string | undefined {
+    if (!this.options.reconciliationDir) return undefined;
+
+    const filename = createHash('sha256').update(invocationKey).digest('hex') + '.json';
+    return join(this.options.reconciliationDir, filename);
+  }
+
+  private async readPersistedResult(
+    persistedPath: string | undefined,
+    invocationKey: string,
+    context: RunContext,
+  ): Promise<AgentEnvelope | undefined> {
+    if (!persistedPath) return undefined;
+
+    try {
+      const text = await readFile(persistedPath, 'utf8');
+      const result = validateAgentEnvelope(JSON.parse(text), context);
+      this.reconciled.set(invocationKey, result);
+      return result;
+    } catch {
+      // A missing or invalid persisted result is not a reconciliation hit.
+      return undefined;
     }
-    const dir = await mkdtemp(join(tmpdir(), 'sloop-agent-'));
-    const inputPath = join(dir, 'input.json');
-    const outputPath = join(dir, 'output.json');
-    const schemaPath = join(dir, 'schema.json');
+  }
+
+  private async prepareAgentRun(
+    input: string,
+    context: RunContext,
+    persistedPath: string | undefined,
+  ): Promise<PreparedAgentRun> {
+    const directory = await mkdtemp(join(tmpdir(), 'sloop-agent-'));
+    const inputPath = join(directory, 'input.json');
+    const outputPath = join(directory, 'output.json');
+    const schemaPath = join(directory, 'schema.json');
     await writeFile(inputPath, input);
+    await this.writeSchemaFiles(directory, schemaPath);
+
+    if (persistedPath) {
+      await mkdir(this.options.reconciliationDir!, { recursive: true });
+    }
+
+    return {
+      outputPath,
+      environment: this.createAgentEnvironment(inputPath, outputPath, schemaPath, context),
+      persistedPath,
+    };
+  }
+
+  private async writeSchemaFiles(directory: string, schemaPath: string): Promise<void> {
     const schemaRoot = resolve(
       dirname(fileURLToPath(import.meta.url)),
       '..',
@@ -310,26 +412,39 @@ export class ArbitraryCommandRunner implements AgentRunner {
     const envelope = JSON.parse(
       await readFile(join(schemaRoot, 'sloop.agent-output.v1.json'), 'utf8'),
     ) as Record<string, unknown>;
-    const defs = envelope.$defs as Record<string, Record<string, unknown>>;
-    const roles = [
+    const definitions = envelope.$defs as Record<string, Record<string, unknown>>;
+    const roleSchemas = [
       ['workerEnvelope', 'worker.v1.json'],
       ['reviewerEnvelope', 'reviewer.v1.json'],
       ['arbiterEnvelope', 'arbiter.v1.json'],
     ] as const;
-    for (const [, file] of roles) {
-      const roleSchema = JSON.parse(await readFile(join(schemaRoot, file), 'utf8')) as Record<
+
+    for (const [, filename] of roleSchemas) {
+      const roleSchema = JSON.parse(await readFile(join(schemaRoot, filename), 'utf8')) as Record<
         string,
         unknown
       >;
-      defs[file.slice(0, -8)] = roleSchema;
+      definitions[filename.slice(0, -8)] = roleSchema;
     }
+
     await writeFile(schemaPath, JSON.stringify(envelope));
-    // The declared schema is a resolvable contract: keep its canonical $refs beside it.
-    for (const [, file] of roles) {
-      await writeFile(join(dir, file), await readFile(join(schemaRoot, file), 'utf8'));
+
+    // Keep the declared schema's canonical references beside it for resolution.
+    for (const [, filename] of roleSchemas) {
+      await writeFile(
+        join(directory, filename),
+        await readFile(join(schemaRoot, filename), 'utf8'),
+      );
     }
-    if (persistedPath) await mkdir(this.options.reconciliationDir!, { recursive: true });
-    const env = {
+  }
+
+  private createAgentEnvironment(
+    inputPath: string,
+    outputPath: string,
+    schemaPath: string,
+    context: RunContext,
+  ): NodeJS.ProcessEnv {
+    return {
       ...process.env,
       SLOOP_AGENT_INPUT: inputPath,
       SLOOP_AGENT_OUTPUT: outputPath,
@@ -341,76 +456,127 @@ export class ArbitraryCommandRunner implements AgentRunner {
       SLOOP_AGENT_SHA: context.sha,
       SLOOP_AGENT_CONTEXT_CURSOR: context.cursor,
     };
-    let last: unknown;
+  }
+
+  private async runWithRetries(
+    input: string,
+    context: RunContext,
+    invocationKey: string,
+    preparedRun: PreparedAgentRun,
+  ): Promise<AgentEnvelope> {
+    let lastError: unknown;
+
     for (let attempt = 0; attempt <= (this.options.retries ?? 0); attempt++) {
-      await rm(outputPath, { force: true });
-      const args = this.args.map(
-        (arg) =>
-          arg
-            // Replace the content token first: it shares a prefix with
-            // SLOOP_AGENT_INPUT and must remain a distinct argv value.
-            .replaceAll('$SLOOP_AGENT_INPUT_CONTENT', input)
-            .replaceAll('$SLOOP_AGENT_INPUT', inputPath)
-            .replaceAll('$SLOOP_AGENT_OUTPUT', outputPath)
-            .replaceAll('$SLOOP_AGENT_SCHEMA', schemaPath),
-        // The Codex adapter uses this as its positional prompt; arbitrary
-        // adapters can consume the file paths through the environment.
-      );
-      let r: ProcessResult;
+      await rm(preparedRun.outputPath, { force: true });
+
       try {
-        r = await (this.options.execute ?? defaultExec)(this.command, args, {
-          cwd: this.options.cwd,
-          env,
-          timeoutMs: this.options.timeoutMs ?? 120000,
-          onStdout: (s) => this.options.log?.('stdout', s),
-          onStderr: (s) => this.options.log?.('stderr', s),
-        });
+        return await this.runAttempt(input, context, invocationKey, preparedRun);
       } catch (error) {
-        // Process launch failures (for example, a missing executable) are
-        // operational failures too and must use the same bounded retry path.
-        last = new AgentContractError(
-          'operational-failure',
-          error instanceof Error ? error.message : 'runner launch failed',
-        );
-        continue;
-      }
-      if (r.code !== 0 || r.signal)
-        last = new AgentContractError('operational-failure', r.stderr || 'runner failed');
-      else {
-        try {
-          const text = await readFile(outputPath, 'utf8');
-          if (!text.trim()) throw new AgentContractError('missing-result');
-          // JSON.parse rejects truncated/multiple documents; the contract also forbids
-          // duplicate object members because they make the durable result ambiguous.
-          const duplicate = /([{,])\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*:\s*[^,}]+\s*,\s*"\2"\s*:/.test(
-            text,
-          );
-          if (duplicate) throw new AgentContractError('malformed', 'duplicate JSON member');
-          const raw = JSON.parse(text);
-          const result = validateAgentEnvelope(raw, context);
-          this.reconciled.set(invocationKey, result);
-          if (persistedPath)
-            await (this.options.writeReconciliation ?? writeFile)(
-              persistedPath,
-              JSON.stringify(result),
-              { flag: 'wx' },
-            ).catch(async (error: NodeJS.ErrnoException) => {
-              if (error.code !== 'EEXIST') throw error;
-            });
-          return result;
-        } catch (error) {
-          last =
-            error instanceof AgentContractError
-              ? error
-              : error instanceof SyntaxError
-                ? new AgentContractError('malformed', 'invalid JSON result')
-                : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
-                  ? new AgentContractError('missing-result')
-                  : new AgentContractError('malformed', 'unable to read result');
-        }
+        lastError = error;
       }
     }
-    throw last instanceof Error ? last : new AgentContractError('missing-result');
+
+    throw lastError instanceof Error ? lastError : new AgentContractError('missing-result');
+  }
+
+  private async runAttempt(
+    input: string,
+    context: RunContext,
+    invocationKey: string,
+    preparedRun: PreparedAgentRun,
+  ): Promise<AgentEnvelope> {
+    const args = this.expandArguments(input, preparedRun.environment);
+    const result = await this.executeAgent(args, preparedRun.environment);
+    if (result.code !== 0 || result.signal) {
+      throw new AgentContractError('operational-failure', result.stderr || 'runner failed');
+    }
+
+    return this.readAgentResult(preparedRun, invocationKey, context);
+  }
+
+  private expandArguments(input: string, environment: NodeJS.ProcessEnv): string[] {
+    const inputPath = environment.SLOOP_AGENT_INPUT!;
+    const outputPath = environment.SLOOP_AGENT_OUTPUT!;
+    const schemaPath = environment.SLOOP_AGENT_SCHEMA!;
+
+    return this.args.map((argument) =>
+      // Replace the content token first because it shares a prefix with the input path token.
+      argument
+        .replaceAll('$SLOOP_AGENT_INPUT_CONTENT', input)
+        .replaceAll('$SLOOP_AGENT_INPUT', inputPath)
+        .replaceAll('$SLOOP_AGENT_OUTPUT', outputPath)
+        .replaceAll('$SLOOP_AGENT_SCHEMA', schemaPath),
+    );
+  }
+
+  private async executeAgent(
+    args: string[],
+    environment: NodeJS.ProcessEnv,
+  ): Promise<ProcessResult> {
+    try {
+      return await (this.options.execute ?? defaultExec)(this.command, args, {
+        cwd: this.options.cwd,
+        env: environment,
+        timeoutMs: this.options.timeoutMs ?? 120000,
+        onStdout: (chunk) => this.options.log?.('stdout', chunk),
+        onStderr: (chunk) => this.options.log?.('stderr', chunk),
+      });
+    } catch (error) {
+      throw new AgentContractError(
+        'operational-failure',
+        error instanceof Error ? error.message : 'runner launch failed',
+      );
+    }
+  }
+
+  private async readAgentResult(
+    preparedRun: PreparedAgentRun,
+    invocationKey: string,
+    context: RunContext,
+  ): Promise<AgentEnvelope> {
+    try {
+      const text = await readFile(preparedRun.outputPath, 'utf8');
+      if (!text.trim()) throw new AgentContractError('missing-result');
+      this.assertNoDuplicateJsonMembers(text);
+
+      const result = validateAgentEnvelope(JSON.parse(text), context);
+      this.reconciled.set(invocationKey, result);
+      await this.persistResult(preparedRun.persistedPath, result);
+      return result;
+    } catch (error) {
+      throw this.toResultError(error);
+    }
+  }
+
+  private assertNoDuplicateJsonMembers(text: string): void {
+    // Duplicate JSON keys make the durable result ambiguous after parsing.
+    const hasDuplicateMembers =
+      /([{,])\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*:\s*[^,}]+\s*,\s*"\2"\s*:/.test(text);
+    if (hasDuplicateMembers) throw new AgentContractError('malformed', 'duplicate JSON member');
+  }
+
+  private async persistResult(
+    persistedPath: string | undefined,
+    result: AgentEnvelope,
+  ): Promise<void> {
+    if (!persistedPath) return;
+
+    await (this.options.writeReconciliation ?? writeFile)(persistedPath, JSON.stringify(result), {
+      flag: 'wx',
+    }).catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EEXIST') throw error;
+    });
+  }
+
+  private toResultError(error: unknown): AgentContractError {
+    if (error instanceof AgentContractError) return error;
+    if (error instanceof SyntaxError)
+      return new AgentContractError('malformed', 'invalid JSON result');
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return new AgentContractError('missing-result');
+    }
+
+    return new AgentContractError('malformed', 'unable to read result');
   }
 }
 

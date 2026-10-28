@@ -6,4 +6,5 @@ coverage/
 .sloop/
 .sloop/state.json
 sloop.config.json
+.env
 .serena/

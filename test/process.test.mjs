@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'vitest';
+import { createNodeHost } from '../src/infrastructure/host/createNodeHost.js';
 
 const loadProcessAdapter = async () => {
   const { processAdapter } = await import('../src/process.ts');
@@ -151,4 +155,25 @@ test('batch invocation leaves executable calls unchanged when there are no argum
     command: 'npm.exe',
     args: [],
   });
+});
+
+test.skipIf(process.platform !== 'win32')('NodeHost runs Windows batch executables', () => {
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'sloop-node-host-'));
+  const commandPath = join(temporaryDirectory, 'version.cmd');
+  writeFileSync(commandPath, '@echo off\r\necho shim works\r\n');
+  const nodeHost = createNodeHost();
+
+  try {
+    const result = nodeHost.run(commandPath, [], temporaryDirectory);
+
+    assert.deepEqual(
+      { stdout: result.stdout.trim(), status: result.status },
+      {
+        stdout: 'shim works',
+        status: 0,
+      },
+    );
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 });

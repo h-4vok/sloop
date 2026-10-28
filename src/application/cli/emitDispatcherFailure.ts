@@ -7,8 +7,7 @@ export function emitDispatcherFailure(error: unknown, logger: Logger): number {
   logger.error(`[sloop] ${message}`);
   if (error instanceof ExternalServiceError) return 5;
 
-  const exitCode =
-    error && typeof error === 'object' && 'exitCode' in error ? (error.exitCode as number) : 2;
+  const exitCode = (error as { exitCode?: number } | null)?.exitCode ?? 2;
 
   return exitCode;
 }

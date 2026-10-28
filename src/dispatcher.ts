@@ -1041,7 +1041,7 @@ function rolePrompt(
 ): string {
   const issueContext = issue.body?.trim() || '(issue body unavailable; inspect it with gh)';
   if (role === 'worker')
-    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment with round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Follow the repository's own AGENTS.md, scripts, and workflow instructions for local verification. If CI feedback is supplied, resolve the reported failure in code when appropriate. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and verification are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
+    return `Use the worker skill for GitHub issue #${issue.number}: ${issue.title}. This is dispatcher recovery run ${runId}, review round ${round}. Continue the existing task in the current checkout. ${pr ? `An existing PR is #${pr}; update that PR and never create a second PR.` : 'Create exactly one PR targeting main if one does not exist.'} Do not merge. Inspect the issue, current PR diff, CI checks, and all [QA/SDET Review] feedback. Resolve every actionable finding and publish exactly one [Worker] evidence comment directly on the PR conversation using gh pr comment <PR number> --body-file <file>; do not post it only on the issue. The comment must include round=${round}, status=ready_for_review, pr=<number>, base=main, and commit=<current head SHA>. Follow the repository's own AGENTS.md, scripts, and workflow instructions for local verification. If CI feedback is supplied, resolve the reported failure in code when appropriate. Never modify dispatcher runtime state. Exit 0 only after the work, comment, and verification are complete. Issue body:\n${issueContext}\n${context ? `Recovered context:\n${context}\n` : ''}${feedback ? `Actionable feedback to resolve (the PR must be green before QA):\n${feedback}\n` : ''}At the end, print WORKER_RESULT pr=<number> base=main.`;
   if (role === 'qa')
     return `Use the sloop-qa skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main before Staff. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Inspect the acceptance criteria, diff, CI check results, regression coverage, and smoke evidence. Do not run interactive commands or commands that wait for a TTY; use non-interactive isolated checks only and treat interactive smoke procedures as documented evidence, not executable automation. Publish exactly one top-level PR comment using gh pr comment --body-file, beginning [QA/SDET Review] round=${round} verdict=passed, changes_requested, or blocked. Include Q<n> findings, exact evidence, and commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
   return `Use the staff-reviewer skill for GitHub issue #${issue.number}: ${issue.title}. Review PR #${pr} against main after QA has passed. Current head is ${headSha ?? 'unknown'} and this is review round ${round}. Perform the independent adversarial review for design, security, regressions, boundaries, and abuse cases. Publish directly to the PR exactly one review beginning [Staff Review] round=${round} verdict=approved or changes_requested, include S<n> findings when needed, and include commit=${headSha ?? 'current'}. Do not edit code or merge. Exit 0 after publishing the review; do not return JSON. Issue body:\n${issueContext}`;
@@ -1107,6 +1107,9 @@ function workerMetadata(output: string, knownPr?: number): { pr?: number; base?:
   const match = output.match(/^\s*WORKER_RESULT\s+pr=(\d+)\s+base=([^\s]+)\s*$/im);
   if (match) return { pr: Number(match[1]), base: match[2] };
   if (knownPr) return { pr: knownPr, base: 'main' };
+  // Codex can complete the PR and evidence steps, then omit the final marker.
+  const summaryPr = output.match(/\bPR\s+(?:\[#?|#)(\d+)\]?/i);
+  if (summaryPr) return { pr: Number(summaryPr[1]), base: 'main' };
   throw new Error('Worker must exit 0 and print WORKER_RESULT pr=<number> base=main');
 }
 
@@ -1430,14 +1433,7 @@ async function runWorker(
   const metadata = workerMetadata(output, pr);
   if (!metadata.pr || metadata.base !== (cfg.baseBranch ?? 'main'))
     throw new Error('Worker must report an existing PR based on main');
-  const currentBody = await d.pullRequestBody(metadata.pr);
-  const normalizedBody = withIssueClosingReference(
-    currentBody,
-    issue.number,
-    d.load().linkedClosingIssues ?? [],
-  );
-  if (normalizedBody !== currentBody.trim())
-    await d.updatePullRequestBody(metadata.pr, normalizedBody);
+  const expectedWorkerBranch = d.load().branch ?? workerBranchName(issue.number);
   d.save({ ...d.load(), pr: metadata.pr, workerPid: undefined, workerHeartbeatAt: d.now() });
   publishCurrentRemoteManifest(cfg, d, issue.number, 'review');
   const evidence = await waitForEvidence(d, cfg, metadata.pr, (candidate) => {
@@ -1448,13 +1444,22 @@ async function runWorker(
     throw new Error(
       `Worker exited successfully but did not publish [Worker] evidence on PR #${metadata.pr}`,
     );
+  if (evidence.state?.toUpperCase() !== 'OPEN')
+    throw new Error(`PR #${metadata.pr} must remain open`);
   if (evidence.baseRefName !== (cfg.baseBranch ?? 'main'))
     throw new Error(`PR #${metadata.pr} must target ${cfg.baseBranch ?? 'main'}`);
-  const expectedWorkerBranch = d.load().branch ?? workerBranchName(issue.number);
   if (evidence.headRefName !== expectedWorkerBranch)
     throw new Error(
       `PR #${metadata.pr} must use worker branch ${expectedWorkerBranch}; found ${evidence.headRefName}`,
     );
+  const currentBody = evidence.body ?? (await d.pullRequestBody(metadata.pr));
+  const normalizedBody = withIssueClosingReference(
+    currentBody,
+    issue.number,
+    d.load().linkedClosingIssues ?? [],
+  );
+  if (normalizedBody !== currentBody.trim())
+    await d.updatePullRequestBody(metadata.pr, normalizedBody);
   if (
     evidence.mergeable?.toUpperCase() === 'CONFLICTING' ||
     evidence.mergeStateStatus?.toUpperCase() === 'DIRTY'
@@ -1885,8 +1890,7 @@ async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {
       existing.baseRefName === (cfg.baseBranch ?? 'main') &&
       existing.headRefName === current.branch &&
       worker?.body?.includes('status=ready_for_review') &&
-      humanReviewGuide(worker) &&
-      latestReview(existing, '[QA/SDET Review]', round)
+      humanReviewGuide(worker)
     ) {
       d.save({ ...current, status: 'worker_ready_for_review', headSha: existing.headRefOid });
       current = d.load();
