@@ -5,10 +5,11 @@ description: Clean the dedicated sloop-test-empty manual E2E fixture locally and
 
 # Sloop Test Cleanup
 
-Use only for `h-4vok/sloop-test-empty`. This is a manual PowerShell runbook; never run it from another repository.
+Use only for `h-4vok/sloop-test-empty`. This is a manual PowerShell runbook. It may be invoked from the Sloop repository or another directory; all fixture operations must run from `C:\src\sloop-test-empty`.
 
 ## Safety boundary
 
+- Before running any Git, GitHub, or Sloop fixture command, set `$targetRoot = 'C:\src\sloop-test-empty'` and `Push-Location -LiteralPath $targetRoot`. Keep that location until cleanup is verified, then `Pop-Location` to restore the caller's directory. A dirty caller checkout is unrelated and must not block cleanup or be modified.
 - Require `gh repo view --json nameWithOwner --jq .nameWithOwner` to equal `h-4vok/sloop-test-empty` and `git remote get-url origin` to resolve to that repository.
 - Require the repository root to be `C:\src\sloop-test-empty`.
 - Never merge, delete `main`, delete issues, delete commits, or run `git clean`.
@@ -18,7 +19,7 @@ Use only for `h-4vok/sloop-test-empty`. This is a manual PowerShell runbook; nev
 
 ## Cleanup steps
 
-1. Set `$repoRoot = (Resolve-Path .).Path`; verify it is exactly `C:\src\sloop-test-empty`. Verify `gh repo view --json nameWithOwner --jq .nameWithOwner` returns `h-4vok/sloop-test-empty`, `git remote get-url origin` points to that repository, and `git status --porcelain` is empty. Stop on any mismatch or dirty checkout.
+1. Set `$repoRoot = (Resolve-Path .).Path`; verify the target root is exactly `C:\src\sloop-test-empty`. Verify `gh repo view --json nameWithOwner --jq .nameWithOwner` returns `h-4vok/sloop-test-empty`, `git remote get-url origin` points to that repository, and the target's `git status --porcelain` is empty. Stop on any mismatch or dirty target checkout; do not inspect the caller's Git status.
 2. Capture only scoped artifacts:
 
    ```powershell

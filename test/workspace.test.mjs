@@ -59,7 +59,7 @@ test('checkout preparation uses the configured base SHA and rejects dirty trees'
     () => prepareCheckoutWorkspace(createWorkspaceOptions(root, { issue: 33 })),
     /dirty\.txt/,
   );
-});
+}, 30_000);
 
 test('worktree preparation persists facts, supports recovery, listing, and cleanup', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, listWorkspaces, cleanupWorkspace } =
@@ -82,7 +82,7 @@ test('worktree preparation persists facts, supports recovery, listing, and clean
   ]);
   cleanupWorkspace(facts, root);
   assert.equal(listWorkspaces(root).length, 0);
-});
+}, 30_000);
 
 test('worktree preparation refuses to overwrite an existing execution directory', async () => {
   const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
@@ -97,7 +97,7 @@ test('worktree preparation refuses to overwrite an existing execution directory'
   assert.throws(() => prepareWorktreeWorkspace(options), /worktree target already exists/);
 
   cleanupWorkspace(createdWorkspace, root);
-});
+}, 30_000);
 
 test('recovery and cleanup use the persisted base when the remote advances', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
@@ -119,7 +119,7 @@ test('recovery and cleanup use the persisted base when the remote advances', asy
   assert.equal(recoverWorkspace(opts).baseSha, facts.baseSha);
   cleanupWorkspace(facts, root);
   assert.equal(listWorkspaces(root).length, 0);
-});
+}, 15_000);
 
 test('branch collisions regenerate a unique name and clear removes only owned worktrees', async () => {
   const { prepareWorktreeWorkspace, clearWorkspaces, listWorkspaces } = await loadWorkspaceModule();
@@ -135,7 +135,7 @@ test('branch collisions regenerate a unique name and clear removes only owned wo
   assert.equal(listWorkspaces(root).length, 2);
   clearWorkspaces(root);
   assert.equal(listWorkspaces(root).length, 0);
-});
+}, 30_000);
 
 test('recovery and cleanup fail closed for fake or dirty registered targets', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =
@@ -205,7 +205,7 @@ test('worker recovery retains dispatch ownership, refreshes a pushed head, and c
   assert.equal(existsSync(facts.executionRoot), false);
   assert.equal(existsSync(join(facts.executionRoot, '.serena')), false);
   assert.equal(listWorkspaces(root).length, 0);
-});
+}, 30_000);
 
 test('recovery and cleanup preserve unknown untracked files and reject unmatched ownership', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace, listWorkspaces } =

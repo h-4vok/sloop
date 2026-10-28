@@ -13,10 +13,10 @@ Five consecutive cycles must each create a labeled issue, run the real `sloop` C
 
 ## Procedure
 
-1. Verify source branch and current build: `npm run build`; verify global `sloop` links to `C:\src\sloop`. Confirm target identity is `h-4vok/sloop-test-empty`, target root is `C:\src\sloop-test-empty`, and Worker/QA use `danger-full-access`.
-2. Read and follow `.codex/skills/sloop-test-cleanup/SKILL.md` to establish a clean baseline.
+1. From the Sloop source checkout, verify the current build with `npm run build` and verify global `sloop` links to `C:\src\sloop`. The source checkout may be dirty: do not reject, switch, reset, stash, or clean it. Then set `$targetRoot = 'C:\src\sloop-test-empty'` and `Push-Location -LiteralPath $targetRoot`; from there confirm target identity is `h-4vok/sloop-test-empty`, target root is correct, and Worker/QA use `danger-full-access`. All fixture Git/GitHub/Sloop commands must run from this target location; its clean status is independent of the Sloop source checkout. Restore the original directory with `Pop-Location` after the full run, including failure paths.
+2. Read and follow `C:\src\sloop\.codex\skills\sloop-test-cleanup\SKILL.md` to establish a clean baseline. Use this absolute source-checkout path because the working directory is now the fixture.
 3. For cycles 1 through 5, sequentially:
-   - Run the one-cycle procedure in `.codex/skills/sloop-e2e-prepare/SKILL.md`.
+   - Read and follow the one-cycle procedure in `C:\src\sloop\.codex\skills\sloop-e2e-prepare\SKILL.md`.
    - Record issue, PR, head SHA, Worker comment, QA comment, `ready_for_human_merge`, and CI result.
    - On any failure, stop immediately and preserve the failed run for diagnosis. Do not count a partial run.
    - After passing cycles 1–4, run `sloop-test-cleanup` and verify clean baseline before starting the next cycle.
