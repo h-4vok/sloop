@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { AgentContractError, validateAgentEnvelope } from '../src/agent-runner.js';
 import {
   REMOTE_PROTOCOL,
@@ -65,6 +65,7 @@ test('agent envelope accepts every producer contract and valid status family', (
     status: 'uphold',
     payload: { rationale: 'rationale', references: ['Q1'], decisions },
   };
+
   assert.equal(validateAgentEnvelope(worker, context).status, 'blocked');
   assert.equal(
     validateAgentEnvelope({ ...reviewer, producer: 'staff', status: 'changes-requested' }, context)
@@ -85,6 +86,7 @@ test('agent envelope rejects each invalid contract boundary', () => {
     status: 'uphold',
     payload: { rationale: 'r', references: ['Q1'], decisions },
   };
+
   for (const value of [
     null,
     { ...base, schema: 'v2' },
@@ -117,6 +119,7 @@ test('agent envelope rejects each role-specific invalid boundary', () => {
       dispositions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
     },
   };
+
   assert.equal(validateAgentEnvelope(worker).context.pr, undefined);
   for (const value of [
     { ...worker, context: { ...worker.context, issue: 1.5 } },
@@ -154,6 +157,7 @@ test('remote protocol projects idle, complete, review, and lease edge states', (
     artifacts: ['key'],
   };
   const marker = runManifestMarker(manifest);
+
   assert.equal(parseRunManifestMarker(marker, 7).runId, 'run');
   assert.equal(parseRunManifestMarker('plain text', 7), undefined);
   assert.deepEqual(projectRemoteState({ issue: 7, markers: ['unrelated'] }).openGates, []);
@@ -204,6 +208,7 @@ test('remote state validates durable records and canonical helper contracts', ()
     contextCursor: 'c',
     artifacts: [],
   };
+
   assert.equal(validateRunManifest(manifest, 7), true);
   for (const invalid of [
     undefined,
@@ -258,6 +263,7 @@ test('remote state accounts for successful checks, matching refs, and lease owne
     now: 1,
     leaseOwner: 'worker-b',
   });
+
   assert.equal(projection.phase, 'claimed');
   assert.deepEqual(projection.openGates, ['lease:owned']);
   assert.equal(projection.lease.active, true);

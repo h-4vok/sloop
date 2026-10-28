@@ -1,13 +1,15 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { test } from 'vitest';
 import {
   ConfigValidationError,
   canonicalConfigYaml,
   configFingerprint,
   configRegistry,
+  configFileStore,
   loadConfigFile,
   loadConfigText,
   updateConfigFile,
@@ -16,14 +18,35 @@ import {
   configPaths,
   configValue,
   getConfigField,
+  loadConfigTextResult,
   parseConfig,
-  parseConfigValue,
+  parseConfigResult,
+  parseConfigValueResult,
+  updateConfigTextResult,
 } from '../src/config.js';
 
 const canonical = canonicalConfigYaml();
 
+function assertParserFailure(parser, value, path, matchesMessage) {
+  const result = parser(value, path);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.ok(result.error instanceof ConfigValidationError);
+    assert.ok(matchesMessage(result.error.message), result.error.message);
+  }
+}
+
+function createConfigWithRemote(remote) {
+  return canonical.replace(
+    'remote:\n    # Git remote used for Sloop branches.\n    origin',
+    'remote: "' + remote + '"',
+  );
+}
+
 test('numeric duration updates preserve their millisecond value', () => {
   const updated = updateConfigText(canonical, 'agents.worker.timeout', 123);
+
   assert.match(updated, /timeout:\s*\n\s*# worker runner timeout in milliseconds\.\s*\n\s*123/);
 });
 
@@ -35,6 +58,7 @@ test('canonical schema produces an immutable typed config and stable redacted fi
       'path:\n    # Checkout path used in checkout mode.\n    C:/private/checkout',
     ),
   );
+
   assert.equal(first.schemaVersion, 1);
   assert.equal(first.loop.interval, 300_000);
   assert.equal(first.agents.worker.timeout, 600_000);
@@ -71,6 +95,7 @@ test('registry is the single complete metadata source', () => {
 
 test('registry nested metadata and defaults cannot be mutated by consumers', () => {
   const priority = configRegistry.find(({ path }) => path === 'github.labels.priority');
+
   assert.throws(() => priority.default.push('injected'), TypeError);
   assert.throws(() => priority.dependencies.push('injected=true'), TypeError);
   assert.deepEqual(loadConfigText(canonical).github.labels.priority, priority.default);
@@ -78,8 +103,9 @@ test('registry nested metadata and defaults cannot be mutated by consumers', () 
 
 test('defaults and every registered parser round trip through canonical YAML', () => {
   const config = loadConfigText(canonical);
+
   for (const entry of configRegistry)
-    assert.notEqual(entry.parser(entry.default, `$.${entry.path}`), undefined);
+    assert.equal(entry.parser(entry.default, `$.${entry.path}`).ok, true);
   assert.deepEqual(config.workflow.reviewOrder, ['qa']);
   assert.equal(config.workflow.humanMergeWait, true);
   assert.equal(config.arbiter.reviewRounds, 3);
@@ -109,6 +135,7 @@ test('invalid documents provide exact YAML paths', () => {
       '$.schedule.expression: is required',
     ],
   ];
+
   for (const [source, expected] of cases)
     assert.throws(
       () => loadConfigText(source),
@@ -117,7 +144,131 @@ test('invalid documents provide exact YAML paths', () => {
   assert.throws(() => loadConfigText('schemaVersion: ['), /\$: invalid YAML:/);
 });
 
+test('configuration parser returns validation failures as structured results', () => {
+  const invalidConfiguration = { schemaVersion: 2 };
+
+  const parseResult = parseConfigResult(invalidConfiguration);
+
+  assert.equal(parseResult.ok, false);
+  if (!parseResult.ok) {
+    assert.ok(parseResult.error instanceof ConfigValidationError);
+    assert.match(parseResult.error.message, /unsupported schema version/);
+  }
+});
+
+test('configuration parser returns validated values as successful results', () => {
+  const parseResult = parseConfigResult({ schemaVersion: 1 });
+
+  assert.equal(parseResult.ok, true);
+  if (parseResult.ok) assert.equal(parseResult.value.schemaVersion, 1);
+});
+
+test('configuration parser ignores unknown keys when no warning callback is supplied', () => {
+  const parseResult = parseConfigResult({ schemaVersion: 1, futureSetting: true });
+
+  assert.equal(parseResult.ok, true);
+  if (parseResult.ok) assert.equal(parseResult.value.schemaVersion, 1);
+});
+
+test('configuration parser returns a structured failure for non-mapping input', () => {
+  const parseResult = parseConfigResult(null);
+
+  assert.equal(parseResult.ok, false);
+  if (!parseResult.ok) assert.match(parseResult.error.message, /expected a YAML mapping/);
+});
+
+test('configuration parser propagates unexpected unknown-key callback failures', () => {
+  const callbackFailure = new Error('warning logger failed');
+
+  assert.throws(
+    () =>
+      parseConfigResult({ schemaVersion: 1, futureSetting: true }, () => {
+        throw callbackFailure;
+      }),
+    callbackFailure,
+  );
+});
+
+test('registry string parser reports invalid values at the supplied path', () => {
+  const expressionField = configRegistry.find(({ path }) => path === 'schedule.expression');
+  const result = expressionField.parser(42, '$.schedule.expression');
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.message, '$.schedule.expression: expected a string');
+});
+
+test('Node configuration file store removes a file that was rolled back', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-remove-'));
+  const removedFile = join(root, 'sloop.config.yaml');
+  writeFileSync(removedFile, canonical);
+
+  configFileStore.remove(removedFile);
+
+  assert.equal(configFileStore.exists(removedFile), false);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('Node configuration file store warns when loading unknown keys', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-warning-'));
+  const configurationFile = join(root, 'sloop.config.yaml');
+  const warnings = [];
+  const originalWarn = console.warn;
+  writeFileSync(configurationFile, 'schemaVersion: 1\nfutureSetting: true\n');
+  console.warn = (message) => warnings.push(message);
+
+  try {
+    const configuration = loadConfigFile(configurationFile);
+
+    assert.equal(configuration.schemaVersion, 1);
+    assert.deepEqual(warnings, ['$.futureSetting: unknown configuration key; ignoring it']);
+  } finally {
+    console.warn = originalWarn;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('configuration text operations return expected failures as structured results', () => {
+  const malformedYamlResult = loadConfigTextResult('schemaVersion: [');
+  const unknownPathResult = updateConfigTextResult(canonical, 'missing.path', 'value');
+
+  assert.equal(malformedYamlResult.ok, false);
+  assert.equal(unknownPathResult.ok, false);
+  if (!malformedYamlResult.ok)
+    assert.ok(malformedYamlResult.error instanceof ConfigValidationError);
+  if (!unknownPathResult.ok)
+    assert.match(unknownPathResult.error.message, /unknown configuration key/);
+});
+
+test('configuration text update returns malformed YAML as a structured failure', () => {
+  const updateResult = updateConfigTextResult('schemaVersion: [', 'workspace.path', 'checkout');
+
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok) assert.match(updateResult.error.message, /invalid YAML/);
+});
+
+test('configuration text update returns known-field validation failures as data', () => {
+  const updateResult = updateConfigTextResult(canonical, 'workspace.path', '');
+
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok)
+    assert.equal(updateResult.error.message, '$.workspace.path: expected a non-empty string');
+});
+
+test('configuration value result rethrows unexpected parser failures', () => {
+  const unexpectedFailure = new Error('parser implementation failed');
+  const field = {
+    path: 'workspace.path',
+    parser: () => {
+      throw unexpectedFailure;
+    },
+  };
+
+  assert.throws(() => parseConfigValueResult(field, 'checkout'), unexpectedFailure);
+});
+
 test('argv rejects shell interpreters across supported platforms', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
+
   for (const [command, expectedPath] of [
     [['sh', '-c', 'rm -rf /tmp/x'], '$.health.command[0]'],
     [['/bin/bash', '-c', 'echo unsafe'], '$.health.command[0]'],
@@ -133,41 +284,38 @@ test('argv rejects shell interpreters across supported platforms', () => {
     [['env', 'zsh', '-c', 'echo unsafe'], '$.health.command[1]'],
     [['env', 'zsh-5.9', '-c', 'echo unsafe'], '$.health.command[1]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        (error.message.includes(`${expectedPath}: shell interpreters are forbidden`) ||
-          error.message.includes('$.health.command[0]: unsupported executable')),
+    assertParserFailure(
+      parser,
+      command,
+      '$.health.command',
+      (message) =>
+        message.includes(`${expectedPath}: shell interpreters are forbidden`) ||
+        message.includes('$.health.command[0]: unsupported executable'),
     );
 });
 
 test('argv uses bounded direct-process profiles', () => {
   const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
-  assert.deepEqual(parser(['git', 'show', 'README.english'], '$.health.command'), [
-    'git',
-    'show',
-    'README.english',
-  ]);
+
+  const validCommand = parser(['git', 'show', 'README.english'], '$.health.command');
+  assert.deepEqual(validCommand, {
+    ok: true,
+    value: ['git', 'show', 'README.english'],
+  });
   for (const command of [
     ['node', '-e', "require('node:child_process').execSync('echo unsafe')"],
     ['python', '-c', "__import__('os').system('echo unsafe')"],
     ['npm', 'exec', 'sh'],
     ['gh', 'alias', 'set', 'unsafe', '!echo unsafe'],
   ])
-    assert.throws(
-      () => parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        /unsupported executable|executable indirection is forbidden/.test(error.message),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      /unsupported executable|executable indirection is forbidden/.test(message),
     );
 });
 
 test('typed Codex configuration preserves shared options', () => {
   const config = loadConfigText(canonical);
+
   assert.equal(config.agents.worker.harness, 'codex');
   assert.equal(config.agents.worker.model, 'gpt-5.6-luna');
   assert.equal(config.agents.worker.sandbox, 'workspace-write');
@@ -178,6 +326,7 @@ test('typed Codex configuration preserves shared options', () => {
 
 test('sandbox configuration accepts explicit full access and rejects unknown policies', () => {
   const fullAccess = loadConfigText(canonical.replaceAll('workspace-write', 'danger-full-access'));
+
   assert.equal(fullAccess.agents.worker.sandbox, 'danger-full-access');
   assert.equal(fullAccess.agents.qa.sandbox, 'danger-full-access');
   assert.equal(fullAccess.agents.arbiter.sandbox, 'read-only');
@@ -190,50 +339,39 @@ test('sandbox configuration accepts explicit full access and rejects unknown pol
 });
 
 test('argv rejects env split-string command dispatch', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
   for (const [command, expectedPath] of [
     [['env', '-S', 'sh -c', '?'], '$.health.command[1]'],
     [['env', '-Ssh -c', '?'], '$.health.command[1]'],
     [['/usr/bin/env', '--split-string=sh -c', '?'], '$.health.command[1]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(`${expectedPath}: env split-string options are forbidden`),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      message.includes(`${expectedPath}: env split-string options are forbidden`),
     );
 });
 
 test('argv rejects embedded environment assignments', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
   for (const [command, expectedPath] of [
     [['env', 'GIT_SSH_COMMAND=ssh -o ProxyCommand=helper', 'git', 'fetch'], '$.health.command[1]'],
     [['/usr/bin/env', 'GIT_CONFIG_COUNT=1', 'git', 'fetch'], '$.health.command[1]'],
     [['env', 'LD_PRELOAD=/tmp/hook.so', 'tool'], '$.health.command[1]'],
     [['env', 'NODE_OPTIONS=--require=/tmp/hook.js', 'node', 'check.mjs'], '$.health.command[1]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(
-          `${expectedPath}: environment assignments are forbidden; inherit values from the external environment`,
-        ),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      message.includes(
+        `${expectedPath}: environment assignments are forbidden; inherit values from the external environment`,
+      ),
     );
 
-  assert.deepEqual(
-    configRegistry
-      .find(({ path }) => path === 'health.command')
-      .parser(['env', 'git', 'fetch'], '$.health.command'),
-    ['env', 'git', 'fetch'],
-  );
+  assert.deepEqual(parser(['env', 'git', 'fetch'], '$.health.command'), {
+    ok: true,
+    value: ['env', 'git', 'fetch'],
+  });
 });
 
 test('argv rejects Git configuration that dispatches a shell', () => {
+  const parser = configRegistry.find(({ path }) => path === 'health.command').parser;
   for (const [command, expectedPath] of [
     [['git', '-c', 'alias.x=!echo shell-bypass', 'x'], '$.health.command[2]'],
     [['git', '-c', 'alias.x= !script', 'x'], '$.health.command[2]'],
@@ -250,24 +388,14 @@ test('argv rejects Git configuration that dispatches a shell', () => {
     ],
     [['git', '-c', 'filter.clean.smudge=processor', 'checkout'], '$.health.command[2]'],
   ])
-    assert.throws(
-      () =>
-        configRegistry
-          .find(({ path }) => path === 'health.command')
-          .parser(command, '$.health.command'),
-      (error) =>
-        error instanceof ConfigValidationError &&
-        error.message.includes(
-          `${expectedPath}: Git configuration that dispatches a shell is forbidden`,
-        ),
+    assertParserFailure(parser, command, '$.health.command', (message) =>
+      message.includes(`${expectedPath}: Git configuration that dispatches a shell is forbidden`),
     );
 
-  assert.deepEqual(
-    configRegistry
-      .find(({ path }) => path === 'health.command')
-      .parser(['git', '-c', 'fetch.prune=true', 'fetch'], '$.health.command'),
-    ['git', '-c', 'fetch.prune=true', 'fetch'],
-  );
+  assert.deepEqual(parser(['git', '-c', 'fetch.prune=true', 'fetch'], '$.health.command'), {
+    ok: true,
+    value: ['git', '-c', 'fetch.prune=true', 'fetch'],
+  });
 });
 
 test('malformed containers and list fields produce validation diagnostics', () => {
@@ -300,58 +428,61 @@ test('unknown credential-shaped subtrees are ignored after warning', () => {
   );
 });
 
-test('credential-bearing values are rejected while ordinary public values remain fingerprinted', () => {
-  for (const [remote, expectedPath] of [
-    ['https://x-access-token:ghp_example@example.com/org/repo.git', '$.repository.remote'],
-    ['github_pat_1234567890_example', '$.repository.remote'],
-    ['ghp_1234567890example', '$.repository.remote'],
-  ]) {
-    const source = canonical.replace(
-      'remote:\n    # Git remote used for Sloop branches.\n    origin',
-      `remote: "${remote}"`,
-    );
+for (const [credentialType, remote] of [
+  ['URL credentials', 'https://x-access-token:ghp_example@example.com/org/repo.git'],
+  ['a GitHub fine-grained token', 'github_pat_1234567890_example'],
+  ['a GitHub token', 'ghp_1234567890example'],
+]) {
+  test('config parser rejects repository remotes containing ' + credentialType, () => {
+    const source = createConfigWithRemote(remote);
+    const parseCredentialRemote = () => loadConfigText(source);
+
     assert.throws(
-      () => loadConfigText(source),
+      parseCredentialRemote,
       (error) =>
         error instanceof ConfigValidationError &&
-        error.message.includes(`${expectedPath}: credentials are not accepted`),
+        error.message.includes('$.repository.remote: credentials are not accepted'),
     );
-  }
-  const publicRemote = loadConfigText(
-    canonical.replace(
-      'remote:\n    # Git remote used for Sloop branches.\n    origin',
-      'remote: upstream',
-    ),
-  );
-  assert.notEqual(configFingerprint(publicRemote), configFingerprint(loadConfigText(canonical)));
+  });
+}
+
+test('a public remote name changes the config fingerprint', () => {
+  const publicRemote = loadConfigText(createConfigWithRemote('upstream'));
+  const defaultRemote = loadConfigText(canonical);
+  const publicFingerprint = configFingerprint(publicRemote);
+  const defaultFingerprint = configFingerprint(defaultRemote);
+
+  assert.notEqual(publicFingerprint, defaultFingerprint);
 });
 
-test('representative external credential families are rejected', () => {
-  for (const value of [
-    'AKIAIOSFODNN7EXAMPLE',
+for (const [credentialType, remote] of [
+  ['an AWS access key', 'AKIAIOSFODNN7EXAMPLE'],
+  [
+    'a Slack bot token',
     ['xoxb', '123456789012', '123456789012', 'abcdefghijklmnopqrstuvwx'].join('-'),
-    ['sk', 'live', '1234567890abcdefghijklmnop'].join('_'),
-  ]) {
-    const source = canonical.replace(
-      'remote:\n    # Git remote used for Sloop branches.\n    origin',
-      `remote: ${value}`,
-    );
+  ],
+  ['a Stripe secret key', ['sk', 'live', '1234567890abcdefghijklmnop'].join('_')],
+]) {
+  test('config parser rejects ' + credentialType + ' in the repository remote', () => {
+    const source = createConfigWithRemote(remote);
+    const parseCredentialRemote = () => loadConfigText(source);
+
     assert.throws(
-      () => loadConfigText(source),
+      parseCredentialRemote,
       (error) =>
         error instanceof ConfigValidationError &&
         error.message ===
           '$.repository.remote: credentials are not accepted in sloop.config.yaml; use the external environment',
     );
-  }
-  assert.doesNotThrow(() => loadConfigText(canonical.replace('remote:\n', 'remote:\n')));
-});
+  });
+}
 
 test('credential carrier options are rejected even when their value is opaque', () => {
   const source = canonical.replace(
     'command:\n    # Health probe argv; never evaluated by a shell.\n    - gh\n    - run\n    - list\n    - --branch\n    - main',
     'command: [git, --credential, opaque-value]',
   );
+
   assert.throws(
     () => loadConfigText(source),
     (error) =>
@@ -427,7 +558,8 @@ test('credential-bearing headers and assignments are rejected in argv fields', (
 });
 
 test('JSON input is rejected with init guidance', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-config-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-'));
+
   try {
     const file = join(root, 'sloop.config.json');
     writeFileSync(file, '{}');
@@ -443,6 +575,7 @@ test('JSON input is rejected with init guidance', () => {
 test('AST update preserves comments and order and validates the resulting document', () => {
   const source = canonical.replace('repository:\n', '# repository note\nrepository:\n');
   const updated = updateConfigText(source, 'repository.baseBranch', 'develop');
+
   assert.match(updated, /# repository note\nrepository:/);
   assert.equal(updated.indexOf('repository:'), source.indexOf('repository:'));
   assert.equal(loadConfigText(updated).repository.baseBranch, 'develop');
@@ -453,7 +586,8 @@ test('AST update preserves comments and order and validates the resulting docume
 });
 
 test('file update uses atomic replacement and leaves no temporary sibling', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-config-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-'));
+
   try {
     const file = join(root, 'sloop.config.yaml');
     writeFileSync(file, canonical);
@@ -466,92 +600,129 @@ test('file update uses atomic replacement and leaves no temporary sibling', () =
   }
 });
 
-test('public config helpers validate every scalar family and structural invariant', () => {
+test('config path helpers return values and empty results for unknown paths', () => {
   const value = loadConfigText(canonical);
-  assert.equal(configValue(value, 'repository.remote'), 'origin');
-  assert.equal(getConfigField('missing.path'), undefined);
-  assert.deepEqual(configPaths('missing.path'), []);
-  assert.equal(parseConfigValue(getConfigField('health.enabled'), 'false'), false);
-  assert.equal(parseConfigValue(getConfigField('arbiter.decisions'), '4'), 4);
-  assert.equal(parseConfigValue(getConfigField('loop.interval'), '3s'), 3000);
-  assert.throws(
-    () => parseConfigValue(getConfigField('skills.required'), 'x'),
-    ConfigValidationError,
+  const remoteName = configValue(value, 'repository.remote');
+  const missingField = getConfigField('missing.path');
+  const missingPaths = configPaths('missing.path');
+
+  assert.equal(remoteName, 'origin');
+  assert.equal(missingField, undefined);
+  assert.deepEqual(missingPaths, []);
+});
+
+test('config value parser converts boolean, integer, and duration fields', () => {
+  const parsedValues = [
+    parseConfigValueResult(getConfigField('health.enabled'), 'false'),
+    parseConfigValueResult(getConfigField('arbiter.decisions'), '4'),
+    parseConfigValueResult(getConfigField('loop.interval'), '3s'),
+  ];
+
+  assert.ok(parsedValues.every((result) => result.ok));
+  assert.deepEqual(
+    parsedValues.map((result) => (result.ok ? result.value : undefined)),
+    [false, 4, 3000],
   );
-  const plain = JSON.parse(JSON.stringify(value));
-  for (const [mutate, path] of [
+});
+
+test('config value result rejects boolean text outside true and false', () => {
+  const result = parseConfigValueResult(getConfigField('health.enabled'), 'sometimes');
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.message, '$.health.enabled: expected a boolean');
+});
+
+test('config value parser rejects invalid list values', () => {
+  const parseResult = parseConfigValueResult(getConfigField('skills.required'), 'x');
+
+  assert.equal(parseResult.ok, false);
+  if (!parseResult.ok) assert.ok(parseResult.error instanceof ConfigValidationError);
+});
+
+test('config parser rejects structural violations at their exact paths', () => {
+  const validConfig = JSON.parse(JSON.stringify(loadConfigText(canonical)));
+  const invalidConfigs = [
     [
-      (v) => {
-        v.schemaVersion = 2;
+      (value) => {
+        value.schemaVersion = 2;
       },
       '$.schemaVersion',
     ],
     [
-      (v) => {
-        v.workflow.reviewOrder = ['worker'];
+      (value) => {
+        value.workflow.reviewOrder = ['worker'];
       },
       '$.workflow.reviewOrder',
     ],
     [
-      (v) => {
-        v.github.roleMarkers.qa = v.github.roleMarkers.worker;
+      (value) => {
+        value.github.roleMarkers.qa = value.github.roleMarkers.worker;
       },
       '$.github.roleMarkers',
     ],
     [
-      (v) => {
-        v.github.labels.priority = ['p', 'p'];
+      (value) => {
+        value.github.labels.priority = ['p', 'p'];
       },
       '$.github.labels.priority',
     ],
     [
-      (v) => {
-        v.workspace.path = '';
+      (value) => {
+        value.workspace.path = '';
       },
       '$.workspace.path',
     ],
     [
-      (v) => {
-        v.workspace.mode = 'worktree';
-        v.workspace.worktreeRoot = '';
+      (value) => {
+        value.workspace.mode = 'worktree';
+        value.workspace.worktreeRoot = '';
       },
       '$.workspace.worktreeRoot',
     ],
     [
-      (v) => {
-        v.schedule.enabled = true;
-        v.schedule.expression = '';
+      (value) => {
+        value.schedule.enabled = true;
+        value.schedule.expression = '';
       },
       '$.schedule.expression',
     ],
     [
-      (v) => {
-        v.arbiter.decisions = 0;
+      (value) => {
+        value.arbiter.decisions = 0;
       },
       '$.arbiter.decisions',
     ],
-  ]) {
-    const next = structuredClone(plain);
-    mutate(next);
+  ];
+
+  for (const [mutate, configPath] of invalidConfigs) {
+    const invalidConfig = structuredClone(validConfig);
+    mutate(invalidConfig);
+
     assert.throws(
-      () => parseConfig(next),
-      (error) => error.diagnostics.some((item) => item.path === path),
+      () => parseConfig(invalidConfig),
+      (error) => error.diagnostics.some((item) => item.path === configPath),
     );
   }
 });
 
-test('unknown keys are ignored and malformed YAML still produces precise diagnostics', () => {
-  assert.doesNotThrow(() => parseConfig({ schemaVersion: 1, token: 'secret' }));
-  assert.throws(
-    () => updateConfigText('workflow: [', 'workflow.humanMergeWait', false),
-    /invalid YAML/,
-  );
+test('config parser ignores unknown keys', () => {
+  const parseWithUnknownCredentialKey = () => parseConfig({ schemaVersion: 1, token: 'secret' });
+
+  assert.doesNotThrow(parseWithUnknownCredentialKey);
+});
+
+test('config text updates report malformed YAML', () => {
+  const updateMalformedYaml = () =>
+    updateConfigText('workflow: [', 'workflow.humanMergeWait', false);
+
+  assert.throws(updateMalformedYaml, /invalid YAML/);
 });
 
 test('boolean registry fields round-trip through canonical text updates', () => {
   const source = canonicalConfigYaml();
   const updated = updateConfigText(source, 'workflow.humanMergeWait', false);
   const config = loadConfigText(updated);
+
   assert.equal(config.workflow.humanMergeWait, false);
   assert.equal(
     getConfigField('workflow.humanMergeWait').explanation,
@@ -560,8 +731,9 @@ test('boolean registry fields round-trip through canonical text updates', () => 
 });
 
 test('config file existence is a direct filesystem contract', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-config-exists-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-exists-'));
   const file = join(root, 'sloop.config.yaml');
+
   assert.equal(configFileExists(file), false);
   writeFileSync(file, canonical);
   assert.equal(configFileExists(file), true);

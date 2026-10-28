@@ -1,5 +1,9 @@
 #!/bin/sh
 set -eu
 
+# Tests create temporary repositories that must not inherit this checkout.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 echo "[sloop] running npm run pr-checks before push"
 npm run pr-checks

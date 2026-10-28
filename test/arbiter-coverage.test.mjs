@@ -1,8 +1,9 @@
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
-import { mkdtempSync, appendFileSync } from 'node:fs';
+import { appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { test } from 'vitest';
 import {
   JsonlJournal,
   classifyFeedback,
@@ -24,7 +25,8 @@ import {
   validateArbiterDecisions,
 } from '../src/arbiter-contracts.js';
 
-const tempFile = () => join(mkdtempSync(join(tmpdir(), 'sloop-arbiter-')), 'events.jsonl');
+const createTemporaryFile = () =>
+  join(createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-arbiter-')), 'events.jsonl');
 
 for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
   test(`Arbiter ${action} accepts its structural contract without grading rationale vocabulary`, () => {
@@ -56,6 +58,16 @@ for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
     assert.equal(state.decisions[0].followUp, decision.followUp ?? undefined);
   });
 }
+
+test('arbiter decisions stop when the intervention limit has been reached', () => {
+  const currentState = { interventions: 2, decisions: [] };
+  const findings = [];
+
+  assert.throws(
+    () => applyArbiterDecisions(currentState, findings, [], 2),
+    /arbiter intervention limit reached/,
+  );
+});
 
 const malformedDecisions = [
   ['null decision', null],
@@ -121,6 +133,7 @@ test('Arbiter rejects duplicate decisions for an open finding', () => {
     action: 'overrule',
     rationale: 'Outside scope.',
   };
+
   assert.throws(
     () => validateArbiterDecisions(findings, [decision, decision], 1),
     /finding id and owner/,
@@ -137,6 +150,7 @@ test('Arbiter rejects uphold on the second intervention', () => {
     direction: 'Trim.',
     verification: 'Check spaces.',
   };
+
   assert.throws(() => validateArbiterDecisions(findings, [decision], 2), /invalid action/);
 });
 
@@ -147,6 +161,7 @@ test('terminating arbiter validates complete atomic mixed decisions and follow-u
   ];
   const rationale =
     'Conflict: both arguments matter. Analysis against contract, product and UX justifies this action.';
+
   assert.equal(shouldInvokeArbiter({ substantiveRounds: 2, findingAppearances: 1 }), false);
   assert.equal(shouldInvokeArbiter({ substantiveRounds: 3, findingAppearances: 0 }), true);
   const raw = [
@@ -177,6 +192,7 @@ test('terminating arbiter validates complete atomic mixed decisions and follow-u
 
 test('arbiter session, events, clarification and current review contracts', () => {
   const session = createSession({ number: 7, title: 'Issue' }, 'session-1');
+
   assert.equal(session.status, 'running');
   const item = event({ sessionId: 'session-1', issue: 7, role: 'arbiter', type: 'x', payload: {} });
   assert.match(
@@ -195,7 +211,7 @@ test('arbiter session, events, clarification and current review contracts', () =
 });
 
 test('journal is append-only, ignores malformed records, and restores events', () => {
-  const file = tempFile();
+  const file = createTemporaryFile();
   const journal = new JsonlJournal(file);
   const first = {
     id: 'e1',
@@ -207,6 +223,7 @@ test('journal is append-only, ignores malformed records, and restores events', (
     emittedAt: '2020-01-01T00:00:00Z',
     payload: {},
   };
+
   assert.equal(journal.append(first), true);
   assert.equal(journal.append(first), false);
   appendFileSync(
@@ -220,7 +237,7 @@ test('journal is append-only, ignores malformed records, and restores events', (
   assert.equal(restored.status, 'waiting_for_human_clarification');
   const minimal = restoreSession(
     { sessionId: 'none', processedEventIds: [] },
-    new JsonlJournal(tempFile()),
+    new JsonlJournal(createTemporaryFile()),
   );
   assert.deepEqual(minimal.pendingClarifications, []);
   journal.append({
@@ -242,7 +259,7 @@ test('journal is append-only, ignores malformed records, and restores events', (
   const answered = restoreSession(base, journal);
   assert.deepEqual(answered.answeredClarificationIds, ['e2']);
   assert.deepEqual(answered.classifications, [{ sourceId: 'r' }]);
-  const extra = tempFile();
+  const extra = createTemporaryFile();
   const extraJournal = new JsonlJournal(extra);
   extraJournal.append({
     id: 'q',
@@ -297,6 +314,7 @@ test('feedback collection and classification reject unknown or invalid input', (
       { id: 'c2', body: 'A concern', createdAt: 'now' },
     ],
   });
+
   assert.deepEqual(feedback.formalApprovals, ['r1']);
   assert.deepEqual(feedback.textualObjections, ['r2', 'c2']);
   assert.equal(feedback.items.length, 3);
@@ -328,7 +346,7 @@ test('feedback collection and classification reject unknown or invalid input', (
 });
 
 test('arbiter consumes only valid matching lines and classifies with retry preservation', async () => {
-  const file = tempFile();
+  const file = createTemporaryFile();
   const journal = new JsonlJournal(file);
   const session = createSession(3, 's3');
   const seen = [];
@@ -351,6 +369,7 @@ test('arbiter consumes only valid matching lines and classifies with retry prese
     emittedAt: new Date().toISOString(),
     payload: {},
   };
+
   assert.equal(consumeArbiterLine(context, 'bad'), false);
   assert.equal(consumeArbiterLine(context, JSON.stringify({ ...item, issue: 4 })), false);
   assert.equal(consumeArbiterLine(context, JSON.stringify(item)), true);
@@ -362,7 +381,7 @@ test('arbiter consumes only valid matching lines and classifies with retry prese
   ])
     assert.equal(
       consumeArbiterLine(
-        { ...context, journal: new JsonlJournal(tempFile()) },
+        { ...context, journal: new JsonlJournal(createTemporaryFile()) },
         JSON.stringify(invalid),
       ),
       false,
@@ -400,7 +419,7 @@ test('arbiter consumes only valid matching lines and classifies with retry prese
 });
 
 test('logged process captures streams, lines, redactions, input, timeout, and launch errors', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'sloop-arbiter-log-'));
+  const dir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-arbiter-log-'));
   const lines = [],
     errors = [];
   const base = {
@@ -417,6 +436,7 @@ test('logged process captures streams, lines, redactions, input, timeout, and la
     onStderr: (text) => errors.push(text),
   };
   const result = await runLoggedProcess({ ...base, env: { SLOOP_TEST: '1' } });
+
   assert.equal(result.code, 0);
   assert.deepEqual(lines, ['hello SECRET', 'last']);
   assert.deepEqual(errors, ['oops']);

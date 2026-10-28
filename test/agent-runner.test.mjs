@@ -1,7 +1,8 @@
-import test from 'node:test';
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { mkdtemp, readFile as readFileFromFs } from 'node:fs/promises';
+import { readFile as readFileFromFs } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -20,7 +21,7 @@ const guide = {
   limitations: ['fake'],
   checklist: ['check'],
 };
-function forwardedArgs(stdin, args) {
+function decodeForwardedArguments(stdin, args) {
   if (stdin === undefined) return args;
   const lines = stdin.split('\n');
   const [countLine] = lines;
@@ -28,7 +29,7 @@ function forwardedArgs(stdin, args) {
   assert.equal(Number(countLine), encodedArgs.length);
   return encodedArgs.map((encoded) => Buffer.from(encoded, 'base64').toString('utf8'));
 }
-const worker = () => ({
+const createWorkerEnvelope = () => ({
   schema: 'sloop.agent-output/v1',
   context,
   producer: 'worker',
@@ -43,50 +44,73 @@ for (const [condition, payload] of [
   ['empty references', { rationale: 'Trim names.', references: [], decisions: [{}] }],
 ]) {
   test(`Arbiter envelope rejects ${condition}`, () => {
-    const envelope = { ...worker(), producer: 'arbiter', status: 'uphold', payload };
+    const envelope = { ...createWorkerEnvelope(), producer: 'arbiter', status: 'uphold', payload };
+
     assert.throws(() => validateAgentEnvelope(envelope, context), AgentContractError);
   });
 }
 
-test('validates every role and rejects incomplete or contradictory payloads', () => {
-  assert.equal(validateAgentEnvelope(worker(), context).status, 'ready');
-  assert.throws(
-    () =>
-      validateAgentEnvelope(
-        { ...worker(), producer: 'qa', status: 'accepted', payload: {} },
-        context,
-      ),
-    AgentContractError,
-  );
-  assert.throws(
-    () =>
-      validateAgentEnvelope(
-        {
-          ...worker(),
-          producer: 'arbiter',
-          status: 'uphold',
-          payload: { rationale: 'r', references: [] },
-        },
-        context,
-      ),
-    AgentContractError,
-  );
-  assert.throws(
-    () =>
-      validateAgentEnvelope(
-        { ...worker(), payload: { ...worker().payload, extra: true } },
-        context,
-      ),
-    AgentContractError,
-  );
-  assert.throws(
-    () => validateAgentEnvelope({ ...worker(), context: { ...context, sha: 'stale' } }, context),
-    AgentContractError,
-  );
+test('accepts a complete Worker envelope', () => {
+  const workerEnvelope = createWorkerEnvelope();
+
+  const result = validateAgentEnvelope(workerEnvelope, context);
+
+  assert.equal(result.status, 'ready');
+});
+
+test('rejects an incomplete QA envelope', () => {
+  const invalidQaEnvelope = {
+    ...createWorkerEnvelope(),
+    producer: 'qa',
+    status: 'accepted',
+    payload: {},
+  };
+
+  const validateInvalidQaEnvelope = () => validateAgentEnvelope(invalidQaEnvelope, context);
+
+  assert.throws(validateInvalidQaEnvelope, AgentContractError);
+});
+
+test('rejects an Arbiter envelope with no finding references', () => {
+  const invalidArbiterEnvelope = {
+    ...createWorkerEnvelope(),
+    producer: 'arbiter',
+    status: 'uphold',
+    payload: { rationale: 'r', references: [] },
+  };
+
+  const validateInvalidArbiterEnvelope = () =>
+    validateAgentEnvelope(invalidArbiterEnvelope, context);
+
+  assert.throws(validateInvalidArbiterEnvelope, AgentContractError);
+});
+
+test('rejects Worker payload fields outside the declared schema', () => {
+  const workerEnvelope = createWorkerEnvelope();
+  const invalidWorkerEnvelope = {
+    ...workerEnvelope,
+    payload: { ...workerEnvelope.payload, extra: true },
+  };
+
+  const validateUnexpectedPayloadField = () =>
+    validateAgentEnvelope(invalidWorkerEnvelope, context);
+
+  assert.throws(validateUnexpectedPayloadField, AgentContractError);
+});
+
+test('rejects an agent envelope with a stale context SHA', () => {
+  const staleContextEnvelope = {
+    ...createWorkerEnvelope(),
+    context: { ...context, sha: 'stale' },
+  };
+
+  const validateStaleContextEnvelope = () => validateAgentEnvelope(staleContextEnvelope, context);
+
+  assert.throws(validateStaleContextEnvelope, AgentContractError);
 });
 
 test('arbitrary runner reads only the declared result, captures streams, and retries launch failures', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-test-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-test-'));
   const logs = [];
   let attempts = 0;
   const runner = new ArbitraryCommandRunner('missing', [], {
@@ -99,12 +123,13 @@ test('arbitrary runner reads only the declared result, captures streams, and ret
       options.onStderr('diagnostic');
       if (attempts === 1) throw new Error('ENOENT');
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
   const result = await runner.run('{"instruction":"do it"}', context);
+
   assert.equal(result.status, 'ready');
   assert.equal(attempts, 2);
   assert.deepEqual(logs, [
@@ -116,8 +141,8 @@ test('arbitrary runner reads only the declared result, captures streams, and ret
 });
 
 test('arbitrary runner executes the production child-process adapter for a valid envelope', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-default-exec-'));
-  const payload = JSON.stringify(worker());
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-default-exec-'));
+  const payload = JSON.stringify(createWorkerEnvelope());
   const script = [
     "const fs = require('node:fs');",
     "process.stdout.write('started');",
@@ -129,11 +154,30 @@ test('arbitrary runner executes the production child-process adapter for a valid
     cwd: root,
     log: (source, chunk) => logs.push([source, chunk]),
   });
+
   assert.equal((await runner.run('production adapter', context)).status, 'ready');
   assert.deepEqual(logs, [
     ['stdout', 'started'],
     ['stderr', 'diagnostic'],
   ]);
+});
+
+test('default process adapter reports a timeout as an operational failure', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-timeout-'));
+  const runner = new ArbitraryCommandRunner(
+    process.execPath,
+    ['-e', 'setTimeout(() => {}, 1000)'],
+    { cwd: root, timeoutMs: 10 },
+  );
+
+  await assert.rejects(
+    () => runner.run('input', context),
+    (error) => {
+      assert.ok(error instanceof AgentContractError);
+      assert.equal(error.code, 'operational-failure');
+      return true;
+    },
+  );
 });
 
 test('Codex runner builds separated structured-output argv and captures a result', async () => {
@@ -146,16 +190,17 @@ test('Codex runner builds separated structured-output argv and captures a result
     execute: async (command, args, options) => {
       seen = [command, args, options.stdin];
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       options.onStdout('marker-like json');
       options.onStderr('diagnostic');
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
+
   assert.equal((await runner.run('prompt', context)).status, 'ready');
   assert.equal(seen[0], process.platform === 'win32' ? 'powershell.exe' : 'codex');
-  const codexArgs = forwardedArgs(seen[2], seen[1]);
+  const codexArgs = decodeForwardedArguments(seen[2], seen[1]);
   assert.ok(codexArgs.every((arg) => arg.length > 0));
   assert.deepEqual(codexArgs.slice(0, 7), [
     'exec',
@@ -187,15 +232,16 @@ test('non-interactive Codex structured-output smoke uses declared paths and one 
       options.onStdout('diagnostic marker: {"status":"blocked"}');
       options.onStderr('isolated smoke diagnostic');
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
     log: (source, chunk) => events.push([source, chunk]),
   });
   const result = await runner.run('non-interactive smoke prompt', context);
+
   assert.equal(invocation.command, process.platform === 'win32' ? 'powershell.exe' : 'codex');
-  const codexArgs = forwardedArgs(invocation.stdin, invocation.args);
+  const codexArgs = decodeForwardedArguments(invocation.stdin, invocation.args);
   assert.equal(result.schema, 'sloop.agent-output/v1');
   assert.equal(result.status, 'ready');
   assert.equal(events[1][0], 'stdout');
@@ -204,36 +250,58 @@ test('non-interactive Codex structured-output smoke uses declared paths and one 
   assert.ok(codexArgs.includes('--output-last-message'));
 });
 
-test('runner exposes the complete canonical schema and rejects operational failure matrix', async () => {
-  const seen = [];
+test('runner exposes the canonical schema for every agent role', async () => {
+  let observedSchema;
   const runner = new ArbitraryCommandRunner('fake', [], {
     cwd: process.cwd(),
-    retries: 1,
-    timeoutMs: 5,
     execute: async (_command, _args, options) => {
-      seen.push(JSON.parse(await readFile(options.env.SLOOP_AGENT_SCHEMA, 'utf8')));
-      if (seen.length === 1) return { stdout: '', stderr: 'crash', code: 1, signal: null };
+      observedSchema = JSON.parse(await readFile(options.env.SLOOP_AGENT_SCHEMA, 'utf8'));
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, '{"schema":"sloop.agent-output/v1"'),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
-  await assert.rejects(runner.run('input', context), (error) => error.code === 'malformed');
-  assert.equal(seen.length, 2);
-  assert.ok(seen[0].$defs.worker);
-  assert.ok(seen[0].$defs.reviewer);
-  assert.ok(seen[0].$defs.arbiter);
-  assert.equal(seen[0].$id, 'sloop.agent-output/v1');
-  assert.equal(seen[0].oneOf.length, 3);
+  const result = await runner.run('input', context);
+
+  assert.equal(result.status, 'ready');
+  assert.ok(observedSchema.$defs.worker);
+  assert.ok(observedSchema.$defs.reviewer);
+  assert.ok(observedSchema.$defs.arbiter);
+  assert.equal(observedSchema.$id, 'sloop.agent-output/v1');
+  assert.equal(observedSchema.oneOf.length, 3);
   assert.deepEqual(
-    seen[0].oneOf.map((branch) => branch.properties.producer),
+    observedSchema.oneOf.map((branch) => branch.properties.producer),
     [{ const: 'worker' }, { enum: ['qa', 'staff'] }, { const: 'arbiter' }],
   );
 });
 
-test('runner handles timeout, missing output, duplicate members, and idempotent valid retry', async () => {
-  for (const mode of ['timeout', 'missing', 'duplicate']) {
+test('runner retries a failed process before returning a valid result', async () => {
+  let attempts = 0;
+  const runner = new ArbitraryCommandRunner('fake', [], {
+    cwd: process.cwd(),
+    retries: 1,
+    execute: async (_command, _args, options) => {
+      attempts++;
+      if (attempts === 1) return { stdout: '', stderr: 'crash', code: 1, signal: null };
+      await import('node:fs/promises').then(({ writeFile }) =>
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
+      );
+      return { stdout: '', stderr: '', code: 0, signal: null };
+    },
+  });
+  const result = await runner.run('input', context);
+
+  assert.equal(result.status, 'ready');
+  assert.equal(attempts, 2);
+});
+
+for (const [condition, expectedCode, mode] of [
+  ['a timed-out process', 'operational-failure', 'timeout'],
+  ['a missing result file', 'missing-result', 'missing'],
+  ['duplicate JSON members', 'malformed', 'duplicate'],
+]) {
+  test(`runner rejects ${condition}`, async () => {
     const runner = new ArbitraryCommandRunner('fake', [], {
       cwd: process.cwd(),
       timeoutMs: 1,
@@ -246,28 +314,34 @@ test('runner handles timeout, missing output, duplicate members, and idempotent 
         return { stdout: '', stderr: '', code: 0, signal: null };
       },
     });
-    await assert.rejects(runner.run('input', context), (error) =>
-      ['operational-failure', 'missing-result', 'malformed'].includes(error.code),
-    );
-  }
+    const execution = runner.run('input', context);
+
+    await assert.rejects(execution, (error) => error.code === expectedCode);
+  });
+}
+
+test('runner returns a persisted valid result without executing a duplicate attempt', async () => {
   let calls = 0;
   const runner = new ArbitraryCommandRunner('fake', [], {
     cwd: process.cwd(),
     execute: async (_command, _args, options) => {
       calls++;
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
-  assert.equal((await runner.run('input', context)).status, 'ready');
-  assert.equal((await runner.run('input', context)).status, 'ready');
+  const firstResult = await runner.run('input', context);
+  const secondResult = await runner.run('input', context);
+
+  assert.equal(firstResult.status, 'ready');
+  assert.equal(secondResult.status, 'ready');
   assert.equal(calls, 1);
 });
 
 test('declared schema resolves canonical role refs and reconciliation survives a new runner', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-persist-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-persist-'));
   const reconciliationDir = join(root, 'results');
   let calls = 0;
   const execute = async (_command, _args, options) => {
@@ -278,11 +352,12 @@ test('declared schema resolves canonical role refs and reconciliation survives a
       assert.ok(await readFileFromFs(join(options.env.SLOOP_AGENT_SCHEMA, '..', file), 'utf8'));
     }
     await import('node:fs/promises').then(({ writeFile }) =>
-      writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+      writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
     );
     return { stdout: '', stderr: '', code: 0, signal: null };
   };
   const first = new ArbitraryCommandRunner('fake', [], { cwd: root, reconciliationDir, execute });
+
   assert.equal((await first.run('persisted input', context)).status, 'ready');
   const second = new ArbitraryCommandRunner('fake', [], {
     cwd: root,
@@ -296,7 +371,7 @@ test('declared schema resolves canonical role refs and reconciliation survives a
 });
 
 test('runner handles durable write races and every result-read error family', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-race-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-race-'));
   const reconciliationDir = join(root, 'results');
   const input = 'race';
   const { createHash } = await import('node:crypto');
@@ -314,11 +389,12 @@ test('runner handles durable write races and every result-read error family', as
     reconciliationDir,
     execute: async (_command, _args, options) => {
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
+
   assert.equal((await raced.run(input, context)).status, 'ready');
   for (const mode of ['blank', 'directory']) {
     const runner = new ArbitraryCommandRunner('fake', [], {
@@ -348,22 +424,23 @@ test('Codex runner applies its default sandbox', async () => {
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
     execute: async (_command, received, options) => {
-      args = forwardedArgs(options.stdin, received);
+      args = decodeForwardedArguments(options.stdin, received);
       await import('node:fs/promises').then(({ writeFile }) =>
         writeFile(
           options.env.SLOOP_AGENT_OUTPUT,
-          JSON.stringify({ ...worker(), context: { ...context, pr: undefined } }),
+          JSON.stringify({ ...createWorkerEnvelope(), context: { ...context, pr: undefined } }),
         ),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
   });
   await runner.run('default sandbox', { ...context, pr: undefined });
+
   assert.equal(args[4], 'workspace-write');
 });
 
 test('runner reports non-Error launch failures and rethrows durable write failures', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'sloop-agent-durable-error-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-durable-error-'));
   const launch = new ArbitraryCommandRunner('fake', [], {
     cwd: root,
     execute: async () => {
@@ -383,7 +460,7 @@ test('runner reports non-Error launch failures and rethrows durable write failur
     },
     execute: async (_command, _args, options) => {
       await import('node:fs/promises').then(({ writeFile }) =>
-        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(worker())),
+        writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },

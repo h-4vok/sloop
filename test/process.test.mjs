@@ -1,82 +1,90 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'vitest';
+import { createNodeHost } from '../src/infrastructure/host/createNodeHost.js';
 
-const processModule = () => import('../src/process.ts');
+const loadProcessAdapter = async () => {
+  const { processAdapter } = await import('../src/process.ts');
+
+  return processAdapter;
+};
+
+test('process root exports preserve the named compatibility API', async () => {
+  const processModule = await import('../src/process.ts');
+
+  assert.equal(processModule.resolveExecutable, processModule.processAdapter.resolveExecutable);
+  assert.equal(processModule.runSyncCommand, processModule.processAdapter.runSyncCommand);
+});
 
 test('resolveExecutable keeps explicit paths and extensions unchanged', async () => {
-  const { resolveExecutable } = await processModule();
+  const { resolveExecutable } = await loadProcessAdapter();
 
-  assert.equal(
+  const resolvedCommands = [
     resolveExecutable('tool.exe', 'win32', () => ['tool.cmd']),
-    'tool.exe',
-  );
-  assert.equal(
     resolveExecutable('/absolute/tool', 'win32', () => ['tool.cmd']),
-    '/absolute/tool',
-  );
+  ];
+
+  assert.deepEqual(resolvedCommands, ['tool.exe', '/absolute/tool']);
 });
 
 test('resolveExecutable falls back to the original command when lookup fails', async () => {
-  const { resolveExecutable } = await processModule();
+  const { resolveExecutable } = await loadProcessAdapter();
 
-  assert.equal(
-    resolveExecutable('missing-tool', 'win32', () => {
-      throw new Error('lookup failed');
-    }),
-    'missing-tool',
-  );
+  const resolvedCommand = resolveExecutable('missing-tool', 'win32', () => {
+    throw new Error('lookup failed');
+  });
+
+  assert.equal(resolvedCommand, 'missing-tool');
 });
 
 test('resolveExecutable covers host defaults and safely falls back for an impossible command', async () => {
-  const { resolveExecutable } = await processModule();
+  const { resolveExecutable } = await loadProcessAdapter();
   const missing = 'sloop-coverage-missing-command-7c3f2';
 
   // The no-argument call exercises the production platform default. Supplying
   // win32 below executes the production where.exe locator on every host; the
   // deliberately impossible command must always take its documented fallback.
-  assert.equal(resolveExecutable(missing), missing);
-  assert.equal(resolveExecutable(missing, 'win32'), missing);
+  const defaultPlatformCommand = resolveExecutable(missing);
+  const windowsCommand = resolveExecutable(missing, 'win32');
+
+  assert.equal(defaultPlatformCommand, missing);
+  assert.equal(windowsCommand, missing);
 });
 
-test('resolveExecutable prefers Windows shims and handles empty lookup results', async () => {
-  const { resolveExecutable } = await processModule();
+test('resolveExecutable prefers the Windows command shim', async () => {
+  const { resolveExecutable } = await loadProcessAdapter();
 
-  assert.equal(
-    resolveExecutable('npm', 'win32', () => ['npm.exe', 'npm.cmd']),
-    'npm.cmd',
-  );
-  assert.equal(
-    resolveExecutable('npm', 'win32', () => ['npm.exe']),
-    'npm.exe',
-  );
-  assert.equal(
+  const resolvedCommand = resolveExecutable('npm', 'win32', () => ['npm.exe', 'npm.cmd']);
+
+  assert.equal(resolvedCommand, 'npm.cmd');
+});
+
+test('resolveExecutable falls back to the first Windows command match', async () => {
+  const { resolveExecutable } = await loadProcessAdapter();
+
+  const resolvedCommand = resolveExecutable('npm', 'win32', () => ['npm.exe']);
+
+  assert.equal(resolvedCommand, 'npm.exe');
+});
+
+test('resolveExecutable keeps the original command when no Windows match exists', async () => {
+  const { resolveExecutable } = await loadProcessAdapter();
+
+  const resolvedCommands = [
     resolveExecutable('npm', 'win32', () => ['npm']),
-    'npm',
-  );
-  assert.equal(
     resolveExecutable('npm', 'win32', () => []),
-    'npm',
-  );
-  assert.equal(
     resolveExecutable('npm', 'linux', () => ['npm.cmd']),
-    'npm',
-  );
-  assert.equal(
     resolveExecutable('/absolute/tool', 'linux', () => ['tool.cmd']),
-    '/absolute/tool',
-  );
-  assert.equal(
     resolveExecutable('tool.exe', 'linux', () => ['tool.cmd']),
-    'tool.exe',
-  );
-  assert.equal(
-    resolveExecutable('npm', 'win32', () => ['npm.cmd']),
-    'npm.cmd',
-  );
+  ];
+
+  assert.deepEqual(resolvedCommands, ['npm', 'npm', 'npm', '/absolute/tool', 'tool.exe']);
 });
 
 test('runSyncCommand trims output and passes direct-process options', async () => {
-  const { runSyncCommand } = await processModule();
+  const { runSyncCommand } = await loadProcessAdapter();
   const calls = [];
 
   const result = runSyncCommand(
@@ -107,32 +115,65 @@ test('runSyncCommand trims output and passes direct-process options', async () =
 });
 
 test('runSyncCommand uses its native executor when no test executor is supplied', async () => {
-  const { runSyncCommand } = await processModule();
-  assert.equal(
-    runSyncCommand(process.execPath, ['-e', "process.stdout.write(' native output ')"]),
-    'native output',
-  );
+  const { runSyncCommand } = await loadProcessAdapter();
+
+  const output = runSyncCommand(process.execPath, [
+    '-e',
+    "process.stdout.write(' native output ')",
+  ]);
+
+  assert.equal(output, 'native output');
 });
 
 test('batch invocation rejects command-parser metacharacters before launch', async () => {
-  const { childProcessInvocation } = await processModule();
+  const { childProcessInvocation } = await loadProcessAdapter();
 
-  assert.throws(
-    () => childProcessInvocation('npm.cmd', ['run', 'test&whoami'], 'win32', 'cmd.exe'),
-    /unsafe cmd\.exe syntax/,
-  );
+  const invokeUnsafeCommand = () =>
+    childProcessInvocation('npm.cmd', ['run', 'test&whoami'], 'win32', 'cmd.exe');
+
+  assert.throws(invokeUnsafeCommand, /unsafe cmd\.exe syntax/);
 });
 
-test('batch invocation quotes safe arguments and honors an empty command processor', async () => {
-  const { childProcessInvocation } = await processModule();
+test('batch invocation quotes safe arguments when using cmd.exe', async () => {
+  const { childProcessInvocation } = await loadProcessAdapter();
 
-  assert.deepEqual(childProcessInvocation('npm.cmd', ['run', 'test'], 'win32', ''), {
+  const invocation = childProcessInvocation('npm.cmd', ['run', 'test'], 'win32', '');
+
+  assert.deepEqual(invocation, {
     command: 'cmd.exe',
     args: ['/d', '/s', '/v:off', '/c', '\"\"npm.cmd\" \"run\" \"test\"\"'],
     windowsVerbatimArguments: true,
   });
-  assert.deepEqual(childProcessInvocation('npm.exe', [], 'win32', 'cmd.exe'), {
+});
+
+test('batch invocation leaves executable calls unchanged when there are no arguments', async () => {
+  const { childProcessInvocation } = await loadProcessAdapter();
+
+  const invocation = childProcessInvocation('npm.exe', [], 'win32', 'cmd.exe');
+
+  assert.deepEqual(invocation, {
     command: 'npm.exe',
     args: [],
   });
+});
+
+test.skipIf(process.platform !== 'win32')('NodeHost runs Windows batch executables', () => {
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'sloop-node-host-'));
+  const commandPath = join(temporaryDirectory, 'version.cmd');
+  writeFileSync(commandPath, '@echo off\r\necho shim works\r\n');
+  const nodeHost = createNodeHost();
+
+  try {
+    const result = nodeHost.run(commandPath, [], temporaryDirectory);
+
+    assert.deepEqual(
+      { stdout: result.stdout.trim(), status: result.status },
+      {
+        stdout: 'shim works',
+        status: 0,
+      },
+    );
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 });

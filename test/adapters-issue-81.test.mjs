@@ -1,60 +1,70 @@
-import test from 'node:test';
+import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
 import { productionConfigReconciler, productionDependencies } from '../src/adapters.js';
-import { CliFailure } from '../src/dispatcher.js';
+import { ExternalServiceError } from '../src/core/ExternalServiceError.js';
 import { runManifestMarker } from '../src/remote-state.js';
 
-function setup(execute) {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-81-adapters-'));
+// This builds the production adapter dependencies and mocks only the GitHub CLI executor.
+function createAdapterDependenciesWithMockGitHubCommand(execute) {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-81-adapters-'));
   return productionDependencies(root, loadConfigText(canonicalConfigYaml()), 'o/r', {
     execFileSync: execute,
   });
 }
 
-const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+const runGitCommand = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
-function repository() {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-workspace-'));
-  const remote = mkdtempSync(join(tmpdir(), 'sloop-adapter-remote-'));
-  git(root, 'init', '-b', 'main');
-  git(root, 'config', 'user.email', 'test@example.com');
-  git(root, 'config', 'user.name', 'Sloop Test');
+function createRepository() {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-workspace-'));
+  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-remote-'));
+  runGitCommand(root, 'init', '-b', 'main');
+  runGitCommand(root, 'config', 'user.email', 'test@example.com');
+  runGitCommand(root, 'config', 'user.name', 'Sloop Test');
   writeFileSync(join(root, 'README.md'), 'base\n');
-  git(root, 'add', '.');
-  git(root, 'commit', '-m', 'base');
-  git(remote, 'init', '--bare');
-  git(root, 'remote', 'add', 'origin', remote);
-  git(root, 'push', '-u', 'origin', 'main');
+  runGitCommand(root, 'add', '.');
+  runGitCommand(root, 'commit', '-m', 'base');
+  runGitCommand(remote, 'init', '--bare');
+  runGitCommand(root, 'remote', 'add', 'origin', remote);
+  runGitCommand(root, 'push', '-u', 'origin', 'main');
   return root;
 }
 
-test('adapter wraps GitHub launch failures and reconciles published keys', () => {
+test('adapter reports GitHub comment failures with a typed external-service error', () => {
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand(() => {
+    throw new Error('permission denied');
+  });
+  const publishComment = () => dependencies.comment(81, 'body');
+
+  assert.throws(publishComment, (error) => {
+    assert.ok(error instanceof ExternalServiceError);
+    assert.equal(error.service, 'github');
+    assert.equal(error.message, 'permission denied');
+    return true;
+  });
+});
+
+test('adapter reconciles a previously published artifact key', () => {
   const calls = [];
-  const dependencies = setup((_file, args) => {
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
     calls.push(args);
     if (args[0] === 'issue' && args.includes('--json'))
       return JSON.stringify({ comments: [{ body: 'artifact-key' }] });
-    throw new Error('permission denied');
+    return '';
   });
-  assert.throws(
-    () => dependencies.comment(81, 'body'),
-    (error) => {
-      assert.ok(error instanceof CliFailure);
-      assert.equal(error.exitCode, 5);
-      return true;
-    },
-  );
-  assert.equal(dependencies.remote.reconcile(81, 'artifact-key'), true);
+  const isReconciled = dependencies.remote.reconcile(81, 'artifact-key');
+
+  assert.equal(isReconciled, true);
   assert.ok(calls.some((args) => args[0] === 'issue' && args[1] === 'view'));
 });
 
-test('adapter rejects malformed snapshots and preserves GraphQL scope rules', () => {
-  const dependencies = setup((_file, args) => {
+test('adapter rejects a malformed pull-request snapshot', () => {
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
     if (args[0] === 'issue')
       return JSON.stringify({
         labels: [],
@@ -79,12 +89,13 @@ test('adapter rejects malformed snapshots and preserves GraphQL scope rules', ()
     if (args[0] === 'pr') return '{not-json';
     return '';
   });
+
   assert.throws(() => dependencies.remote.snapshot(81), /GitHub snapshot unavailable/);
 });
 
-test('adapter publishes manifests, cleans temporary PR bodies, and exposes lock recovery', () => {
+test('adapter publishes a run manifest as an issue comment', () => {
   const calls = [];
-  const dependencies = setup((_file, args) => {
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
     calls.push({
       args: [...args],
       body: args.includes('--body-file')
@@ -106,24 +117,50 @@ test('adapter publishes manifests, cleans temporary PR bodies, and exposes lock 
     artifacts: [],
   };
   dependencies.remote.publish(81, manifest);
-  dependencies.updatePullRequestBody(9, 'safe');
+
   assert.match(calls[0].args.join(' '), /issue comment 81/);
   assert.match(calls[0].args.join(' '), /sloop\/v1\/run\/run/);
+});
+
+test('adapter removes its temporary pull-request body file after publication', () => {
+  const calls = [];
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
+    calls.push({
+      args: [...args],
+      body: args.includes('--body-file')
+        ? readFileSync(args[args.indexOf('--body-file') + 1], 'utf8')
+        : undefined,
+    });
+    return '';
+  });
+  dependencies.updatePullRequestBody(9, 'safe');
+
   assert.equal(
     readdirSync(dependencies.root).some((name) => name.startsWith('.sloop-pr-')),
     false,
   );
-  assert.equal(dependencies.tryAcquire({ pid: 1, createdAt: 1, token: 't' }), true);
-  assert.equal(dependencies.tryAcquire({ pid: 2, createdAt: 2, token: 'u' }), false);
-  dependencies.release('t');
+  assert.equal(calls[0].body, 'safe');
+});
+
+test('adapter allows only one active lock owner', () => {
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand(() => '');
+  const firstOwner = { pid: 1, createdAt: 1, token: 't' };
+  const secondOwner = { pid: 2, createdAt: 2, token: 'u' };
+  const hasFirstLock = dependencies.tryAcquire(firstOwner);
+  const hasSecondLock = dependencies.tryAcquire(secondOwner);
+
+  dependencies.release(firstOwner.token);
+
+  assert.deepEqual([hasFirstLock, hasSecondLock], [true, false]);
 });
 
 test('production reconciler supports configured sync kinds and rejects unsupported kinds', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-81-reconciler-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-81-reconciler-'));
   const config = loadConfigText(canonicalConfigYaml());
   const reconciler = productionConfigReconciler(root);
   reconciler.preflight(root, 'github');
   reconciler.preflight(root, 'none');
+
   assert.throws(() => reconciler.preflight(root, 'unknown'), /No production reconciler/);
   await assert.rejects(() => reconciler(root, 'unknown'), /No production reconciler/);
   await assert.doesNotReject(() => reconciler(root, 'none'));
@@ -133,7 +170,7 @@ test('production reconciler supports configured sync kinds and rejects unsupport
 test('production adapters expose deterministic local, GitHub, and lock contracts through one executor seam', async () => {
   const calls = [];
   const events = [];
-  const dependencies = setup((_file, args) => {
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
     calls.push([...args]);
     if (args[0] === 'issue' && args[1] === 'list')
       return JSON.stringify([
@@ -202,13 +239,14 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
 });
 
 test('production workspace adapter owns and cleans an isolated worktree lifecycle', () => {
-  const root = repository();
+  const root = createRepository();
   const config = loadConfigText(
     canonicalConfigYaml().replace('    checkout\n  path:', '    worktree\n  path:'),
   );
   const dependencies = productionDependencies(root, config, 'o/r', { execFileSync: () => '{}' });
   dependencies.save({ workerRunId: 'adapter-run' });
   const facts = dependencies.workspaceAdapter.prepare(81);
+
   assert.equal(dependencies.workspaceAdapter.context().executionRoot, facts.executionRoot);
   assert.equal(dependencies.runContext().executionRoot, facts.executionRoot);
   assert.equal(
@@ -220,10 +258,10 @@ test('production workspace adapter owns and cleans an isolated worktree lifecycl
   assert.equal(dependencies.workspaceAdapter.context().executionRoot, root);
   assert.equal(dependencies.listAllWorktrees().length, 0);
   dependencies.clearAllWorktrees();
-});
+}, 15_000);
 
 test('production adapters cover remote snapshot, claim, publish, and failure paths', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-remote-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-remote-'));
   const config = loadConfigText(canonicalConfigYaml());
   const calls = [];
   const manifest = {
@@ -263,6 +301,7 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
     },
   });
   const snapshot = dependencies.remote.snapshot(81);
+
   assert.deepEqual(snapshot.labels, ['eligible']);
   assert.deepEqual(snapshot.inlineThreads, [{ resolved: true }]);
   assert.match(snapshot.markers.join(' '), /sloop\/v1\/run\/old/);
@@ -279,7 +318,7 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
   });
   assert.throws(
     () => failing.list(),
-    (error) => error instanceof CliFailure && error.exitCode === 5,
+    (error) => error instanceof ExternalServiceError && error.service === 'github',
   );
   assert.throws(() => failing.eligible(), /offline/);
   assert.throws(() => failing.remote.reconcile(81, 'x'), /GitHub reconciliation unavailable/);
@@ -293,11 +332,11 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
   assert.throws(() => failing.remote.snapshot(81), /GitHub snapshot unavailable/);
   await assert.doesNotReject(() => productionConfigReconciler(root)(root, 'none'));
   writeFileSync(join(root, 'sloop.config.yaml'), canonicalConfigYaml());
-  let synchronized = false;
+  let hasSynchronizedSkills = false;
   await productionConfigReconciler(root, () => {
-    synchronized = true;
+    hasSynchronizedSkills = true;
   })(root, 'github');
-  assert.equal(synchronized, true);
+  assert.equal(hasSynchronizedSkills, true);
   await assert.rejects(
     () =>
       productionConfigReconciler(root, () => {
@@ -308,7 +347,7 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
 });
 
 test('production adapters cover alternate payload fields and lock error recovery', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-alternates-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-alternates-'));
   const config = loadConfigText(canonicalConfigYaml());
   const dependencies = productionDependencies(root, config, 'owner/repo', {
     execFileSync: (_file, args) => {
@@ -327,6 +366,7 @@ test('production adapters cover alternate payload fields and lock error recovery
       return JSON.stringify({ body: undefined });
     },
   });
+
   assert.equal(dependencies.pullRequest(3).mergeStateStatus, 'CLEAN');
   assert.equal(dependencies.pullRequest(3).reviews[0].commitId, 'c');
   assert.equal(dependencies.pullRequest(3).statusCheckRollup[0].name, 'ci');
@@ -352,7 +392,7 @@ test('production adapters cover alternate payload fields and lock error recovery
 });
 
 test('production adapters exercise empty and alternate GitHub response shapes', () => {
-  const root = mkdtempSync(join(tmpdir(), 'sloop-adapter-shapes-'));
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-adapter-shapes-'));
   const config = loadConfigText(canonicalConfigYaml());
   let mode = 'empty';
   const dependencies = productionDependencies(root, config, 'owner/repo', {
@@ -370,6 +410,7 @@ test('production adapters exercise empty and alternate GitHub response shapes', 
     },
   });
   const empty = dependencies.pullRequest(4);
+
   assert.deepEqual(empty.reviews, []);
   assert.deepEqual(empty.comments, []);
   assert.deepEqual(empty.statusCheckRollup, []);

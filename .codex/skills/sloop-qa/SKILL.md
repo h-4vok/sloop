@@ -5,7 +5,7 @@ description: Validate pull-request acceptance criteria, regressions, behavior, a
 
 # QA/SDET
 
-Publish one top-level PR comment with `gh pr comment <n> --body-file <file>`. The QA review is this comment, not a GitHub Pull Request Review object. Begin with `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>` and include `commit=<reviewed head SHA>`. Check `gh pr comment --help`; never invent flags.
+When invoked by Sloop, publishing exactly one required PR comment is already authorized by the workflow; do not ask for separate confirmation. Publish it with `gh pr comment <n> --body-file <file>`. The QA review is this comment, not a GitHub Pull Request Review object. Begin with `[QA/SDET Review] round=<N> verdict=<passed|changes_requested|blocked>` and include `commit=<reviewed head SHA>`. Check `gh pr comment --help`; never invent flags. If the execution host blocks publication, report the exact blocker; do not bypass it.
 
 ## PR context and checks
 
