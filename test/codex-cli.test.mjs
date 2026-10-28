@@ -78,11 +78,15 @@ test(
     const result = await new Promise((resolve, reject) => {
       const child = spawn(invocation.command, invocation.args, {
         cwd: fixtureDir,
+
         env: {
           ...process.env,
+
           PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}`,
         },
+
         shell: false,
+
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -135,12 +139,17 @@ test(
     const result = await new Promise((resolve, reject) => {
       const child = spawn(invocation.command, invocation.args, {
         cwd: fixtureDir,
+
         env: {
           ...process.env,
+
           PATH: `${fixtureDir}${delimiter}${systemPath}`,
+
           SLOOP_NODE_EXE: process.execPath,
         },
+
         shell: false,
+
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -179,8 +188,11 @@ test(
     const result = await new Promise((resolve, reject) => {
       const child = spawn(invocation.command, invocation.args, {
         cwd: fixtureDir,
+
         env: { ...process.env, PATH: `${fixtureDir}${delimiter}${systemPath}` },
+
         shell: false,
+
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       let stdout = '';

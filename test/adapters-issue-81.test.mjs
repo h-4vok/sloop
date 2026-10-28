@@ -68,19 +68,30 @@ test('adapter rejects a malformed pull-request snapshot', () => {
     if (args[0] === 'issue')
       return JSON.stringify({
         labels: [],
+
         comments: [
           {
             body: runManifestMarker({
               protocol: 1,
+
               runId: 'x',
+
               issue: 81,
+
               pr: 9,
+
               branch: 'b',
+
               baseSha: 'abcdef1',
+
               configFingerprint: 'cfg',
+
               phase: 'working',
+
               reviewRound: 1,
+
               contextCursor: '',
+
               artifacts: [],
             }),
           },
@@ -98,6 +109,7 @@ test('adapter publishes a run manifest as an issue comment', () => {
   const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
     calls.push({
       args: [...args],
+
       body: args.includes('--body-file')
         ? readFileSync(args[args.indexOf('--body-file') + 1], 'utf8')
         : undefined,
@@ -106,14 +118,23 @@ test('adapter publishes a run manifest as an issue comment', () => {
   });
   const manifest = {
     protocol: 1,
+
     runId: 'run',
+
     issue: 81,
+
     branch: 'b',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: [],
   };
   dependencies.remote.publish(81, manifest);
@@ -127,6 +148,7 @@ test('adapter removes its temporary pull-request body file after publication', (
   const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
     calls.push({
       args: [...args],
+
       body: args.includes('--body-file')
         ? readFileSync(args[args.indexOf('--body-file') + 1], 'utf8')
         : undefined,
@@ -182,9 +204,13 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 9,
+
         body: 'PR body',
+
         reviews: [{ commit: { oid: 'abcdef1' }, submitted_at: 'now' }],
+
         comments: [{ body: 'comment', created_at: 'then' }],
+
         statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'url' }],
       });
     return JSON.stringify({ comments: [] });
@@ -210,8 +236,11 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
   assert.equal(dependencies.load().pr, 9);
   assert.deepEqual(dependencies.status(false), {
     issue: 2,
+
     pr: 9,
+
     status: 'claimed',
+
     lastError: undefined,
   });
   assert.equal(dependencies.prepareRecovery(2, undefined, { workerLeaseMs: 1 }), 9);
@@ -266,15 +295,25 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
   const calls = [];
   const manifest = {
     protocol: 1,
+
     runId: 'run',
+
     issue: 81,
+
     pr: 9,
+
     branch: 'codex/issue-81',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: ['old'],
   };
   const marker = runManifestMarker(manifest);
@@ -284,15 +323,21 @@ test('production adapters cover remote snapshot, claim, publish, and failure pat
       if (args[0] === 'issue')
         return JSON.stringify({
           labels: [{ name: 'eligible' }],
+
           comments: [{ body: `sloop/v1/run/old\n${marker}` }],
         });
       if (args[0] === 'pr' && args[1] === 'view')
         return JSON.stringify({
           number: 9,
+
           headRefName: 'codex/issue-81',
+
           headRefOid: 'abcdef1',
+
           comments: [{ body: 'sloop-v1/review/1' }],
+
           reviews: [{ state: 'APPROVED' }],
+
           statusCheckRollup: [{ name: 'checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
         });
       return JSON.stringify({
@@ -354,13 +399,21 @@ test('production adapters cover alternate payload fields and lock error recovery
       if (args[0] === 'pr')
         return JSON.stringify({
           number: 3,
+
           state: 'OPEN',
+
           baseRefName: 'main',
+
           headRefName: 'branch',
+
           headRefOid: 'sha',
+
           merge_state_status: 'CLEAN',
+
           reviews: [{ body: 'r', state: 'COMMENTED', commit_id: 'c', submittedAt: 'now' }],
+
           comments: [{ body: 'c', createdAt: 'now' }],
+
           statusCheckRollup: [{ workflowName: 'ci', state: 'SUCCESS', detailsUrl: 'u' }],
         });
       return JSON.stringify({ body: undefined });
@@ -402,8 +455,11 @@ test('production adapters exercise empty and alternate GitHub response shapes', 
           ? JSON.stringify({})
           : JSON.stringify({
               number: 4,
+
               reviews: [{ commitId: 'id', submittedAt: 'date' }],
+
               comments: [{ body: 'comment', createdAt: 'date' }],
+
               statusCheckRollup: [{ context: 'context', state: 'PENDING' }],
             });
       return JSON.stringify({});
@@ -423,38 +479,65 @@ test('production adapters exercise empty and alternate GitHub response shapes', 
   assert.equal(snapshot.pr, undefined);
   dependencies.remote.claim(4, 'key', {
     protocol: 1,
+
     runId: 'run',
+
     issue: 4,
+
     branch: 'branch',
+
     baseSha: 'sha',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 0,
+
     contextCursor: '',
   });
   dependencies.remote.publish(4, {
     protocol: 1,
+
     runId: 'run',
+
     issue: 4,
+
     branch: 'branch',
+
     baseSha: 'sha',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 0,
+
     contextCursor: '',
+
     artifacts: [],
   });
   const fallbackManifest = {
     protocol: 1,
+
     runId: 'fallback',
+
     issue: 4,
+
     pr: 4,
+
     branch: 'branch',
+
     baseSha: 'sha',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 0,
+
     contextCursor: '',
+
     artifacts: [],
   };
   const manifestExecutor = productionDependencies(root, config, 'owner/repo', {
@@ -465,7 +548,9 @@ test('production adapters exercise empty and alternate GitHub response shapes', 
             {
               body: runManifestMarker({
                 ...fallbackManifest,
+
                 issue: 4,
+
                 pr: 4,
               }),
             },

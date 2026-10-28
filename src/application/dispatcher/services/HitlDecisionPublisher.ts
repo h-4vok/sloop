@@ -25,5 +25,6 @@ function publishHitlDecision(
 
 export const HitlDecisionPublisher = {
   hitlComment,
+
   publishHitlDecision,
 };

@@ -27,11 +27,17 @@ test('status returns only the concise summary by default', async () => {
   const injected = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
+
       pr: 42,
+
       status: 'worker_running',
+
       lastError: 'short summary',
+
       lastErrorVerbose: 'line one\nUnicode: café\nline three',
+
       branch: 'codex/issue-9',
+
       workerRecoveryCount: 3,
     },
   });
@@ -50,8 +56,11 @@ test('status returns only the concise summary by default', async () => {
 
   const expectedStatus = {
     issue: 9,
+
     pr: 42,
+
     status: 'worker_running',
+
     lastError: 'short summary',
   };
 
@@ -62,11 +71,17 @@ test('verbose status returns the complete diagnostic state', async () => {
   const injected = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
+
       pr: 42,
+
       status: 'worker_running',
+
       lastError: 'short summary',
+
       lastErrorVerbose: 'line one\nUnicode: café\nline three',
+
       branch: 'codex/issue-9',
+
       workerRecoveryCount: 3,
     },
   });
@@ -91,35 +106,46 @@ test('status recommends safe recovery only for valid pending Worker context', as
   const cases = [
     {
       state: { issue: 31, pr: 54, status: 'worker_recovery_pending' },
+
       expected: {
         issue: 31,
+
         pr: 54,
+
         status: 'worker_recovery_pending',
+
         nextAction: {
           command: 'sloop --prepare-recovery 31 --pr 54',
+
           description: 'Prepare local recovery for the failed Worker.',
+
           mutates: true,
         },
       },
     },
     {
       state: { issue: 31, pr: 54, status: 'worker_running' },
+
       expected: { issue: 31, pr: 54, status: 'worker_running' },
     },
     {
       state: { issue: 0, pr: 54, status: 'worker_recovery_pending' },
+
       expected: { issue: 0, pr: 54, status: 'worker_recovery_pending' },
     },
     {
       state: { issue: 31, pr: -1, status: 'worker_recovery_pending' },
+
       expected: { issue: 31, pr: -1, status: 'worker_recovery_pending' },
     },
     {
       state: { issue: '31', pr: 54, status: 'worker_recovery_pending' },
+
       expected: { issue: '31', pr: 54, status: 'worker_recovery_pending' },
     },
     {
       state: { issue: 31, status: 'worker_recovery_pending' },
+
       expected: { issue: 31, status: 'worker_recovery_pending' },
     },
   ];
@@ -282,7 +308,9 @@ test('legacy lastError-only state remains readable in both status modes', async 
   for (const value of output)
     assert.deepEqual(JSON.parse(value), {
       issue: 9,
+
       status: 'blocked',
+
       lastError: 'legacy failure summary',
     });
 });
@@ -313,8 +341,11 @@ test('verbose status preserves quotes and shell-like diagnostic text exactly', a
   const injected = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
+
       status: 'blocked',
+
       lastError: 'short summary',
+
       lastErrorVerbose: injectedDiagnostic,
     },
   });
@@ -336,12 +367,19 @@ test('prepareRecovery preserves PR and removes only the issue from completion', 
   const state = prepareRecovery(
     {
       pr: 15,
+
       headSha: 'head-15',
+
       mainBaseSha: 'main-10',
+
       reviewRound: 4,
+
       lastQaFeedback: 'fix the boundary case',
+
       taskContext: 'recovered task context',
+
       completedIssues: [1, 2],
+
       status: 'done',
     },
     1,
@@ -387,41 +425,68 @@ test('no-work done state clears all prior run context', async () => {
   const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 9,
+
       status: 'blocked',
+
       pr: 14,
+
       branch: 'codex/issue-9',
+
       headSha: 'old-head',
+
       mainBaseSha: 'old-main',
+
       reviewRound: 4,
+
       lastCiFeedback: 'old CI',
+
       lastQaFeedback: 'old QA',
+
       lastStaffFeedback: 'old Staff',
+
       taskContext: 'old context',
+
       workerRunId: 'old-run',
+
       workerPid: 123,
+
       workerStartedAt: 1,
+
       workerHeartbeatAt: 1,
+
       workerRecoveryCount: 2,
+
       lastError: 'old error',
+
       completedIssues: [8],
+
       mainGreen: true,
     },
   });
   dispatcherHarness.setState({
     completedIssues: [8],
+
     mainGreen: true,
+
     status: undefined,
+
     issue: undefined,
+
     pr: undefined,
+
     branch: undefined,
   });
   await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
   assert.deepEqual(dispatcherHarness.state(), {
     completedIssues: [8],
+
     mainGreen: true,
+
     status: 'done',
+
     drainStatus: 'done',
+
     updatedAt: dispatcherHarness.state().updatedAt,
   });
 });
@@ -430,12 +495,19 @@ test('resetRunState clears stale run context and preserves completed issues', ()
   const state = resetRunState(
     {
       issue: 21,
+
       pr: 20,
+
       branch: 'codex/issue-3',
+
       status: 'worker_recovery_pending',
+
       workerPid: -1,
+
       completedIssues: [1, 2, 3],
+
       mainGreen: true,
+
       lastError: 'stale worker',
     },
     () => false,
@@ -497,7 +569,9 @@ test('lock reclaim uses injected storage and process liveness seams', () => {
   })();
   dispatcherHarness.dependencies.readReclaimOwner = () => ({
     pid: 42,
+
     createdAt: 0,
+
     token: 'reclaimer',
   });
   dispatcherHarness.dependencies.abandonReclaim = () => calls.push('abandonReclaim');

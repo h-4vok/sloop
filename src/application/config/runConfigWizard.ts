@@ -122,21 +122,36 @@ function createWizardSession(
     changed.push('sloop.config.yaml: missing -> canonical v1 configuration');
   return {
     ok: true,
+
     value: {
       root,
+
       file,
+
       init,
+
       sync,
+
       reconciler,
+
       io,
+
       logger,
+
       fileStore,
+
       current: configResult.value,
+
       next: initialSource,
+
       changed,
+
       asked: new Set<string>(),
+
       warning,
+
       useColor: io.useColor ?? (io.output === output && !process.env.NO_COLOR),
+
       readline: createInterface({ input: io.input, output: io.output }),
     },
   };
@@ -324,6 +339,7 @@ async function prepareGitignoreChange(
   const text = session.fileStore.exists(file) ? session.fileStore.read(file) : '';
   return {
     file,
+
     content: text.split(/\r?\n/).includes('.sloop/')
       ? text
       : `${text && !text.endsWith('\n') ? '\n' : ''}.sloop/\n`,
@@ -401,6 +417,7 @@ function parseWizardValueResult(
     if (!(error instanceof SyntaxError)) throw error;
     return {
       ok: false,
+
       error: new ConfigValidationError([
         { path: `$.${field.path}`, message: `expected valid JSON: ${error.message}` },
       ]),

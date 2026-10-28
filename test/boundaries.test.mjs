@@ -49,6 +49,7 @@ test('production assembly supplies every typed external-concern boundary', () =>
   );
   const methods = {
     Workspace: ['load', 'save'],
+
     CliControl: [
       'loadConfig',
       'status',
@@ -59,7 +60,9 @@ test('production assembly supplies every typed external-concern boundary', () =>
       'linkIssue',
       'prepareRecovery',
     ],
+
     GitProvider: ['prepareWorkerBranch', 'checkoutWorkerBranch'],
+
     GitHubProvider: [
       'eligible',
       'comment',
@@ -68,8 +71,11 @@ test('production assembly supplies every typed external-concern boundary', () =>
       'pullRequestBody',
       'prComment',
     ],
+
     AgentRunner: ['run'],
+
     HealthGate: ['pid', 'processAlive'],
+
     LockStore: [
       'tryAcquire',
       'readOwner',
@@ -80,7 +86,9 @@ test('production assembly supplies every typed external-concern boundary', () =>
       'abandonReclaim',
       'release',
     ],
+
     Scheduler: ['now', 'sleep'],
+
     RunEventSink: ['onReclaim'],
   };
 
@@ -152,15 +160,25 @@ test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
   const calls = [];
   const manifest = {
     protocol: 1,
+
     runId: 'run-1',
+
     issue: 33,
+
     pr: 77,
+
     branch: 'codex/issue-33',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'config-1',
+
     phase: 'review',
+
     reviewRound: 1,
+
     contextCursor: 'cursor-1',
+
     artifacts: [],
   };
   const execute = (file, args, options) => {
@@ -206,9 +224,13 @@ test('production adapters run agent commands from the repository root', async ()
   const dependencies = productionDependencies(process.cwd(), config, 'h-4vok/sloop');
   const output = await dependencies.run({
     command: process.execPath,
+
     args: ['-e', 'process.stdout.write(process.cwd())'],
+
     timeoutMs: 5_000,
+
     retries: 0,
+
     logInvocation: false,
   });
 
@@ -223,9 +245,13 @@ test('production adapters load the validated YAML agent configuration', () => {
   assert.equal(loadedConfig.baseBranch, config.repository.baseBranch);
   assert.deepEqual(loadedConfig.workerCommand, {
     command: 'codex',
+
     args: [],
+
     timeoutMs: config.agents.worker.timeout,
+
     retries: config.agents.worker.retries,
+
     sessions: true,
   });
 });

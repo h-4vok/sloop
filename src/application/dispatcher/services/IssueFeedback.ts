@@ -12,7 +12,9 @@ function createIssueProgress(d: Deps): IssueProgress {
 
   return {
     round: state.reviewRound ?? 1,
+
     pr: state.pr,
+
     feedback: [feedback, steerFeedback]
       .filter(Boolean)
       .join(feedback && steerFeedback ? '\n\n' : ''),
@@ -55,6 +57,8 @@ async function restoreCompletedWorkerEvidence(
 
 export const IssueFeedback = {
   createIssueProgress,
+
   shouldRunWorker,
+
   restoreCompletedWorkerEvidence,
 };

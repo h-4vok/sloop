@@ -37,7 +37,9 @@ function runGitCommand(cwd, args) {
 function runSloopCli(cwd, args) {
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
+
     encoding: 'utf8',
+
     windowsHide: true,
   });
 }

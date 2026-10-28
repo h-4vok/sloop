@@ -43,16 +43,26 @@ test('recovery consumes current Worker and QA comments without rerunning agents 
   const raw = createQaCommentResponse();
   const dispatcherHarness = createMockDispatcherHarness([{ number: 100, title: 'Unknown keys' }], {
     prNumber: 109,
+
     headRefName: raw.headRefName,
+
     initialState: {
       issue: 100,
+
       pr: 109,
+
       branch: raw.headRefName,
+
       headSha: raw.headRefOid,
+
       workerRunId: 'recovery-run',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 2,
+
       lastError: 'QA evidence missing',
+
       lastErrorVerbose: 'QA evidence missing',
     },
   });
@@ -82,11 +92,17 @@ test('recovery continues to QA when valid Worker evidence exists without a QA co
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       headSha: 'abc0',
+
       workerRunId: 'recovery-run',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
     },
   });
@@ -97,6 +113,7 @@ test('recovery continues to QA when valid Worker evidence exists without a QA co
     const evidence = await loadPullRequest(...args);
     return {
       ...evidence,
+
       comments: [
         { body: workerEvidence, createdAt: '1' },
         ...evidence.comments.filter((comment) => !comment.body?.startsWith('[Worker]')),
@@ -118,11 +135,14 @@ test('latest matching QA publication wins across comments and legacy reviews reg
   const raw = createQaCommentResponse();
   const older = {
     body: `[QA/SDET Review] round=2 verdict=blocked commit=${raw.headRefOid}`,
+
     createdAt: '2026-10-01T08:48:00Z',
   };
   const newest = {
     body: '[QA/SDET Review] round=2 verdict=changes_requested',
+
     commit: { oid: raw.headRefOid },
+
     submittedAt: '2026-10-01T08:49:00Z',
   };
   raw.comments.push(older);
@@ -142,6 +162,7 @@ test('legacy QA review with contradictory native and declared SHAs is rejected',
   // Arrange
   const pr = {
     headRefOid: 'abc123',
+
     reviews: [{ body: '[QA/SDET Review] round=2 verdict=passed commit=stale', commitId: 'abc123' }],
   };
   // Act
@@ -166,6 +187,7 @@ test('blocked QA comment requests changes and preserves feedback at the round ca
   // Arrange
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['blocked'],
+
     config: { maxReviewRounds: 1 },
   });
   // Act
@@ -195,6 +217,7 @@ test('dispatcher rejects a QA comment for another SHA even when QA exits success
   // Arrange
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaBodies: ['[QA/SDET Review] round=1 verdict=passed commit=stale'],
+
     config: { evidenceTimeoutMs: 1, evidencePollIntervalMs: 1 },
   });
   let clock = 0;
@@ -300,8 +323,11 @@ test('reconciles a terminal persisted run before selecting another issue', async
   );
   dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'terminal',
+
     reason: 'PR merged; branch aligned',
+
     localSha: 'abc1',
+
     remoteSha: 'abc1',
   });
 
@@ -325,6 +351,7 @@ test('blocks before selection when terminal reconciliation cannot verify local w
   );
   dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'blocked',
+
     reason: 'uncommitted local work remains',
   });
 
@@ -342,14 +369,19 @@ test('repeated terminal reconciliation does not duplicate completed issues', asy
   const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       status: 'in_progress',
+
       completedIssues: [1],
     },
   });
   dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'terminal',
+
     reason: 'issue closed; branch aligned',
   });
 
@@ -372,6 +404,7 @@ test('open persisted runs keep the existing active-run guard', async () => {
   );
   dispatcherHarness.dependencies.reconcileActiveRun = () => ({
     outcome: 'open',
+
     reason: 'PR remains open',
   });
 
@@ -509,8 +542,10 @@ test('role commands preserve distinct argv and logging configuration', async () 
       config: {
         workerCommand: {
           command: 'worker-codex',
+
           args: ['exec', '--sandbox', 'read-only', '--worker'],
         },
+
         qaCommand: { command: 'qa-codex', args: ['exec', '--sandbox', 'workspace-write', '--qa'] },
       },
     },
@@ -520,18 +555,24 @@ test('role commands preserve distinct argv and logging configuration', async () 
   assert.deepEqual(
     dispatcherHarness.runs.map(({ command, args, logInvocation }) => ({
       command,
+
       args,
+
       logInvocation,
     })),
     [
       {
         command: 'worker-codex',
+
         args: ['exec', '--sandbox', 'read-only', '--worker'],
+
         logInvocation: true,
       },
       {
         command: 'qa-codex',
+
         args: ['exec', '--sandbox', 'workspace-write', '--qa'],
+
         logInvocation: true,
       },
     ],
@@ -581,6 +622,7 @@ test('failed commands preserve complete multiline stdout and stderr diagnostics'
         command(
           {
             command: 'node',
+
             args: [
               '-e',
               "process.stdout.write('worker stdout one\\nworker stdout two\\n'); process.stderr.write('worker stderr one\\nworker stderr two\\n'); process.exit(17)",
@@ -605,10 +647,12 @@ test('failed retries retain diagnostics from every unsuccessful attempt', async 
         command(
           {
             command: 'node',
+
             args: [
               '-e',
               "process.stdout.write('retry stdout\\n'); process.stderr.write('retry stderr\\n'); process.exit(17)",
             ],
+
             retries: 1,
           },
           0,
@@ -745,6 +789,7 @@ test('create and recovery smoke paths capture the persisted claimed-issue PR bod
     [{ number: 17, title: 'seventeen', body: 'criteria' }],
     {
       headRefName: 'codex/issue-17',
+
       prBody: 'Summary\n\nCloses #1\nClose #99',
     },
   );

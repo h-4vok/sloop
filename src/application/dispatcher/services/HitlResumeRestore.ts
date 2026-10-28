@@ -54,23 +54,37 @@ function restoreHitlResume(
   const restoredReviewCap = reviewCap(current, snapshot, directive, baseMaxRounds);
   d.save({
     ...current,
+
     issue,
+
     pr: current.pr,
+
     branch,
+
     headSha: snapshot.sha,
+
     workerRunId: previous.runId,
+
     reviewRound: directive.round,
+
     reviewCap: restoredReviewCap,
+
     status: 'worker_recovery_pending',
+
     lastError: undefined,
+
     lastErrorVerbose: undefined,
+
     updatedAt: d.now(),
   });
   const key = previous.artifacts[0] ?? artifactKey('run', { issue, runId: previous.runId });
   const restored = remoteManifest(cfg, d, issue, previous.runId, key, 'blocked', undefined, {
     ...previous,
+
     pr: current.pr,
+
     branch,
+
     reviewRound: directive.round,
   });
   d.remote.publish(issue, restored);

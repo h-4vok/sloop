@@ -65,6 +65,7 @@ test('real command execution captures Unicode and multiline stdout/stderr in arr
       ...command(
         {
           command: process.execPath,
+
           args: [
             '-e',
             "process.stdout.write('salut ✓\\nline two\\n'); process.stderr.write('ошибка\\nline err\\n')",
@@ -72,10 +73,12 @@ test('real command execution captures Unicode and multiline stdout/stderr in arr
         },
         33,
       ),
+
       onStdout: (chunk) => {
         seen.push('stdout');
         logger.stream('stdout', chunk);
       },
+
       onStderr: (chunk) => {
         seen.push('stderr');
         logger.stream('stderr', chunk);
@@ -102,6 +105,7 @@ test('real command execution captures Unicode and multiline stdout/stderr in arr
 test('publication allowlist excludes raw channels and redacts credentials', () => {
   assert.deepEqual(allowlistedPublication({ raw: 'secret', token: 'abc', summary: 'ok' }), {
     token: '<redacted>',
+
     summary: 'ok',
   });
 });
@@ -131,14 +135,23 @@ test('ephemeral mutex releases after the run', () => {
 test('remote manifest contracts reject malformed markers and validate boundaries', () => {
   const manifest = {
     protocol: 1,
+
     runId: 'run-1',
+
     issue: 33,
+
     branch: 'codex/issue-33',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: [],
   };
 
@@ -210,24 +223,40 @@ test('async ephemeral mutex preserves the lease until resolution and cleanup', a
 test('projection handles leases, gates, unsupported protocols, and marker reconciliation', () => {
   const manifest = {
     protocol: 1,
+
     runId: 'r',
+
     issue: 33,
+
     branch: 'b',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'f',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'c',
+
     artifacts: [],
+
     lease: { owner: 'a', expiresAt: new Date(Date.now() + 60000).toISOString() },
   };
   const projected = projectRemoteState({
     issue: 33,
+
     markers: ['sloop/v1/run/r'],
+
     manifest,
+
     labels: ['Automation Blocked'],
+
     branch: 'wrong',
+
     sha: 'bad',
+
     leaseOwner: 'b',
   });
 
@@ -237,12 +266,19 @@ test('projection handles leases, gates, unsupported protocols, and marker reconc
   assert.throws(() => projectRemoteState({ issue: 0 }), /invalid issue/);
   const complete = projectRemoteState({
     issue: 33,
+
     comments: [{ marker: 'sloop/v1/run/r' }],
+
     manifest: { ...manifest, phase: 'complete' },
+
     checks: [{ name: 'pr-checks', conclusion: 'success' }],
+
     reviews: [{ state: 'APPROVED' }, { state: 'dismissed' }],
+
     inlineThreads: [{ resolved: true }],
+
     branch: 'b',
+
     sha: 'abcdef1',
   });
   assert.equal(complete.phase, 'complete');
@@ -318,24 +354,39 @@ test('publication boundary removes bearer, cookie, and URL credentials', () => {
 
 const faultConfig = {
   baseBranch: 'main',
+
   workerCommand: {
     command: 'codex',
+
     args: ['exec', '--sandbox', 'read-only'],
+
     timeoutMs: 1000,
+
     retries: 0,
   },
+
   qaCommand: {
     command: 'codex',
+
     args: ['exec', '--sandbox', 'read-only'],
+
     timeoutMs: 1000,
+
     retries: 0,
   },
+
   requiredPrChecks: ['pr-checks'],
+
   checkPollIntervalMs: 0,
+
   checkTimeoutMs: 1000,
+
   evidencePollIntervalMs: 0,
+
   evidenceTimeoutMs: 1000,
+
   workerLeaseMs: 60_000,
+
   maxReviewRounds: 3,
 };
 
@@ -345,16 +396,27 @@ function createFaultRunManifest(overrides = {}) {
   const { omitPr = false, ...manifestOverrides } = overrides;
   return {
     protocol: 1,
+
     runId,
+
     issue: 33,
+
     branch: 'codex/issue-33-fault',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'config-fingerprint',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'cursor',
+
     artifacts: [key],
+
     ...(omitPr ? {} : { pr: 14 }),
+
     ...(manifestOverrides.lease ? { lease: manifestOverrides.lease } : {}),
   };
 }
@@ -380,32 +442,50 @@ function createMockFaultHarness({
   const events = [];
   const pr = {
     number: 14,
+
     state: 'OPEN',
+
     baseRefName: 'main',
+
     headRefName: 'codex/issue-33-fault',
+
     headRefOid: 'abcdef1',
+
     body: 'Summary\n\nCloses #33',
+
     mergeStateStatus: 'CLEAN',
+
     mergeable: 'MERGEABLE',
+
     comments,
+
     reviews,
+
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   };
   const snapshot = () => {
     if (outage) throw new Error('GitHub outage');
     return {
       issue: 33,
+
       markers: remote ? [`sloop/v1/run/${remote.runId}`, ...remote.artifacts] : [],
+
       manifest: remote,
+
       branch: remote?.branch,
+
       sha: remote?.baseSha,
+
       now: Date.now(),
+
       leaseOwner: '7001:33',
     };
   };
   const dependencies = {
     root,
+
     load: () => state,
+
     save: (next) => {
       if (crashAfterClaim && claimCount > 0 && next.workerRunId && !hasSimulatedCrash) {
         hasSimulatedCrash = true;
@@ -413,16 +493,27 @@ function createMockFaultHarness({
       }
       state = structuredClone(next);
     },
+
     loadConfig: () => faultConfig,
+
     status: (verbose) => (verbose ? state : { issue: state.issue, status: state.status }),
+
     list: () => [],
+
     recoverLock: () => 'none',
+
     reset: () => {},
+
     resolveReviewCap: () => {},
+
     linkIssue: () => {},
+
     prepareRecovery: () => 14,
+
     eligible: () => [{ number: 33, title: 'fault injection' }],
+
     comment: (issue, body) => comments.push({ issue, body }),
+
     run: async (spec) => {
       if (spec.input?.includes('Use the worker skill')) {
         events.push({ type: 'worker' });
@@ -436,78 +527,118 @@ function createMockFaultHarness({
       if (spec.input?.includes('Use the sloop-qa skill')) {
         reviews.push({
           body: '[QA/SDET Review] round=1 verdict=passed commit=abcdef2',
+
           commitId: 'abcdef2',
+
           submittedAt: '1',
         });
         return 'QA_RESULT';
       }
       return 'ok';
     },
+
     pullRequest: (number) => {
       events.push({ type: 'pullRequest', number });
       return structuredClone({ ...pr, ...pullRequestEvidence });
     },
+
     updatePullRequestBody: (_number, body) => {
       pr.body = body;
     },
+
     pullRequestBody: () => pr.body,
+
     prComment: (_number, body) => comments.push({ body }),
+
     now: () => Date.now(),
+
     pid: () => 7001,
+
     processAlive: () => true,
+
     sleep: async () => {},
+
     onReclaim: () => {},
+
     tryAcquire: () => true,
+
     readOwner: () => {
       throw new Error('unused');
     },
+
     tryBeginReclaim: () => true,
+
     readReclaimOwner: () => {
       throw new Error('unused');
     },
+
     reclaimAgeMs: () => 0,
+
     finishReclaim: () => {},
+
     abandonReclaim: () => {},
+
     release: () => {},
+
     prepareWorkerBranch: () => ({ branch: 'codex/issue-33-fault', mainBaseSha: 'abcdef1' }),
+
     checkoutWorkerBranch: () => {},
+
     workspaceAdapter: {
       prepare: () => {
         prepareCount += 1;
         return {
           workspaceRoot: root,
+
           executionRoot: root,
+
           branch: 'codex/issue-33-fault',
+
           baseSha: 'abcdef1',
+
           headSha: 'abcdef1',
+
           ownership: {
             runId: state.workerRunId ?? 'fault-run',
+
             issue: 33,
+
             protocol: 'sloop-workspace-v1',
           },
         };
       },
+
       recover: (_issue, runId, branch) =>
         remote && branch && branch !== 'pending'
           ? {
               workspaceRoot: root,
+
               executionRoot: root,
+
               branch,
+
               baseSha: 'abcdef1',
+
               headSha: 'abcdef1',
+
               ownership: { runId, issue: 33, protocol: 'sloop-workspace-v1' },
             }
           : undefined,
+
       cleanup: () => {},
     },
+
     remote: {
       snapshot,
+
       reconcile: (_issue, key) => Boolean(remote?.artifacts.includes(key)),
+
       claim: (_issue, key, manifest) => {
         claimCount += 1;
         remote = { ...manifest, artifacts: [key] };
         if (ambiguous) throw new Error('ambiguous remote response');
       },
+
       publish: (_issue, manifest) => {
         publishCount += 1;
         publishedManifests.push(manifest);
@@ -517,9 +648,13 @@ function createMockFaultHarness({
   };
   return {
     dependencies,
+
     counts: () => ({ claimCount, publishCount, prepareCount }),
+
     remote: () => remote,
+
     published: () => publishedManifests,
+
     events: () => events,
   };
 }
@@ -553,13 +688,20 @@ test('dispatcher recovers a remote marker after crash before local acknowledgeme
 test('dispatcher preserves a verified explicitly prepared PR when the remote manifest has none', async () => {
   const faultHarness = createMockFaultHarness({
     remoteManifest: createFaultRunManifest({ omitPr: true }),
+
     initialState: {
       issue: 33,
+
       pr: 14,
+
       branch: 'codex/issue-33-fault',
+
       headSha: 'abcdef1',
+
       status: 'worker_recovery_pending',
+
       preparedRecovery: true,
+
       workerRunId: 'prepared-recovery-run',
     },
   });
@@ -586,13 +728,19 @@ test('dispatcher rejects an unverified prepared PR before hydration or Worker ex
   for (const evidence of invalidEvidence) {
     const faultHarness = createMockFaultHarness({
       remoteManifest: createFaultRunManifest({ omitPr: true }),
+
       initialState: {
         issue: 33,
+
         pr: 14,
+
         branch: 'codex/issue-33-fault',
+
         status: 'worker_recovery_pending',
+
         preparedRecovery: true,
       },
+
       pullRequestEvidence: evidence,
     });
 

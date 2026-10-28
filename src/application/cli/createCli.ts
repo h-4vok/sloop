@@ -11,7 +11,9 @@ export function createCli(dependencies: CliDependencies): Readonly<{
 }> {
   const context: CliExecutionContext = {
     ...dependencies,
+
     help: createHelp(dependencies.version),
+
     runtimeIo: createRuntimeIo(dependencies),
   };
   const commandHandlers = createCliCommandHandlers(context);

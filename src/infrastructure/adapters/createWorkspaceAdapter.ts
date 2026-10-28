@@ -19,18 +19,27 @@ export const workspaceAdapterFactory = Object.freeze({
     let executionRoot = options.root;
     const workspaceOptions = (issue: number, runId: string) => ({
       repositoryRoot: options.root,
+
       remote: options.config.repository.remote,
+
       baseBranch: options.config.repository.baseBranch,
+
       branchPrefix: options.config.repository.branchPrefix ?? 'codex/issue-',
+
       issue,
+
       runId,
+
       worktreeRoot: options.config.workspace.worktreeRoot,
+
       mode: options.config.workspace.mode,
+
       stateFile: options.stateFile,
     });
 
     const adapter: WorkspaceAdapter = {
       mode: options.config.workspace.mode,
+
       prepare: (issue) => {
         const currentState: State = readState(options.stateFile);
         const currentOptions = workspaceOptions(issue, currentState.workerRunId ?? 'dispatcher');
@@ -42,20 +51,24 @@ export const workspaceAdapterFactory = Object.freeze({
 
         return facts;
       },
+
       recover: (issue, runId, branch) => {
         const facts = workspaceAdapter.recoverWorkspace({
           ...workspaceOptions(issue, runId),
+
           branch,
         });
         executionRoot = facts?.executionRoot ?? options.root;
 
         return facts;
       },
+
       cleanup: (facts) => {
         if (options.config.workspace.mode === 'worktree')
           workspaceAdapter.cleanupWorkspace(facts, options.root, options.stateFile);
         executionRoot = options.root;
       },
+
       context: (): RunContext => ({ originalRepository: options.root, executionRoot }),
     };
 

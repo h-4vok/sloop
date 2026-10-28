@@ -14,7 +14,9 @@ function remoteOwner(d: Deps, issue: number): string {
 function remoteConfigFingerprint(cfg: Config): string {
   return artifactKey('config', {
     baseBranch: cfg.baseBranch ?? 'main',
+
     workerCommand: cfg.workerCommand ?? null,
+
     qaCommand: cfg.qaCommand ?? null,
   });
 }
@@ -32,24 +34,36 @@ function remoteManifest(
   const state = d.load();
   return {
     protocol: 1,
+
     runId,
+
     issue,
+
     ...(phase !== 'claimed' && state.pr ? { pr: state.pr } : {}),
+
     branch: phase === 'claimed' ? 'pending' : (state.branch ?? previous?.branch ?? 'pending'),
+
     baseSha:
       phase === 'claimed' ? '0000000' : (state.mainBaseSha ?? previous?.baseSha ?? '0000000'),
+
     configFingerprint: remoteConfigFingerprint(cfg),
+
     phase,
+
     ...(leaseOwner
       ? {
           lease: {
             owner: leaseOwner,
+
             expiresAt: new Date(d.now() + (cfg.workerLeaseMs ?? 900000)).toISOString(),
           },
         }
       : {}),
+
     reviewRound: state.reviewRound ?? previous?.reviewRound ?? 1,
+
     contextCursor: previous?.contextCursor ?? '',
+
     artifacts: [...new Set([...(previous?.artifacts ?? []), key])],
   };
 }
@@ -72,14 +86,23 @@ function hydrateFromRemote(d: Deps, manifest: RunManifest): void {
   const current = d.load();
   d.save({
     ...current,
+
     issue: manifest.issue,
+
     pr: manifest.pr,
+
     branch: manifest.branch === 'pending' ? current.branch : manifest.branch,
+
     mainBaseSha: manifest.baseSha === '0000000' ? current.mainBaseSha : manifest.baseSha,
+
     workerRunId: manifest.runId,
+
     reviewRound: manifest.reviewRound,
+
     status: manifest.phase === 'review' ? 'worker_ready_for_review' : 'worker_recovery_pending',
+
     preparedRecovery: undefined,
+
     updatedAt: d.now(),
   });
 }
@@ -119,9 +142,14 @@ async function preparedRecoveryPullRequest(
 
 export const RemoteRunState = {
   remoteOwner,
+
   remoteConfigFingerprint,
+
   remoteManifest,
+
   remoteProjection,
+
   hydrateFromRemote,
+
   preparedRecoveryPullRequest,
 };

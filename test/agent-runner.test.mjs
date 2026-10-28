@@ -15,10 +15,15 @@ import {
 const context = { run: 'run-36', issue: 36, pr: 77, round: 2, sha: 'abc123', cursor: 'cursor' };
 const guide = {
   summary: 'verify',
+
   steps: ['run'],
+
   expected: ['pass'],
+
   isolation: 'temp',
+
   limitations: ['fake'],
+
   checklist: ['check'],
 };
 function decodeForwardedArguments(stdin, args) {
@@ -31,9 +36,13 @@ function decodeForwardedArguments(stdin, args) {
 }
 const createWorkerEnvelope = () => ({
   schema: 'sloop.agent-output/v1',
+
   context,
+
   producer: 'worker',
+
   status: 'ready',
+
   payload: { summary: 'done', findingResolutions: [], verification: ['test'], guide },
 });
 
@@ -61,8 +70,11 @@ test('accepts a complete Worker envelope', () => {
 test('rejects an incomplete QA envelope', () => {
   const invalidQaEnvelope = {
     ...createWorkerEnvelope(),
+
     producer: 'qa',
+
     status: 'accepted',
+
     payload: {},
   };
 
@@ -74,8 +86,11 @@ test('rejects an incomplete QA envelope', () => {
 test('rejects an Arbiter envelope with no finding references', () => {
   const invalidArbiterEnvelope = {
     ...createWorkerEnvelope(),
+
     producer: 'arbiter',
+
     status: 'uphold',
+
     payload: { rationale: 'r', references: [] },
   };
 
@@ -89,6 +104,7 @@ test('rejects Worker payload fields outside the declared schema', () => {
   const workerEnvelope = createWorkerEnvelope();
   const invalidWorkerEnvelope = {
     ...workerEnvelope,
+
     payload: { ...workerEnvelope.payload, extra: true },
   };
 
@@ -101,6 +117,7 @@ test('rejects Worker payload fields outside the declared schema', () => {
 test('rejects an agent envelope with a stale context SHA', () => {
   const staleContextEnvelope = {
     ...createWorkerEnvelope(),
+
     context: { ...context, sha: 'stale' },
   };
 
@@ -115,8 +132,11 @@ test('arbitrary runner reads only the declared result, captures streams, and ret
   let attempts = 0;
   const runner = new ArbitraryCommandRunner('missing', [], {
     cwd: root,
+
     retries: 1,
+
     log: (source, chunk) => logs.push([source, chunk]),
+
     execute: async (_cmd, _args, options) => {
       attempts++;
       options.onStdout('{"status":"blocked"}');
@@ -152,6 +172,7 @@ test('arbitrary runner executes the production child-process adapter for a valid
   const logs = [];
   const runner = new ArbitraryCommandRunner(process.execPath, ['-e', script], {
     cwd: root,
+
     log: (source, chunk) => logs.push([source, chunk]),
   });
 
@@ -184,9 +205,13 @@ test('Codex runner builds separated structured-output argv and captures a result
   let seen;
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
+
     model: 'm',
+
     reasoningEffort: 'high',
+
     sandbox: 'read-only',
+
     execute: async (command, args, options) => {
       seen = [command, args, options.stdin];
       await import('node:fs/promises').then(({ writeFile }) =>
@@ -219,9 +244,13 @@ test('non-interactive Codex structured-output smoke uses declared paths and one 
   let invocation;
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
+
     model: 'smoke-model',
+
     sandbox: 'read-only',
+
     timeoutMs: 1000,
+
     execute: async (command, args, options) => {
       invocation = { command, args, stdin: options.stdin };
       events.push(['argv', args]);
@@ -236,6 +265,7 @@ test('non-interactive Codex structured-output smoke uses declared paths and one 
       );
       return { stdout: '', stderr: '', code: 0, signal: null };
     },
+
     log: (source, chunk) => events.push([source, chunk]),
   });
   const result = await runner.run('non-interactive smoke prompt', context);
@@ -254,6 +284,7 @@ test('runner exposes the canonical schema for every agent role', async () => {
   let observedSchema;
   const runner = new ArbitraryCommandRunner('fake', [], {
     cwd: process.cwd(),
+
     execute: async (_command, _args, options) => {
       observedSchema = JSON.parse(await readFile(options.env.SLOOP_AGENT_SCHEMA, 'utf8'));
       await import('node:fs/promises').then(({ writeFile }) =>
@@ -280,7 +311,9 @@ test('runner retries a failed process before returning a valid result', async ()
   let attempts = 0;
   const runner = new ArbitraryCommandRunner('fake', [], {
     cwd: process.cwd(),
+
     retries: 1,
+
     execute: async (_command, _args, options) => {
       attempts++;
       if (attempts === 1) return { stdout: '', stderr: 'crash', code: 1, signal: null };
@@ -304,7 +337,9 @@ for (const [condition, expectedCode, mode] of [
   test(`runner rejects ${condition}`, async () => {
     const runner = new ArbitraryCommandRunner('fake', [], {
       cwd: process.cwd(),
+
       timeoutMs: 1,
+
       execute: async (_command, _args, options) => {
         if (mode === 'timeout') return { stdout: '', stderr: '', code: null, signal: 'SIGTERM' };
         if (mode === 'duplicate')
@@ -324,6 +359,7 @@ test('runner returns a persisted valid result without executing a duplicate atte
   let calls = 0;
   const runner = new ArbitraryCommandRunner('fake', [], {
     cwd: process.cwd(),
+
     execute: async (_command, _args, options) => {
       calls++;
       await import('node:fs/promises').then(({ writeFile }) =>
@@ -361,7 +397,9 @@ test('declared schema resolves canonical role refs and reconciliation survives a
   assert.equal((await first.run('persisted input', context)).status, 'ready');
   const second = new ArbitraryCommandRunner('fake', [], {
     cwd: root,
+
     reconciliationDir,
+
     execute: async () => {
       throw new Error('must reconcile without execution');
     },
@@ -386,7 +424,9 @@ test('runner handles durable write races and every result-read error family', as
   );
   const raced = new ArbitraryCommandRunner('fake', [], {
     cwd: root,
+
     reconciliationDir,
+
     execute: async (_command, _args, options) => {
       await import('node:fs/promises').then(({ writeFile }) =>
         writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),
@@ -399,6 +439,7 @@ test('runner handles durable write races and every result-read error family', as
   for (const mode of ['blank', 'directory']) {
     const runner = new ArbitraryCommandRunner('fake', [], {
       cwd: root,
+
       execute: async (_command, _args, options) => {
         await import('node:fs/promises').then(({ mkdir, writeFile }) =>
           mode === 'blank'
@@ -423,6 +464,7 @@ test('Codex runner applies its default sandbox', async () => {
   let args;
   const runner = new CodexAgentRunner({
     cwd: process.cwd(),
+
     execute: async (_command, received, options) => {
       args = decodeForwardedArguments(options.stdin, received);
       await import('node:fs/promises').then(({ writeFile }) =>
@@ -443,6 +485,7 @@ test('runner reports non-Error launch failures and rethrows durable write failur
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-durable-error-'));
   const launch = new ArbitraryCommandRunner('fake', [], {
     cwd: root,
+
     execute: async () => {
       throw 'missing executable';
     },
@@ -452,12 +495,15 @@ test('runner reports non-Error launch failures and rethrows durable write failur
   );
   const durable = new ArbitraryCommandRunner('fake', [], {
     cwd: root,
+
     reconciliationDir: join(root, 'results'),
+
     writeReconciliation: async () => {
       const error = new Error('cannot persist');
       Object.assign(error, { code: 'EACCES' });
       throw error;
     },
+
     execute: async (_command, _args, options) => {
       await import('node:fs/promises').then(({ writeFile }) =>
         writeFile(options.env.SLOOP_AGENT_OUTPUT, JSON.stringify(createWorkerEnvelope())),

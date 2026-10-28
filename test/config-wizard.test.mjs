@@ -60,12 +60,16 @@ test('root scalar setter compatibility export reports an unknown path', async ()
   const logger = { log: () => undefined, error: (message) => errorMessages.push(message) };
   const fileStore = {
     exists: vi.fn(() => true),
+
     read: vi.fn(() => canonicalConfigYaml()),
+
     writeAtomically: vi.fn(),
+
     remove: vi.fn(),
   };
   const io = {
     input: new PassThrough(),
+
     output: new Writable({
       write(_chunk, _encoding, callback) {
         callback();
@@ -95,6 +99,7 @@ test('config command rejects invalid flag combinations and unknown paths without
   const { root } = createConfigFixture();
   const io = {
     input: new PassThrough(),
+
     output: new Writable({
       write(_c, _e, cb) {
         cb();
@@ -112,16 +117,21 @@ test('config show reads through the injected configuration file store', async ()
   const loggerMessages = [];
   const fileStore = {
     exists: vi.fn(() => true),
+
     read: vi.fn(() => configurationText),
+
     writeAtomically: vi.fn(),
+
     remove: vi.fn(),
   };
   const logger = {
     log: (message) => loggerMessages.push(message),
+
     error: (message) => loggerMessages.push(message),
   };
   const io = {
     input: new PassThrough(),
+
     output: new Writable({
       write(_chunk, _encoding, callback) {
         callback();
@@ -151,6 +161,7 @@ test('config show reports ignored unknown keys through the error logger', async 
   const errorMessages = [];
   const logger = {
     log: () => undefined,
+
     error: (message) => errorMessages.push(message),
   };
 
@@ -352,10 +363,13 @@ test('first-time config init removes its YAML when the gitignore write fails', a
   const logger = { log: () => undefined, error: (message) => errors.push(message) };
   const fileStore = {
     exists: () => false,
+
     read: () => '',
+
     writeAtomically: (file) => {
       if (file.endsWith('.gitignore')) throw new Error('gitignore write failed');
     },
+
     remove: () => {
       removedConfigCount++;
     },
@@ -384,11 +398,14 @@ test('existing config init restores its prior YAML when the gitignore write fail
   const logger = { log: () => undefined, error: (message) => errors.push(message) };
   const fileStore = {
     exists: (path) => storedFiles.has(path),
+
     read: (path) => storedFiles.get(path),
+
     writeAtomically: (path, content) => {
       if (path.endsWith('.gitignore')) throw new Error('gitignore write failed');
       storedFiles.set(path, content);
     },
+
     remove: (path) => storedFiles.delete(path),
   };
 
@@ -411,10 +428,13 @@ test('direct config init reports a storage failure without claiming success', as
   const logger = { log: () => undefined, error: (message) => errors.push(message) };
   const fileStore = {
     exists: () => false,
+
     read: () => '',
+
     writeAtomically: () => {
       throw new Error('configuration disk is unavailable');
     },
+
     remove: () => undefined,
   };
 
@@ -534,6 +554,7 @@ test('non-interactive init supports forced synchronization success and failure',
   const calls = [];
   const io = {
     input: new PassThrough(),
+
     output: new Writable({
       write(_c, _e, cb) {
         cb();
@@ -761,6 +782,7 @@ test('config init/install retain distinct command identity', () => {
   const parsedCliCommand2 = getCliCommand(cliArgs2);
   assert.deepEqual(parsedCliCommand2, {
     kind: 'config',
+
     args: ['--init', '--wizard'],
   });
   const cliArgs3 = ['config', 'install'];
@@ -770,6 +792,7 @@ test('config init/install retain distinct command identity', () => {
   const parsedCliCommand4 = getCliCommand(cliArgs4);
   assert.deepEqual(parsedCliCommand4, {
     kind: 'config',
+
     args: ['--install', '--force'],
   });
   const cliArgs5 = ['init'];
@@ -783,6 +806,7 @@ test('config init/install retain distinct command identity', () => {
   const parsedCliCommand6 = getCliCommand(cliArgs7);
   assert.deepEqual(parsedCliCommand6, {
     kind: 'config',
+
     args: ['workspace'],
   });
 });
@@ -969,6 +993,7 @@ test('invalid config command forms return the usage exit code', async () => {
   const { root } = createConfigFixture();
   const io = {
     input: new PassThrough(),
+
     output: new Writable({
       write(_chunk, _encoding, callback) {
         callback();

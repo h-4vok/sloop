@@ -38,8 +38,11 @@ function createCommandChild(
 ): ChildProcessWithoutNullStreams {
   return spawn(launch.command, launch.args, {
     cwd,
+
     windowsHide: true,
+
     env: spec.env ? { ...process.env, ...spec.env } : process.env,
+
     windowsVerbatimArguments: launch.windowsVerbatimArguments,
   });
 }

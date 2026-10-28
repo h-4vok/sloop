@@ -82,7 +82,9 @@ export class CodexHarness implements Harness {
       const invocation = codexCliInvocation(args);
       const child = (this.options.spawn ?? spawn)(invocation.command, invocation.args, {
         cwd: this.options.cwd,
+
         shell: false,
+
         // Direct Codex launches ignore stdin; Windows sends encoded argv to the
         // PowerShell bridge, which consumes it before launching the global CLI.
         stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
@@ -144,7 +146,9 @@ export class CodexHarness implements Harness {
           );
         resolve({
           accepted: true,
+
           session,
+
           ...(messages.length > 0 ? { output: messages.join('\n') } : {}),
         });
       });

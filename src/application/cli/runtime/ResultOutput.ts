@@ -13,15 +13,22 @@ export const resultOutput = Object.freeze({
   ): Diagnostic {
     return {
       check,
+
       message,
+
       remediation,
+
       nextAction: {
         command: 'sloop doctor',
+
         description:
           'Re-run the read-only prerequisite checks; no safe repair command is available from this diagnostic.',
+
         mutates: false,
       },
+
       mutates: false,
+
       ...extra,
     };
   },
@@ -38,11 +45,17 @@ export const resultOutput = Object.freeze({
   ): ResultEnvelope {
     return {
       command,
+
       status,
+
       phase,
+
       summary,
+
       result,
+
       diagnostics,
+
       references: { issues, pullRequests },
     };
   },

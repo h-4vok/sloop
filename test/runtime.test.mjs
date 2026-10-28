@@ -65,18 +65,29 @@ function createMockRuntimeHarness(overrides = {}) {
   const readableFiles = new Set(overrides.readableFiles ?? []);
   const responses = {
     'git rev-parse --show-toplevel': { stdout: '/repo\n', stderr: '', status: 0 },
+
     'git --version': { stdout: 'git version 2.50', stderr: '', status: 0 },
+
     'git remote get-url origin': { stdout: 'https://github.com/o/r.git', stderr: '', status: 0 },
+
     'git rev-parse --verify origin/main^{commit}': { stdout: 'abc', stderr: '', status: 0 },
+
     'git status --porcelain': { stdout: '', stderr: '', status: 0 },
+
     'git symbolic-ref --short HEAD': { stdout: 'codex/issue-31', stderr: '', status: 0 },
+
     'gh --version': { stdout: 'gh version 2', stderr: '', status: 0 },
+
     'gh auth status': { stdout: '', stderr: '', status: 0 },
+
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
       stdout: '{"nameWithOwner":"o/r","viewerPermission":"WRITE"}',
+
       stderr: '',
+
       status: 0,
     },
+
     'gh label list --repo o/r --limit 1000 --json name': {
       stdout: JSON.stringify(
         [
@@ -88,32 +99,47 @@ function createMockRuntimeHarness(overrides = {}) {
           'Priority: P2',
         ].map((name) => ({ name })),
       ),
+
       stderr: '',
+
       status: 0,
     },
+
     'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
         stdout: '[{"number":31,"title":"Discovery"}]',
+
         stderr: '',
+
         status: 0,
       },
+
     'codex --version': { stdout: 'codex 1', stderr: '', status: 0 },
+
     ...overrides,
   };
   const io = {
     cwd: '/repo/nested',
+
     platform: 'linux',
+
     nodeVersion: 'v22.1.0',
+
     homeDirectory: homedir(),
+
     run(file, args, cwd) {
       calls.push({ file, args: [...args], cwd });
       return (
         responses[`${file} ${args.join(' ')}`] ?? { stdout: '', stderr: 'unexpected', status: 1 }
       );
     },
+
     readFile: () => overrides.localConfig ?? config,
+
     canRead: (file) => readableFiles.has(file),
+
     stdout: (value) => stdout.push(value),
+
     stderr: (value) => stderr.push(value),
   };
   return { io, calls, stdout, stderr };
@@ -124,21 +150,27 @@ test('command parser accepts only documented read-only forms', () => {
   const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
   assert.deepEqual(parsedReadOnlyCommand, {
     command: 'status',
+
     json: true,
+
     verbose: true,
   });
   const readOnlyArgs2 = ['issues', 'list'];
   const parsedReadOnlyCommand2 = parseReadOnlyCommand(readOnlyArgs2);
   assert.deepEqual(parsedReadOnlyCommand2, {
     command: 'issues list',
+
     json: false,
+
     verbose: false,
   });
   const readOnlyArgs3 = ['doctor'];
   const parsedReadOnlyCommand3 = parseReadOnlyCommand(readOnlyArgs3);
   assert.deepEqual(parsedReadOnlyCommand3, {
     command: 'doctor',
+
     json: false,
+
     verbose: true,
   });
   const readOnlyArgs4 = ['--list'];
@@ -175,6 +207,7 @@ test('top-level parser rejects unknown argv before a dispatcher command can exis
   const parsedCliCommand3 = parseCliCommand(cliArgs3);
   assert.deepEqual(parsedCliCommand3, {
     kind: 'help',
+
     target: '--prepare-recovery',
   });
   for (const [args, guidance] of [
@@ -235,7 +268,9 @@ test('human result output includes diagnostics and a read-only next action', () 
     {
       nextAction: {
         command: 'sloop status --verbose',
+
         description: 'Inspect the recorded blocker.',
+
         mutates: false,
       },
     },
@@ -258,6 +293,7 @@ test('status blocks when readable workflow state is not a JSON object', () => {
     writeFileSync(statePath, '[]');
     const runtimeHarness = createMockRuntimeHarness({
       'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+
       readableFiles: [statePath],
     });
     runtimeHarness.io.cwd = root;
@@ -283,7 +319,9 @@ test('issues list reports a GitHub command failure as an external diagnostic', (
     'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
         stdout: '',
+
         stderr: 'network unavailable',
+
         status: 1,
       },
   });
@@ -303,7 +341,9 @@ test('issues list reports malformed GitHub JSON as an external diagnostic', () =
     'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
         stdout: '{invalid',
+
         stderr: '',
+
         status: 0,
       },
   });
@@ -331,7 +371,9 @@ test('dispatcher parser accepts a complete recovery command', () => {
   const dispatcherArgs = ['--prepare-recovery', '31', '--pr', '54'];
   const expectedCommand = {
     kind: 'prepare-recovery',
+
     issue: 31,
+
     pr: 54,
   };
   const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
@@ -352,11 +394,16 @@ test('dispatcher parser accepts review cap options', () => {
   ];
   const expectedCommand = {
     kind: 'resolve-review-cap',
+
     options: {
       steer: 'continue',
+
       additionalRounds: 1,
+
       waivedFindingIds: ['S1', 'Q2'],
+
       waiveAllOutstanding: false,
+
       abandon: false,
     },
   };
@@ -490,11 +537,15 @@ test('issues list validates relevant GitHub prerequisites and returns references
 test('preflight aggregates safely evaluable failures', () => {
   const runtimeHarness = createMockRuntimeHarness({
     'gh auth status': { stdout: '', stderr: '', status: 1 },
+
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
       stdout: '',
+
       stderr: '',
+
       status: 1,
     },
+
     'gh label list --repo o/r --limit 1000 --json name': { stdout: '[]', stderr: '', status: 0 },
   });
 
@@ -511,7 +562,9 @@ test('external service failure uses exit 5 and never reports success', () => {
     'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
         stdout: '',
+
         stderr: 'network',
+
         status: 1,
       },
   });
@@ -534,6 +587,7 @@ test('public status result boundary emits blocked JSON and exit 4 for unreadable
     writeFileSync(join(root, '.sloop', 'state.json'), '{invalid');
     const runtimeHarness = createMockRuntimeHarness({
       'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+
       readableFiles: [join(root, '.sloop', 'state.json')],
     });
     runtimeHarness.io.cwd = root;
@@ -582,7 +636,9 @@ test('dispatcher preflight failure stops before any mutation-capable dependency'
 test('local recovery commands do not require GitHub, Codex, labels, or a clean tree', () => {
   const runtimeHarness = createMockRuntimeHarness({
     'git status --porcelain': { stdout: 'dirty', stderr: '', status: 0 },
+
     'gh --version': { stdout: '', stderr: 'missing', status: 1 },
+
     'codex --version': { stdout: '', stderr: 'missing', status: 1 },
   });
   const dispatcherArgs = ['--prepare-recovery', '31', '--pr', '54'];
@@ -623,6 +679,7 @@ test('local configuration controls the base branch selector', () => {
   );
   const runtimeHarness = createMockRuntimeHarness({
     localConfig: redirected,
+
     'git rev-parse --verify origin/trunk^{commit}': { stdout: 'abc', stderr: '', status: 0 },
   });
 
@@ -639,7 +696,9 @@ test('runtime diagnostics cover unavailable tools, malformed GitHub responses, a
       {
         'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
           stdout: '{',
+
           stderr: '',
+
           status: 0,
         },
       },
@@ -650,7 +709,9 @@ test('runtime diagnostics cover unavailable tools, malformed GitHub responses, a
       {
         'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
           stdout: '{"viewerPermission":"READ"}',
+
           stderr: '',
+
           status: 0,
         },
       },
@@ -661,7 +722,9 @@ test('runtime diagnostics cover unavailable tools, malformed GitHub responses, a
       {
         'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
           stdout: '{"nameWithOwner":"o/r","viewerPermission":"NONE"}',
+
           stderr: '',
+
           status: 0,
         },
       },
@@ -679,7 +742,9 @@ test('runtime diagnostics cover unavailable tools, malformed GitHub responses, a
       {
         'gh label list --repo o/r --limit 1000 --json name': {
           stdout: '[]',
+
           stderr: '',
+
           status: 0,
         },
       },
@@ -762,7 +827,9 @@ test('node-version failure emits JSON diagnostics when requested', () => {
   assert.equal(
     emitNodeVersionFailure(['status', '--json'], 'v1.0.0', {
       ...runtimeHarness.io,
+
       stdout: (value) => output.push(value),
+
       stderr: (value) => errors.push(value),
     }),
     EXIT.preflight,
@@ -779,7 +846,9 @@ test('node-version failure explains the minimum version in human output', () => 
   assert.equal(
     emitNodeVersionFailure(['status'], 'v1.0.0', {
       ...runtimeHarness.io,
+
       stdout: (value) => output.push(value),
+
       stderr: (value) => errors.push(value),
     }),
     EXIT.preflight,
@@ -816,11 +885,17 @@ test('status uses production IO from the repository and fails outside it', () =>
 test('doctor reports every failed prerequisite in one diagnostic response', () => {
   const doctor = createMockRuntimeHarness({
     'git --version': { stdout: '', stderr: '', status: 1 },
+
     'git remote get-url origin': { stdout: '', stderr: '', status: 1 },
+
     'git rev-parse --verify origin/main^{commit}': { stdout: '', stderr: '', status: 1 },
+
     'gh --version': { stdout: '', stderr: '', status: 1 },
+
     'codex --version': { stdout: '', stderr: '', status: 1 },
+
     'git status --porcelain': { stdout: '', stderr: '', status: 1 },
+
     'git symbolic-ref --short HEAD': { stdout: '', stderr: '', status: 1 },
   });
   doctor.io.platform = 'freebsd';
@@ -854,11 +929,16 @@ test('dispatcher preflight rejects every command when local configuration is mal
     { kind: 'prepare-recovery', issue: 1 },
     {
       kind: 'resolve-review-cap',
+
       options: {
         steer: 'x',
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
+
         waiveAllOutstanding: true,
+
         abandon: false,
       },
     },
@@ -880,6 +960,7 @@ test.each([
   writeFileSync(join(root, '.sloop', 'state.json'), JSON.stringify({ status, issue: 7, pr: 8 }));
   const runtimeHarness = createMockRuntimeHarness({
     'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+
     readableFiles: [join(root, '.sloop', 'state.json')],
   });
   runtimeHarness.io.cwd = root;
@@ -907,10 +988,12 @@ test('CLI config init and install map to distinct dispatcher commands', () => {
 
   assert.deepEqual(initCommand, {
     kind: 'config',
+
     args: ['--init', '--wizard'],
   });
   assert.deepEqual(installCommand, {
     kind: 'config',
+
     args: ['--install', '--force'],
   });
   const cliArgs3 = ['config', 'init', '--force'];
@@ -945,7 +1028,9 @@ test('issues list rejects a remote URL outside GitHub', () => {
   const badRemote = createMockRuntimeHarness({
     'git remote get-url origin': {
       stdout: 'https://example.test/not-github',
+
       stderr: '',
+
       status: 0,
     },
   });
@@ -1009,12 +1094,17 @@ test('runtime reports malformed repository identity and label payloads', () => {
   const identity = createMockRuntimeHarness({
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
       stdout: '{',
+
       stderr: '',
+
       status: 0,
     },
+
     'gh label list --repo o/r --limit 1000 --json name': {
       stdout: '{',
+
       stderr: '',
+
       status: 0,
     },
   });
@@ -1032,7 +1122,9 @@ test('read-only diagnostics provide safe guidance for every inspection failure',
       {
         'gh label list --repo o/r --limit 1000 --json name': {
           stdout: '[]',
+
           stderr: '',
+
           status: 0,
         },
       },
@@ -1077,6 +1169,7 @@ test('status recovery guidance remains safe and contextual when issue or PR data
     writeFileSync(join(root, '.sloop', 'state.json'), JSON.stringify({ status: 'ci_failed' }));
     const runtimeHarness = createMockRuntimeHarness({
       'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+
       readableFiles: [join(root, '.sloop', 'state.json')],
     });
     runtimeHarness.io.cwd = root;
@@ -1088,7 +1181,9 @@ test('status recovery guidance remains safe and contextual when issue or PR data
     const result = JSON.parse(runtimeHarness.stdout[0]);
     assert.deepEqual(result.result.nextAction, {
       command: 'sloop status --verbose',
+
       description: 'Inspect the recovery state; issue or PR context is unavailable.',
+
       mutates: false,
     });
     assert.ok(!runtimeHarness.calls.some(({ file }) => file === 'gh'));
@@ -1119,6 +1214,7 @@ test('status diagnoses every recovery observation with contextual safe guidance'
       );
       const runtimeHarness = createMockRuntimeHarness({
         'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+
         readableFiles: [join(root, '.sloop', 'state.json')],
       });
       runtimeHarness.io.cwd = root;
@@ -1137,16 +1233,24 @@ test('status diagnoses every recovery observation with contextual safe guidance'
       );
       assert.deepEqual(diagnostic, {
         check: `recovery-${phase}`,
+
         message: `${blocker} (issue #45, PR #107)`,
+
         remediation:
           'Next: sloop --prepare-recovery 45 --pr 107; this mutates local recovery state.',
+
         phase,
+
         context: { issue: 45, pullRequest: 107 },
+
         nextAction: {
           command: 'sloop --prepare-recovery 45 --pr 107',
+
           description: 'Prepare the recorded recovery for the issue and pull request.',
+
           mutates: true,
         },
+
         mutates: false,
       });
       assert.equal(
@@ -1198,7 +1302,9 @@ test('issues list normalizes GitHub labels and selects configured priorities', (
           { number: 42, title: 'Prioritized', labels: [{ name: 'Priority: P0' }] },
           { number: 43, title: 'Unprioritized', labels: [{ name: 'Automation Ready' }] },
         ]),
+
         stderr: '',
+
         status: 0,
       },
   });
@@ -1218,7 +1324,9 @@ test('runtime reports insufficient permissions and missing doctor skills', () =>
   const runtimeHarness = createMockRuntimeHarness({
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
       stdout: '{"nameWithOwner":"o/r","viewerPermission":"READ"}',
+
       stderr: '',
+
       status: 0,
     },
   });

@@ -58,6 +58,7 @@ function parseConfigValueResult(
   if (field.type === 'list' || field.type === 'argv')
     return {
       ok: false,
+
       error: new ConfigValidationError([
         { path: `$.${field.path}`, message: 'complex values require the interactive wizard' },
       ]),
@@ -73,7 +74,10 @@ function parseConfigValueResult(
 /** Provides read-only configuration lookups and safe display fingerprints. */
 export const configQueries = Object.freeze({
   configFingerprint,
+
   configValue,
+
   configPaths,
+
   parseConfigValueResult,
 });

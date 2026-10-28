@@ -20,6 +20,7 @@ function latestReview(
     ...(pr.reviews ?? []),
     ...(pr.comments ?? []).map((comment): Review => ({
       body: comment.body,
+
       submittedAt: comment.createdAt,
     })),
   ]
@@ -69,7 +70,10 @@ function reviewFeedback(pr: PullRequest, marker: '[QA/SDET Review]', round: numb
 
 export const ReviewEvidence = {
   latestReview,
+
   reviewVerdict,
+
   waitForEvidence,
+
   reviewFeedback,
 };

@@ -75,11 +75,18 @@ function publishHumanReviewGuide(d: Deps, pr: PullRequest, round: number): void 
 
 export const HumanReviewGuideService = {
   roundFromBody,
+
   hasCommit,
+
   latestWorkerComment,
+
   humanReviewGuide,
+
   renderedHumanReviewGuide,
+
   isRenderedHumanReviewGuide,
+
   publishHumanReviewGuide,
+
   humanReviewGuideMarker,
 };

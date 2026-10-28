@@ -41,12 +41,17 @@ export function createGitHubApi({
   async function request(path, { method = 'GET', body, missingIsNull = false } = {}) {
     const response = await fetchImpl(`${base}${path}`, {
       method,
+
       headers: {
         Accept: 'application/vnd.github+json',
+
         Authorization: `Bearer ${token}`,
+
         'Content-Type': 'application/json',
+
         'User-Agent': 'sloop-release',
       },
+
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (missingIsNull && response.status === 404) return null;
@@ -64,6 +69,7 @@ export function createGitHubApi({
       do {
         const result = await request('/graphql', {
           method: 'POST',
+
           body: { query: closingIssuesQuery, variables: { owner, repo, number, after } },
         });
         const connection = result.data?.repository?.pullRequest?.closingIssuesReferences;
@@ -75,12 +81,14 @@ export function createGitHubApi({
       } while (after);
       return titles;
     },
+
     async issueTitle(number) {
       const issue = await request(`/repos/${owner}/${repo}/issues/${number}`, {
         missingIsNull: true,
       });
       return issue?.title ?? null;
     },
+
     async releaseByTag(tag) {
       const release = await request(
         `/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
@@ -92,9 +100,11 @@ export function createGitHubApi({
         ? { tagName: release.tag_name, targetCommitish: release.target_commitish }
         : null;
     },
+
     async createRelease(tag) {
       return request(`/repos/${owner}/${repo}/releases`, {
         method: 'POST',
+
         body: { tag_name: tag, name: tag, generate_release_notes: true },
       });
     },
@@ -156,8 +166,11 @@ export async function reuseOrCreateRelease(api, tag, tagTarget) {
     verifyReleaseState(
       {
         tagName: tag,
+
         tagTarget,
+
         releaseTagName: existing.tagName,
+
         releaseTarget: existing.targetCommitish,
       },
       tag,
@@ -181,6 +194,7 @@ function tagMetadata(tag) {
   try {
     return {
       packageText: git('show', `${tag}:package.json`),
+
       changelog: git('show', `${tag}:CHANGELOG.md`),
     };
   } catch {
@@ -238,7 +252,9 @@ async function main() {
   const command = process.argv[2];
   const api = createGitHubApi({
     token: process.env.GITHUB_TOKEN,
+
     repository: process.env.GITHUB_REPOSITORY ?? '',
+
     apiUrl: process.env.GITHUB_API_URL,
   });
   if (command === 'calculate') {
@@ -247,10 +263,15 @@ async function main() {
     if (!Number.isSafeInteger(number)) throw new Error('Missing merged PR number');
     const result = await calculateRelease({
       api,
+
       number,
+
       body: event.pull_request.body,
+
       tags: gitTags(),
+
       readTagMetadata: tagMetadata,
+
       packageVersion: JSON.parse(readFileSync('package.json', 'utf8')).version,
     });
     appendFileSync(process.env.GITHUB_OUTPUT, `kind=${result.kind}\nversion=${result.version}\n`);
@@ -262,8 +283,11 @@ async function main() {
   if (command === 'publish') {
     const outcome = await publishRelease({
       api,
+
       version: process.env.VERSION,
+
       pr: Number(process.env.PR_NUMBER),
+
       date: new Date().toISOString().slice(0, 10),
     });
     console.log(`Release v${process.env.VERSION} for PR #${process.env.PR_NUMBER}: ${outcome}.`);

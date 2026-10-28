@@ -20,16 +20,27 @@ const createTemporaryDirectory = (prefix) =>
   createIsolatedTemporaryDirectory(join(tmpdir(), prefix));
 const createTestRunManifest = (overrides = {}) => ({
   protocol: 1,
+
   runId: 'adapter-run',
+
   issue: 81,
+
   pr: 9,
+
   branch: 'codex/issue-81-x',
+
   baseSha: 'abcdef1',
+
   configFingerprint: 'config',
+
   phase: 'working',
+
   reviewRound: 1,
+
   contextCursor: '',
+
   artifacts: [],
+
   ...overrides,
 });
 
@@ -78,11 +89,14 @@ test('remote snapshot normalizes issue and pull-request state', () => {
   // The issue marker links this snapshot request to PR 9, which the adapter then loads.
   const mockIssueResponse = {
     labels: [{ name: 'eligible' }],
+
     comments: [{ body: manifestMarker }],
   };
   const mockPullRequestResponse = {
     number: 9,
+
     headRefName: 'codex/issue-81-x',
+
     comments: [{ body: 'sloop-v1/legacy' }],
   };
   const mockReviewThreadsResponse = {
@@ -133,6 +147,7 @@ test('remote claims publish string leases and manifest leases', () => {
     'key',
     createTestRunManifest({
       artifacts: ['existing'],
+
       lease: { owner: 'lease-owner', expiresAt: 7 },
     }),
   );
@@ -180,9 +195,13 @@ test('adapter local callback surface preserves dispatcher contracts without GitH
       adapterDependencies.resolveReviewCap(
         {
           steer: '',
+
           abandon: false,
+
           waiveAllOutstanding: false,
+
           waivedFindingIds: [],
+
           additionalRounds: 0,
         },
         {},
@@ -379,8 +398,10 @@ test('production harness rejects roles with an unsupported harness type', () => 
   const validatedConfig = loadConfigText(canonicalConfigYaml());
   const config = {
     ...validatedConfig,
+
     agents: {
       ...validatedConfig.agents,
+
       worker: { ...validatedConfig.agents.worker, harness: 'unsupported' },
     },
   };
@@ -470,8 +491,11 @@ test('run logger restores sequence after a corrupt tail and records event payloa
   assert.equal(JSON.parse(events.at(-3)).seq, 1);
   assert.deepEqual(JSON.parse(events.at(-2)).data, {
     command: 'git status',
+
     stdout: 'out',
+
     stderr: 'err',
+
     cwd: dir,
   });
   assert.equal(JSON.parse(events.at(-1)).data, 'chunk');
@@ -489,9 +513,13 @@ test('active-run reconciliation classifies open and unverifiable runs', () => {
   let issueState = 'OPEN';
   let pullRequest = {
     number: 9,
+
     state: 'OPEN',
+
     baseRefName: config.repository.baseBranch,
+
     headRefName: 'codex/issue-81-x',
+
     body: 'Fixes #81',
   };
   const client = {
@@ -508,7 +536,9 @@ test('active-run reconciliation classifies open and unverifiable runs', () => {
   const verifiedIdentity = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   const unavailableReconcile = activeRunReconcilerFactory.create({
     client,
+
     config,
+
     root: tmpdir(),
   })({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   pullRequest = { ...pullRequest, state: 'MERGED' };
@@ -516,18 +546,23 @@ test('active-run reconciliation classifies open and unverifiable runs', () => {
   const mergedPullRequest = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   pullRequest = {
     number: 9,
+
     state: 'MERGED',
+
     baseRefName: config.repository.baseBranch,
+
     body: 'Fixes #81',
   };
   const missingBranch = reconcile({ issue: 81, pr: 9 });
 
   assert.deepEqual(openResult, {
     outcome: 'open',
+
     reason: 'issue and associated PR are not terminal',
   });
   assert.deepEqual(missingClosingReference, {
     outcome: 'blocked',
+
     reason: 'issue, PR, and branch identity could not be verified',
   });
   assert.equal(verifiedIdentity.outcome, 'terminal');
@@ -537,6 +572,7 @@ test('active-run reconciliation classifies open and unverifiable runs', () => {
   assert.equal(mergedPullRequest.reason, 'PR merged; branch aligned');
   assert.deepEqual(missingBranch, {
     outcome: 'blocked',
+
     reason: 'persisted worker branch is missing',
   });
 }, 15_000);
@@ -545,11 +581,17 @@ test('dispatcher controls list delegates to its eligible-issues port', () => {
   const eligibleIssues = [{ number: 7, title: 'Repair adapter boundary' }];
   const controls = dispatcherControlsFactory.create({
     root: tmpdir(),
+
     stateFile: join(tmpdir(), 'sloop-dispatcher-controls-state.json'),
+
     repository: 'owner/repository',
+
     remoteAuthority: {},
+
     config: loadConfigText(canonicalConfigYaml()),
+
     listEligibleIssues: () => eligibleIssues,
+
     loadPullRequest: () => ({ number: 7 }),
   });
 
@@ -567,7 +609,9 @@ test('Node host exposes readable-file checks and command outcomes', () => {
   assert.equal(nodeHost.readFile(readableFile), 'host fixture');
   assert.deepEqual(nodeHost.run(process.execPath, ['-e', 'process.stdout.write("host-ok")']), {
     stdout: 'host-ok',
+
     stderr: '',
+
     status: 0,
   });
 });
@@ -590,7 +634,9 @@ test('production runtime I/O exposes file, stream, and command boundaries', () =
       runtimeIo.run(process.execPath, ['-e', 'process.stdout.write("runtime-ok")']),
       {
         stdout: 'runtime-ok',
+
         stderr: '',
+
         status: 0,
       },
     );

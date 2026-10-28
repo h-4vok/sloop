@@ -29,14 +29,19 @@ function reviewCap(
 
   return {
     capRound: baseMaxRounds,
+
     decisionSha: directive.sha,
+
     outstandingFindingIds,
+
     additionalRounds: Math.max(
       0,
       maxRoundsForUserBudget(baseMaxRounds, directive.round, directive.additionalRounds) -
         baseMaxRounds,
     ),
+
     waivedFindingIds: directive.waivedFindingIds,
+
     steer: directive.steer,
   };
 }

@@ -39,6 +39,7 @@ function normalizedError(
     : ' No diagnostic output was available.';
   return {
     lastError: `The loop stopped during ${phase.replaceAll('_', ' ')}${context ? ` for ${context}` : ''}.${detail} See verbose diagnostics for the complete output.`,
+
     lastErrorVerbose:
       verbose || `No diagnostic output was captured during ${phase.replaceAll('_', ' ')}.`,
   };
@@ -46,5 +47,6 @@ function normalizedError(
 
 export const StateDiagnostics = {
   redactDiagnostic,
+
   normalizedError,
 };

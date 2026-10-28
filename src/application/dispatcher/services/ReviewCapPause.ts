@@ -9,10 +9,15 @@ async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: numb
   const feedback = current.lastQaFeedback ?? '';
   const cap = {
     capRound: cfg.maxReviewRounds ?? 10,
+
     decisionSha: current.headSha,
+
     outstandingFindingIds: findingIds(feedback),
+
     additionalRounds: current.reviewCap?.additionalRounds ?? 0,
+
     waivedFindingIds: current.reviewCap?.waivedFindingIds ?? [],
+
     steer: current.reviewCap?.steer,
   };
   status(d, issue.number, 'review_cap_pending', { reviewRound: round, reviewCap: cap });

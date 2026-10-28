@@ -43,5 +43,6 @@ function publishCurrentRemoteManifest(
 
 export const RemoteManifestPublisher = {
   publishRemoteManifest,
+
   publishCurrentRemoteManifest,
 };

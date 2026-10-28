@@ -6,12 +6,19 @@ process.stdin.on('end', () => {
   process.stdout.write(
     JSON.stringify({
       id: `fixture-${context.issue.number}-${Date.now()}`,
+
       sessionId: context.session.sessionId,
+
       issue: context.issue.number,
+
       role: 'arbiter',
+
       round: context.session.round,
+
       type: 'clarification_requested',
+
       payload: { question: 'Could you clarify the remaining safety evidence in plain language?' },
+
       emittedAt: new Date().toISOString(),
     }) + '\n',
   );

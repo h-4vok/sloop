@@ -29,9 +29,13 @@ function completeEmptyDispatch(d: Deps, existingIssue: number | undefined): 0 {
   const state = d.load();
   d.save({
     completedIssues: state.completedIssues ?? [],
+
     mainGreen: state.mainGreen,
+
     status: 'done',
+
     drainStatus: 'done',
+
     updatedAt: d.now(),
   });
 
@@ -65,6 +69,7 @@ function handleIssueFailure(d: Deps, issue: Issue, error: unknown): 4 {
     hasPersistedRecoveryContext(current);
   status(d, issue.number, shouldPreserveRecovery ? 'worker_recovery_pending' : 'blocked', {
     lastError: message,
+
     pr: current.pr,
   });
 
@@ -86,8 +91,12 @@ function markDispatchRunning(d: Deps): void {
 
 export const DispatcherQueue = {
   selectNextIssue,
+
   completeEmptyDispatch,
+
   dispatchSelectedIssue,
+
   findExistingRecoveryIssue,
+
   markDispatchRunning,
 };

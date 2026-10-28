@@ -35,18 +35,26 @@ export function createHelp(version: string): Readonly<{
   const text = HELP_TEMPLATE(version);
   const usage: Record<string, string> = {
     status: 'Usage: sloop status [--verbose] [--json]',
+
     'issues list': 'Usage: sloop issues list [--json]',
+
     doctor: 'Usage: sloop doctor',
+
     '--recover-lock': 'Usage: sloop --recover-lock',
+
     '--reset': 'Usage: sloop --reset',
+
     '--prepare-recovery': 'Usage: sloop --prepare-recovery N [--pr N]',
+
     '--resolve-review-cap':
       'Usage: sloop --resolve-review-cap --steer <text> [--additional-rounds N] [--waive Q<n>,S<n>] [--waive-all-outstanding] [--abandon]',
+
     '--link-issue': 'Usage: sloop --link-issue N',
   };
 
   return {
     text,
+
     forTarget: (target) => usage[target] ?? text,
   };
 }

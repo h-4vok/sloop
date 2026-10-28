@@ -21,10 +21,15 @@ function command(
   }
   return {
     command: Array.isArray(value) ? value[0] : value.command,
+
     args: Array.isArray(value) ? value.slice(1) : value.args,
+
     timeoutMs: Array.isArray(value) ? 120000 : (value.timeoutMs ?? 120000),
+
     retries: Array.isArray(value) ? 0 : (value.retries ?? 0),
+
     ...(!Array.isArray(value) && value.sessions === true ? { sessions: true } : {}),
+
     logInvocation: undefined,
   };
 }
@@ -116,9 +121,14 @@ function workerMetadata(output: string, knownPr?: number): { pr?: number; base?:
 
 export const AgentRoles = {
   command,
+
   rolePrompt,
+
   roleUpdate,
+
   appendWorkerRoundContext,
+
   roleCommand,
+
   workerMetadata,
 };

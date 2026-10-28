@@ -6,8 +6,11 @@ const { normalizedError } = StateDiagnostics;
 
 const skills = {
   claim: 'dispatcher',
+
   work: 'worker',
+
   recovery: 'dispatcher recovery',
+
   qa: 'sloop-qa',
 } as const;
 
@@ -87,12 +90,20 @@ function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}
 
 export const RunStatePolicy = {
   defaultProcessAlive,
+
   isWorkerStatus,
+
   isActiveStatus,
+
   hasPersistedRecoveryContext,
+
   isStaleWorker,
+
   recoveryEligibilityError,
+
   skillFor,
+
   status,
+
   skills,
 };

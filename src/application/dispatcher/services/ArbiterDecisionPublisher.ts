@@ -22,9 +22,12 @@ function createFollowUps(
     );
     current = {
       ...current,
+
       arbiterFollowUps: { ...(current.arbiterFollowUps ?? {}), [key]: followUpNumber },
+
       arbiterFollowUpEligibility: {
         ...(current.arbiterFollowUpEligibility ?? {}),
+
         [key]: followUpEligible(false, true),
       },
     };
@@ -40,6 +43,7 @@ function publishDecisions(
   const result = applyArbiterDecisions(
     {
       interventions: context.current.arbiterInterventions ?? 0,
+
       decisions: context.current.arbiterDecisions ?? [],
     },
     context.findings,
@@ -57,11 +61,17 @@ function publishDecisions(
     .join('\n');
   context.deps.save({
     ...current,
+
     arbiterInterventions: result.interventions,
+
     arbiterDecisions: result.decisions,
+
     arbiterFollowUps: current.arbiterFollowUps,
+
     arbiterFollowUpEligibility: current.arbiterFollowUpEligibility,
+
     ...(result.terminal ? { arbiterTerminal: result.terminal } : {}),
+
     ...(steer
       ? { lastQaFeedback: `${context.feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
       : {}),

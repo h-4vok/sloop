@@ -14,10 +14,15 @@ function recordCommandResult(
 ): void {
   logger.write('command-result', {
     command: spec.command,
+
     args: spec.args,
+
     cwd: executionRoot,
+
     ...context,
+
     stdout,
+
     stderr,
   });
 }
@@ -43,13 +48,17 @@ async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string
     sawOutput = false;
   logger.write('command', {
     command: spec.command,
+
     args: spec.args,
+
     cwd: context.executionRoot,
+
     ...context,
   });
   try {
     const output = await d.run({
       ...spec,
+
       onStdout: (chunk) => {
         sawOutput = true;
         stdout += chunk;
@@ -57,6 +66,7 @@ async function runLogged(d: Deps, logger: RunLogger, spec: Spec): Promise<string
         logger.stream('codex', chunk);
         spec.onStdout?.(chunk);
       },
+
       onStderr: (chunk) => {
         sawOutput = true;
         stderr += chunk;

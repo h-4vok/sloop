@@ -34,10 +34,15 @@ function field<T>(
 ): FieldMetadata<T> {
   return Object.freeze({
     validation: 'must parse as the declared type',
+
     choices: [],
+
     dependencies: [],
+
     sensitivity: 'public',
+
     requiredReconciler: 'none',
+
     ...metadata,
   });
 }
@@ -52,11 +57,17 @@ const f = <T>(
 ) =>
   field<T>({
     path,
+
     type,
+
     parser,
+
     default: defaultValue,
+
     explanation,
+
     recommendation: `Leave empty to use ${JSON.stringify(defaultValue)} as default. Change unless repository policy requires otherwise.`,
+
     ...extra,
   });
 
@@ -99,7 +110,9 @@ export const configRegistry = deepFreeze([
   ),
   f('workspace.path', 'path', pathParser, '.', 'Checkout path used in checkout mode.', {
     dependencies: ['workspace.mode=checkout'],
+
     sensitivity: 'sensitive',
+
     requiredReconciler: 'workspace',
   }),
   f(
@@ -110,7 +123,9 @@ export const configRegistry = deepFreeze([
     'Parent directory for ephemeral worktrees.',
     {
       dependencies: ['workspace.mode=worktree'],
+
       sensitivity: 'sensitive',
+
       requiredReconciler: 'workspace',
     },
   ),

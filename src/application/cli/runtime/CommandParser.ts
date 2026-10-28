@@ -20,9 +20,13 @@ const helpTargets = new Map<string, readonly string[]>([
 ]);
 const singleArgumentCommands: Readonly<Record<string, DispatcherCommand>> = Object.freeze({
   '--list': { kind: 'list' },
+
   '--recover-lock': { kind: 'recover-lock' },
+
   '--reset': { kind: 'reset' },
+
   '--list-all-worktrees': { kind: 'list-all-worktrees' },
+
   '--clear-all-worktrees': { kind: 'clear-all-worktrees' },
 });
 
@@ -42,6 +46,7 @@ export const commandParser = Object.freeze({
       return this.parseReviewCapCommand(args);
     return result.failure('mixed, duplicate, unknown, or unsupported command arguments');
   },
+
   parseDispatcherStatus(args: readonly string[]): DispatcherCommand | undefined {
     if (
       args[0] !== '--status' ||
@@ -50,14 +55,17 @@ export const commandParser = Object.freeze({
       return undefined;
     return { kind: 'status', verbose: args.includes('--verbose') };
   },
+
   parseSingleArgumentCommand(args: readonly string[]): DispatcherCommand | undefined {
     return args.length === 1 ? singleArgumentCommands[args[0]] : undefined;
   },
+
   parseIssueCommand(args: readonly string[]): DispatcherCommand | undefined {
     if (args[0] !== '--link-issue' || args.length !== 2 || !this.isPositiveInteger(args[1]))
       return undefined;
     return { kind: 'link-issue', issue: Number(args[1]) };
   },
+
   parseRecoveryCommand(args: readonly string[]): DispatcherCommand | undefined {
     const isValid =
       args[0] === '--prepare-recovery' &&
@@ -67,14 +75,18 @@ export const commandParser = Object.freeze({
     return isValid
       ? {
           kind: 'prepare-recovery',
+
           issue: Number(args[1]),
+
           pr: args[3] ? Number(args[3]) : undefined,
         }
       : undefined;
   },
+
   isPositiveInteger(value: string | undefined): boolean {
     return /^[1-9]\d*$/.test(value ?? '');
   },
+
   parseReviewCapCommand(args: readonly string[]): ParseResult<DispatcherCommand> {
     const collected = this.collectReviewCapArguments(args);
     if (!collected.ok) return collected;
@@ -83,6 +95,7 @@ export const commandParser = Object.freeze({
       ? result.success({ kind: 'resolve-review-cap', options: options.value })
       : options;
   },
+
   collectReviewCapArguments(args: readonly string[]): ParseResult<ReviewCapArguments> {
     const counts = new Map<string, number>();
     const values = new Map<string, string[]>();
@@ -101,6 +114,7 @@ export const commandParser = Object.freeze({
     }
     return result.success({ counts, values });
   },
+
   validateReviewCapArguments(
     parsed: ReviewCapArguments,
   ): ParseResult<Extract<DispatcherCommand, { kind: 'resolve-review-cap' }>['options']> {
@@ -126,12 +140,17 @@ export const commandParser = Object.freeze({
     if (!combination.ok) return combination;
     return result.success({
       steer,
+
       additionalRounds,
+
       waivedFindingIds: waivers.flatMap((value) => value.split(',')),
+
       waiveAllOutstanding,
+
       abandon,
     });
   },
+
   validateReviewCapOptionCounts(counts: ReadonlyMap<string, number>): ParseResult<void> {
     if ((counts.get('--steer') ?? 0) !== 1)
       return result.failure('--resolve-review-cap requires exactly one --steer <text>');
@@ -140,6 +159,7 @@ export const commandParser = Object.freeze({
     }
     return result.success(undefined);
   },
+
   validateReviewCapValues(
     rounds: string | undefined,
     waivers: readonly string[],
@@ -150,6 +170,7 @@ export const commandParser = Object.freeze({
       return result.failure('--waive requires comma-separated Q<n> or S<n> finding IDs');
     return result.success(undefined);
   },
+
   validateReviewCapCombinations(
     abandon: boolean,
     waiveAllOutstanding: boolean,
@@ -164,6 +185,7 @@ export const commandParser = Object.freeze({
       );
     return result.success(undefined);
   },
+
   parseReadOnlyCommand(args: readonly string[]): ParseResult<ReadOnlyCommand | undefined> {
     const json = args.includes('--json');
     const stripped = args.filter((argument) => argument !== '--json');
@@ -178,6 +200,7 @@ export const commandParser = Object.freeze({
       );
     return result.success(undefined);
   },
+
   parseStatusCommand(args: readonly string[], json: boolean): ParseResult<ReadOnlyCommand> {
     const options = args.slice(1);
     if (options.some((argument) => argument !== '--verbose') || options.length > 1)
@@ -186,6 +209,7 @@ export const commandParser = Object.freeze({
       return result.failure('status --verbose requires --json');
     return result.success({ command: 'status', json, verbose: options.includes('--verbose') });
   },
+
   parseCliCommand(args: readonly string[]): ParseResult<CliCommand> {
     if (args.length === 1 && args[0] === '--version') return result.success({ kind: 'version' });
     const legacy = this.rejectLegacyCommandMix(args);
@@ -204,6 +228,7 @@ export const commandParser = Object.freeze({
       ? result.success({ kind: 'dispatcher', command: dispatcher.value })
       : dispatcher;
   },
+
   rejectLegacyCommandMix(args: readonly string[]): ParseResult<void> {
     if (args.includes('--list') && args.includes('--status'))
       return result.failure('mixed, duplicate, unknown, or unsupported command options');
@@ -213,6 +238,7 @@ export const commandParser = Object.freeze({
       return result.failure('`sloop --status` is no longer supported; use `sloop status`');
     return result.success(undefined);
   },
+
   parseHelpCommand(args: readonly string[]): ParseResult<CliCommand | undefined> {
     if (!args.includes('--help')) return result.success(undefined);
     for (const [target, form] of helpTargets) {
@@ -221,6 +247,7 @@ export const commandParser = Object.freeze({
     }
     return result.failure('--help must be the only option for the requested command');
   },
+
   parseConfigCommand(args: readonly string[]): ParseResult<CliCommand | undefined> {
     if (args[0] !== 'config') return result.success(undefined);
     if (args[1] === 'init') {

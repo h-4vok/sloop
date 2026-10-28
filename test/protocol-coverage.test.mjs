@@ -16,53 +16,82 @@ const context = { run: 'r', issue: 7, pr: 8, round: 1, sha: 'abcdef1', cursor: '
 const decisions = [
   {
     findingId: 'Q1',
+
     owner: 'qa',
+
     action: 'uphold',
+
     rationale: 'Trim names.',
+
     direction: 'Trim the input.',
+
     verification: 'Check surrounding whitespace.',
+
     followUp: null,
   },
 ];
 const guide = {
   summary: 'summary',
+
   steps: ['step'],
+
   expected: ['expected'],
+
   isolation: 'isolated',
+
   limitations: ['none'],
+
   checklist: ['checked'],
 };
 
 test('agent envelope accepts every producer contract and valid status family', () => {
   const worker = {
     schema: 'sloop.agent-output/v1',
+
     context,
+
     producer: 'worker',
+
     status: 'blocked',
+
     payload: {
       summary: 's',
+
       findingResolutions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
+
       verification: ['v'],
+
       guide,
     },
   };
   const reviewer = {
     schema: 'sloop.agent-output/v1',
+
     context,
+
     producer: 'qa',
+
     status: 'accepted',
+
     payload: {
       summary: 's',
+
       evidence: ['e'],
+
       newFindings: [{ id: 'Q1', summary: 's', severity: 'low' }],
+
       dispositions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
     },
   };
   const arbiter = {
     schema: 'sloop.agent-output/v1',
+
     context,
+
     producer: 'arbiter',
+
     status: 'uphold',
+
     payload: { rationale: 'rationale', references: ['Q1'], decisions },
   };
 
@@ -81,9 +110,13 @@ test('agent envelope accepts every producer contract and valid status family', (
 test('agent envelope rejects each invalid contract boundary', () => {
   const base = {
     schema: 'sloop.agent-output/v1',
+
     context,
+
     producer: 'arbiter',
+
     status: 'uphold',
+
     payload: { rationale: 'r', references: ['Q1'], decisions },
   };
 
@@ -102,20 +135,31 @@ test('agent envelope rejects each invalid contract boundary', () => {
 test('agent envelope rejects each role-specific invalid boundary', () => {
   const worker = {
     schema: 'sloop.agent-output/v1',
+
     context: { ...context, pr: undefined },
+
     producer: 'worker',
+
     status: 'ready',
+
     payload: { summary: 's', findingResolutions: [], verification: ['v'], guide },
   };
   const reviewer = {
     schema: 'sloop.agent-output/v1',
+
     context,
+
     producer: 'qa',
+
     status: 'accepted',
+
     payload: {
       summary: 's',
+
       evidence: ['e'],
+
       newFindings: [{ id: 'Q1', summary: 's', severity: 'low' }],
+
       dispositions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
     },
   };
@@ -133,8 +177,10 @@ test('agent envelope rejects each role-specific invalid boundary', () => {
     { ...reviewer, status: 'ready' },
     {
       ...reviewer,
+
       payload: {
         ...reviewer.payload,
+
         dispositions: [{ id: 'missing', status: 'fixed', summary: 's' }],
       },
     },
@@ -146,14 +192,23 @@ test('agent envelope rejects each role-specific invalid boundary', () => {
 test('remote protocol projects idle, complete, review, and lease edge states', () => {
   const manifest = {
     protocol: REMOTE_PROTOCOL,
+
     runId: 'run',
+
     issue: 7,
+
     branch: 'codex/issue-7',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'c',
+
     artifacts: ['key'],
   };
   const marker = runManifestMarker(manifest);
@@ -163,13 +218,21 @@ test('remote protocol projects idle, complete, review, and lease edge states', (
   assert.deepEqual(projectRemoteState({ issue: 7, markers: ['unrelated'] }).openGates, []);
   const review = projectRemoteState({
     issue: 7,
+
     markers: ['sloop/v1/run/run'],
+
     manifest,
+
     checks: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'failure', detailsUrl: 'url' }],
+
     reviews: [{ state: 'COMMENTED' }],
+
     inlineThreads: [{ resolved: false }],
+
     labels: ['Blocked'],
+
     branch: 'wrong',
+
     sha: 'wrong',
   });
   assert.equal(review.phase, 'review');
@@ -184,9 +247,13 @@ test('remote protocol projects idle, complete, review, and lease edge states', (
   assert.equal(
     projectRemoteState({
       issue: 7,
+
       markers: ['sloop/v1/run/run'],
+
       manifest: { ...manifest, phase: 'complete' },
+
       branch: manifest.branch,
+
       sha: manifest.baseSha.slice(0, 7),
     }).phase,
     'complete',
@@ -198,14 +265,23 @@ test('remote protocol projects idle, complete, review, and lease edge states', (
 test('remote state validates durable records and canonical helper contracts', () => {
   const manifest = {
     protocol: REMOTE_PROTOCOL,
+
     runId: 'run',
+
     issue: 7,
+
     branch: 'codex/issue-7',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'c',
+
     artifacts: [],
   };
 
@@ -239,28 +315,48 @@ test('remote state validates durable records and canonical helper contracts', ()
 test('remote state accounts for successful checks, matching refs, and lease ownership', () => {
   const manifest = {
     protocol: REMOTE_PROTOCOL,
+
     runId: 'run',
+
     issue: 7,
+
     branch: 'codex/issue-7',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'claimed',
+
     reviewRound: 1,
+
     contextCursor: 'c',
+
     artifacts: ['sloop/v1/artifact/z'],
+
     lease: { owner: 'worker-a', expiresAt: new Date(2).toISOString() },
   };
   const projection = projectRemoteState({
     issue: 7,
+
     comments: [{ marker: 'sloop/v1/run/run' }, { marker: 'sloop/v1/artifact/a' }],
+
     manifest,
+
     checks: [{ name: 'green', status: 'COMPLETED', conclusion: 'success' }],
+
     reviews: [{ state: 'APPROVED' }, { state: 'DISMISSED' }],
+
     inlineThreads: [{ resolved: true }],
+
     labels: ['ordinary'],
+
     branch: manifest.branch,
+
     sha: manifest.baseSha,
+
     now: 1,
+
     leaseOwner: 'worker-b',
   });
 
@@ -275,9 +371,13 @@ test('remote state accounts for successful checks, matching refs, and lease owne
   assert.deepEqual(
     projectRemoteState({
       issue: 7,
+
       markers: ['sloop/v1/run/run'],
+
       manifest: { ...manifest, lease: { owner: 'worker-a', expiresAt: new Date(1).toISOString() } },
+
       now: 1,
+
       leaseOwner: 'worker-a',
     }).openGates,
     [],
@@ -286,9 +386,12 @@ test('remote state accounts for successful checks, matching refs, and lease owne
   assert.equal(
     projectRemoteState({
       issue: 7,
+
       markers: ['sloop/v1/run/run'],
+
       manifest: {
         ...manifest,
+
         lease: { owner: 'worker-a', expiresAt: '2099-01-01T00:00:00.000Z' },
       },
     }).lease.active,

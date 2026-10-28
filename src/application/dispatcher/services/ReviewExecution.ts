@@ -44,7 +44,9 @@ async function runReview(
   const review = requireCurrentReview(latest, marker, role, prNumber, round, expectedHead);
   return {
     verdict: reviewVerdict(review.body),
+
     body: review.body,
+
     evidence: latest,
   };
 }

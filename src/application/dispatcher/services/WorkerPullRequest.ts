@@ -71,21 +71,30 @@ function persistWorkerPullRequest(d: Deps, issue: Issue, pr: number, evidence: P
   const branch = state.branch ?? evidence.headRefName;
   d.save({
     ...state,
+
     pr,
+
     branch,
+
     headSha: evidence.headRefOid,
+
     workerPid: undefined,
+
     workerHeartbeatAt: d.now(),
   });
   status(d, issue.number, 'worker_ready_for_review', {
     pr,
+
     branch,
+
     headSha: evidence.headRefOid,
   });
 }
 
 export const WorkerPullRequest = {
   readWorkerMetadata,
+
   verifyWorkerPullRequest,
+
   persistWorkerPullRequest,
 };

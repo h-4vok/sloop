@@ -27,6 +27,7 @@ function createIssueRunLogger(d: Deps, issue: Issue, runId: string, recovery: bo
   if (remote)
     logger.write('remote-projection', {
       projection: remote.projection,
+
       snapshot: allowlistedPublication(remote.snapshot),
     });
 

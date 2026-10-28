@@ -57,6 +57,7 @@ export function codexCliInvocation(
 
   return {
     command: 'powershell.exe',
+
     args: [
       '-NoLogo',
       '-NoProfile',
@@ -64,6 +65,7 @@ export function codexCliInvocation(
       '-EncodedCommand',
       Buffer.from(script, 'utf16le').toString('base64'),
     ],
+
     stdin: `${args.length}\n${args.map((arg) => Buffer.from(arg, 'utf8').toString('base64')).join('\n')}\n`,
   };
 }

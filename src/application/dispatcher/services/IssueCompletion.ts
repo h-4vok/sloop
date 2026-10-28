@@ -14,8 +14,11 @@ function completeIssue(
 ): void {
   status(d, issue.number, 'qa_approved', {
     headSha: evidence.headRefOid,
+
     lastQaFeedback: qaFeedback,
+
     lastError: undefined,
+
     lastErrorVerbose: undefined,
   });
   publishHumanReviewGuide(d, evidence, round);
@@ -23,8 +26,11 @@ function completeIssue(
   const state = d.load();
   d.save({
     ...state,
+
     completedIssues: [...new Set([...(state.completedIssues ?? []), issue.number])],
+
     workerPid: undefined,
+
     drainStatus: 'running',
   });
   d.comment(

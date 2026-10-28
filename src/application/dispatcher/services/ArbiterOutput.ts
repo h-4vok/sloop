@@ -41,13 +41,16 @@ function createStructuredArbiterOutput(
     return {
       spec: {
         ...spec,
+
         args: withOption(
           withOption(spec.args, '--output-schema', schemaPath),
           '--output-last-message',
           outputPath,
         ),
       },
+
       outputPath,
+
       directory,
     };
   } catch (error) {
@@ -59,5 +62,6 @@ function createStructuredArbiterOutput(
 /** Prepares temporary, strict JSON-schema output settings for the Arbiter CLI. */
 export const ArbiterOutput = {
   withOption,
+
   createStructuredArbiterOutput,
 };

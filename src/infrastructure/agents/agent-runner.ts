@@ -121,10 +121,15 @@ function context(value: unknown): RunContext {
     throw new AgentContractError('wrong-context');
   return {
     run: nonEmpty(c.run, 'run'),
+
     issue,
+
     pr: c.pr as number | undefined,
+
     round,
+
     sha: nonEmpty(c.sha, 'sha'),
+
     cursor: nonEmpty(c.cursor, 'cursor'),
   };
 }
@@ -146,9 +151,13 @@ const agentEnvelopeValidator = Object.freeze({
 
     return {
       schema: AGENT_OUTPUT_VERSION,
+
       context: runContext,
+
       producer: envelope.producer as Role,
+
       status: envelope.status as RunStatus,
+
       payload,
     };
   },
@@ -281,8 +290,11 @@ const defaultExec: ProcessExecutor = (command, args, options) =>
   new Promise((resolve, reject) => {
     const child = spawn(command, [...args], {
       cwd: options.cwd,
+
       env: options.env,
+
       shell: false,
+
       stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     if (!child.stdout || !child.stderr || (options.stdin !== undefined && !child.stdin)) {
@@ -395,7 +407,9 @@ export class ArbitraryCommandRunner implements AgentRunner {
 
     return {
       outputPath,
+
       environment: this.createAgentEnvironment(inputPath, outputPath, schemaPath, context),
+
       persistedPath,
     };
   }
@@ -446,14 +460,23 @@ export class ArbitraryCommandRunner implements AgentRunner {
   ): NodeJS.ProcessEnv {
     return {
       ...process.env,
+
       SLOOP_AGENT_INPUT: inputPath,
+
       SLOOP_AGENT_OUTPUT: outputPath,
+
       SLOOP_AGENT_SCHEMA: schemaPath,
+
       SLOOP_AGENT_RUN: context.run,
+
       SLOOP_AGENT_ISSUE: String(context.issue),
+
       SLOOP_AGENT_PR: context.pr === undefined ? '' : String(context.pr),
+
       SLOOP_AGENT_ROUND: String(context.round),
+
       SLOOP_AGENT_SHA: context.sha,
+
       SLOOP_AGENT_CONTEXT_CURSOR: context.cursor,
     };
   }
@@ -516,9 +539,13 @@ export class ArbitraryCommandRunner implements AgentRunner {
     try {
       return await (this.options.execute ?? defaultExec)(this.command, args, {
         cwd: this.options.cwd,
+
         env: environment,
+
         timeoutMs: this.options.timeoutMs ?? 120000,
+
         onStdout: (chunk) => this.options.log?.('stdout', chunk),
+
         onStderr: (chunk) => this.options.log?.('stderr', chunk),
       });
     } catch (error) {
@@ -606,10 +633,12 @@ export class CodexAgentRunner extends ArbitraryCommandRunner {
     const execute = options.execute ?? defaultExec;
     super('codex', args, {
       ...options,
+
       execute: async (_command, receivedArgs, processOptions) => {
         const invocation = codexCliInvocation(receivedArgs);
         return execute(invocation.command, invocation.args, {
           ...processOptions,
+
           ...(invocation.stdin === undefined ? {} : { stdin: invocation.stdin }),
         });
       },

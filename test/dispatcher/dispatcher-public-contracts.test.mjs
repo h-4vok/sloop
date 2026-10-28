@@ -63,16 +63,24 @@ test('public command and commit helpers cover optional and invalid inputs', asyn
   assert.equal(command(undefined, 1), undefined);
   assert.deepEqual(command(['node', '-e', ''], 1), {
     command: 'node',
+
     args: ['-e', ''],
+
     timeoutMs: 120000,
+
     retries: 0,
+
     logInvocation: undefined,
   });
   assert.deepEqual(command({ command: 'node', args: [] }, 1), {
     command: 'node',
+
     args: [],
+
     timeoutMs: 120000,
+
     retries: 0,
+
     logInvocation: undefined,
   });
   assert.throws(() => command({ command: 'node && bad', args: [] }, 1), /shell operators/);
@@ -119,7 +127,9 @@ test('review feedback includes only matching QA review bodies for the requested 
     reviewFeedback(
       {
         number: 7,
+
         headRefOid: 'abc',
+
         reviews: [
           { body: '[QA/SDET Review] round=1 verdict=passed', commitId: 'abc' },
           { body: '[QA/SDET Review] round=2 verdict=blocked', commitId: 'abc' },
@@ -143,10 +153,15 @@ test('native dispatcher GitHub operations preserve argv, repository scoping, and
     if (args[0] === 'pr' && args[1] === 'view' && args.some((arg) => arg.includes('number,state')))
       return JSON.stringify({
         number: 7,
+
         body: undefined,
+
         merge_state_status: 'CLEAN',
+
         reviews: [{ body: 'review', submitted_at: 'two', commit: { oid: 'abc' } }],
+
         comments: [{ body: 'comment', created_at: 'one' }],
+
         statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'https://x' }],
       });
     if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({});

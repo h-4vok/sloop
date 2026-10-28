@@ -57,8 +57,11 @@ async function waitForCi(
       const feedback = checkFeedback(checks);
       d.save({
         ...d.load(),
+
         mainGreen: true,
+
         lastCiFeedback: feedback,
+
         headSha: latest.headRefOid,
       });
       return { passed: true, evidence: latest };
@@ -75,7 +78,10 @@ async function waitForCi(
 
 export const CiEvidence = {
   normalizeCheckStatus,
+
   checkFeedback,
+
   ciState,
+
   waitForCi,
 };

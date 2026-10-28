@@ -5,6 +5,7 @@ type ParserResult<T> = Result<T, ConfigValidationError>;
 
 const invalid = (path: string, message: string): ParserResult<never> => ({
   ok: false,
+
   error: new ConfigValidationError([{ path, message }]),
 });
 
@@ -99,9 +100,13 @@ const shellExecutable = (argument: string): boolean => {
 const allowedExecutables = new Set(['codex', 'env', 'gh', 'git', 'npm']);
 const executableIndirectionOptions: Readonly<Record<string, readonly RegExp[]>> = Object.freeze({
   codex: [],
+
   env: [],
+
   gh: [/^(?:alias|extension)$/i],
+
   git: [/^(?:alias|difftool|filter-branch|mergetool|shell)$/i, /^--exec(?:=|$)/i],
+
   npm: [/^(?:exec|x|explore)$/i],
 });
 
@@ -224,12 +229,20 @@ const unrestrictedStringParser = (value: unknown, path: string): ParserResult<st
 
 export const configValueParsers = Object.freeze({
   stringParser,
+
   booleanParser,
+
   integerParser,
+
   enumParser,
+
   listParser,
+
   durationParser,
+
   argvParser,
+
   pathParser,
+
   unrestrictedStringParser,
 });

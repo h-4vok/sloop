@@ -29,9 +29,13 @@ function reconcilePersistedRun(d: Deps, initial: State): void {
     const message = `Active run reconciliation blocked: ${result.reason}`;
     d.save({
       ...initial,
+
       status: 'blocked',
+
       lastError: message,
+
       lastErrorVerbose: message,
+
       updatedAt: d.now(),
     });
     d.runLogger?.write('reconciliation', result);
@@ -40,11 +44,17 @@ function reconcilePersistedRun(d: Deps, initial: State): void {
   if (result.outcome === 'terminal') {
     d.save({
       ...initial,
+
       status: 'done',
+
       completedIssues: [...new Set([...(initial.completedIssues ?? []), initial.issue])],
+
       drainStatus: 'running',
+
       lastError: `Reconciled completed run: ${result.reason}`,
+
       lastErrorVerbose: undefined,
+
       updatedAt: d.now(),
     });
     d.runLogger?.write('reconciliation', result);
@@ -60,6 +70,8 @@ function validateRequiredAgentCommands(cfg: Config): void {
 
 export const DispatcherPreflight = {
   validateDispatcherCompatibility,
+
   reconcilePersistedRun,
+
   validateRequiredAgentCommands,
 };

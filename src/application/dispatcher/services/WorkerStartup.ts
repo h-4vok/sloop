@@ -44,9 +44,13 @@ function startWorkerRun(cfg: Config, d: Deps, issue: Issue, round: number, pr: n
   logger.write('transition', { phase: 'worker', round, issue: issue.number, pr });
   status(d, issue.number, 'worker_recovery_pending', {
     workerRunId: runId,
+
     workerRecoveryCount: (d.load().workerRecoveryCount ?? 0) + 1,
+
     reviewRound: round,
+
     lastError: undefined,
+
     lastErrorVerbose: undefined,
   });
 
@@ -112,11 +116,15 @@ function createWorkerInvocation(
     d,
     {
       ...spec,
+
       env: {
         ...spec.env,
+
         SLOOP_ISSUE_NUMBER: String(issue.number),
+
         SLOOP_PR_BODY: initialPrBody,
       },
+
       input: prompt,
     },
     issue.number,
@@ -129,7 +137,10 @@ function createWorkerInvocation(
 
 export const WorkerStartup = {
   validateWorkerConfiguration,
+
   validateRecoverableWorkerPr,
+
   startWorkerRun,
+
   createWorkerInvocation,
 };

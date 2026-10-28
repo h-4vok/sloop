@@ -23,9 +23,13 @@ function prepareFreshWorker(
     : d.prepareWorkerBranch(issue.number);
   d.save({
     ...d.load(),
+
     branch: prepared.branch,
+
     mainBaseSha: 'baseSha' in prepared ? prepared.baseSha : prepared.mainBaseSha,
+
     ...('headSha' in prepared ? { headSha: prepared.headSha } : {}),
+
     ...('ownership' in prepared ? { workerRunId: prepared.ownership.runId } : {}),
   });
   if (claimed) publishRemoteManifest(cfg, d, issue.number, 'working', claimed);
@@ -44,6 +48,7 @@ async function prepareRecoveryWorker(
   await recoverOrCheckoutWorker(d, issue, manifest, branch);
   status(d, issue.number, 'worker_recovery_pending', {
     pr: d.load().pr,
+
     workerRecoveryCount: d.load().workerRecoveryCount ?? 0,
   });
   d.comment(
@@ -63,8 +68,11 @@ async function adoptExistingPrBranch(
   if (evidence.state?.toUpperCase() !== 'OPEN' || !evidence.headRefName) return undefined;
   d.save({
     ...d.load(),
+
     pr: evidence.number,
+
     branch: evidence.headRefName,
+
     headSha: evidence.headRefOid,
   });
   return evidence.headRefName;
@@ -119,5 +127,6 @@ async function prepareWorkerWorkspace(
 
 export const DispatchWorkspace = {
   prepareWorkerWorkspace,
+
   prepareRecoveryWorker,
 };

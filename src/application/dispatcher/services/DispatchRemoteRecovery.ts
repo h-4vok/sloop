@@ -49,7 +49,9 @@ function createHydrationManifest(
   if (!preparedPr) return manifest;
   return {
     ...manifest,
+
     pr: preparedPr.number,
+
     branch: manifest.branch === 'pending' ? preparedPr.headRefName! : manifest.branch,
   };
 }
@@ -61,9 +63,13 @@ function savePreparedRecoveryPr(
   if (!preparedPr) return;
   d.save({
     ...d.load(),
+
     pr: preparedPr.number,
+
     branch: preparedPr.headRefName,
+
     headSha: preparedPr.headRefOid,
+
     mainBaseSha: preparedPr.baseRefOid ?? d.load().mainBaseSha,
   });
 }
@@ -76,8 +82,11 @@ async function adoptRemotePullRequest(d: Deps, manifest: RunManifest): Promise<v
   if (d.load().branch === evidence.headRefName) return;
   d.save({
     ...d.load(),
+
     pr: evidence.number,
+
     branch: evidence.headRefName,
+
     headSha: evidence.headRefOid,
   });
 }

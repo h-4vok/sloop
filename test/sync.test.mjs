@@ -145,11 +145,13 @@ test('sync omits custom label keys from canonical output', () => {
   const outputMessages = [];
   const custom = {
     ...config,
+
     github: { ...config.github, labels: { ...config.github.labels, priority: ['custom'] } },
   };
   const syncWithInjectedOutput = () =>
     syncPrerequisites(root, custom, {
       runner: (file) => (file === 'git' ? 'git@github.com:owner/repo.git' : ''),
+
       output: (message) => outputMessages.push(message),
     });
 
@@ -174,6 +176,7 @@ test('sync skips creation for an existing label', () => {
         }
         return '';
       },
+
       output: (message) => outputMessages.push(message),
     });
 

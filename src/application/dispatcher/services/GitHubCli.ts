@@ -50,5 +50,6 @@ function ghJson<T>(
 
 export const GitHubCli = {
   gh,
+
   ghJson,
 };

@@ -29,6 +29,7 @@ export const runCliConfigCommand = Object.freeze({
       ? context.modules.config
       : {
           ...(await import('../config/runConfigCommand.js')),
+
           ...(await import('../../adapters.js')),
         };
 

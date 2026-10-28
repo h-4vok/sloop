@@ -37,6 +37,8 @@ function findingIds(feedback: string): string[] {
 
 export const ReviewBudget = {
   effectiveMaxRounds,
+
   maxRoundsForUserBudget,
+
   findingIds,
 };

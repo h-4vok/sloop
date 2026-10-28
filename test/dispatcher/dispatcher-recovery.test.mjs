@@ -29,8 +29,11 @@ test('recovery adopts the open PR branch when persisted branch is absent', async
   const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       status: 'worker_recovery_pending',
+
       workerRunId: 'recovery-test',
     },
   });
@@ -67,25 +70,44 @@ test('new issue claim clears the completed issue PR context before validation', 
     ],
     {
       headRefName: 'codex/issue-17',
+
       initialState: {
         issue: 16,
+
         status: 'ready_for_human_merge',
+
         pr: 16,
+
         branch: 'codex/issue-16',
+
         headSha: 'old-head',
+
         mainBaseSha: 'old-main',
+
         reviewRound: 9,
+
         lastCiFeedback: 'old CI feedback',
+
         lastQaFeedback: 'old QA feedback',
+
         lastStaffFeedback: 'old Staff feedback',
+
         taskContext: 'old task context',
+
         workerRunId: 'old-run',
+
         workerPid: 123,
+
         workerStartedAt: 1,
+
         workerHeartbeatAt: 1,
+
         workerRecoveryCount: 4,
+
         lastError: 'old error',
+
         completedIssues: [16],
+
         mainGreen: true,
       },
     },
@@ -103,11 +125,17 @@ test('new issue claim clears the completed issue PR context before validation', 
 
   assert.deepEqual(claimSave, {
     completedIssues: [16],
+
     mainGreen: true,
+
     issue: 17,
+
     status: 'claimed',
+
     reviewRound: 1,
+
     drainStatus: 'running',
+
     updatedAt: claimSave.updatedAt,
   });
   assert.equal(dispatcherHarness.runs[0].input.includes('An existing PR is #16'), false);
@@ -171,38 +199,62 @@ test('recovery with a stale remote branch adopts the existing PR branch and reac
   const now = Date.now();
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     headRefName: 'codex/issue-1-137e',
+
     initialState: {
       issue: 1,
+
       pr: 14,
+
       status: 'worker_recovery_pending',
+
       reviewRound: 4,
+
       workerPid: -1,
+
       workerStartedAt: now - 101,
+
       workerHeartbeatAt: now - 101,
     },
   });
   dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       protocol: 1,
+
       issue: 1,
+
       pr: 14,
+
       manifest: {
         protocol: 1,
+
         runId: 'recovery-run',
+
         issue: 1,
+
         pr: 14,
+
         branch: 'codex/issue-1-stale',
+
         baseSha: 'abcdef1',
+
         configFingerprint: 'test-config',
+
         phase: 'working',
+
         reviewRound: 4,
+
         contextCursor: '',
+
         artifacts: ['sloop-v1/run/recovery-artifact'],
       },
+
       markers: ['sloop/v1/run/recovery-run'],
     }),
+
     reconcile: () => true,
+
     claim: () => {},
+
     publish: () => {},
   };
   let prepared = 0;
@@ -248,10 +300,15 @@ test('recovery explains why an issue is not eligible', async () => {
   const dispatcherHarness = createMockDispatcherHarness([], {
     initialState: {
       issue: 31,
+
       status: 'worker_running',
+
       pr: 54,
+
       branch: 'codex/issue-31',
+
       reviewRound: 9,
+
       workerPid: -1,
     },
   });
@@ -313,6 +370,7 @@ test('QA feedback persists concise context and the complete diagnostic', async (
     '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n[Q1] fail - café output';
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     qaVerdicts: ['changes_requested', 'passed'],
+
     qaBodies: [diagnostic],
   });
   await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
@@ -348,11 +406,17 @@ test('blocked issue with PR context enters recovery instead of a fresh claim', a
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'recover me' }], {
     initialState: {
       issue: 1,
+
       status: 'blocked',
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       headSha: 'old-head',
+
       reviewRound: 3,
+
       lastQaFeedback: 'actionable QA finding',
     },
   });
@@ -372,17 +436,29 @@ test('recovery rejects a conflicting persisted branch', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'main',
+
       status: 'worker_running',
+
       workerRunId: 'corrupt-recovery-state',
+
       workerPid: -1,
+
       workerStartedAt: now - 1000,
+
       workerHeartbeatAt: now - 1000,
+
       workerRecoveryCount: 0,
+
       reviewRound: 1,
+
       completedIssues: [],
+
       drainStatus: 'running',
+
       updatedAt: now,
     },
   });
@@ -399,14 +475,23 @@ test('conflicting Worker PR is rejected before reviews', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }]);
   dispatcherHarness.dependencies.pullRequest = () => ({
     number: 14,
+
     state: 'OPEN',
+
     baseRefName: 'main',
+
     headRefName: 'codex/issue-1',
+
     headRefOid: 'abc1',
+
     mergeStateStatus: 'DIRTY',
+
     mergeable: 'CONFLICTING',
+
     comments: [{ body: '[Worker] round=1 status=ready_for_review pr=14 base=main commit=abc1' }],
+
     reviews: [],
+
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   });
   await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
@@ -453,8 +538,11 @@ test('active live run remains exclusive while stale recovery is allowed', async 
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     initialState: {
       issue: 1,
+
       status: 'worker_running',
+
       workerPid: process.pid,
+
       workerHeartbeatAt: Date.now(),
     },
   });
@@ -621,6 +709,7 @@ test('dispatcher records role command errors as recoverable Worker failures', as
 test('dispatcher times out when required PR checks remain pending', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     checkSequences: [[{ name: 'pr-checks', status: 'IN_PROGRESS' }]],
+
     config: { checkTimeoutMs: -1 },
   });
   const originalError = console.error;
@@ -645,6 +734,7 @@ test('dispatcher polls pending PR checks until they pass', async () => {
       [{ name: 'pr-checks', status: 'IN_PROGRESS' }],
       [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
     ],
+
     config: { checkTimeoutMs: 60_000, checkPollIntervalMs: 0 },
   });
   const observedWaits = [];
@@ -702,6 +792,7 @@ test('dispatcher rejects Worker evidence when the PR targets another base branch
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }]);
   dispatcherHarness.dependencies.pullRequest = () => ({
     ...dispatcherHarness.pr,
+
     baseRefName: 'develop',
   });
   const originalError = console.error;
@@ -722,15 +813,21 @@ test('recovery refuses to run Worker against a closed PR', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       workerRunId: 'closed-pr-recovery',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
     },
   });
   dispatcherHarness.dependencies.pullRequest = () => ({
     ...dispatcherHarness.pr,
+
     state: 'CLOSED',
   });
   dispatcherHarness.dependencies.checkoutWorkerBranch = () => {};
@@ -746,10 +843,15 @@ test('recovery refuses to run Worker when the PR has no head branch', async () =
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       workerRunId: 'headless-pr-recovery',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
     },
   });
@@ -774,6 +876,7 @@ test('failed CI pauses at the review cap instead of launching another Worker', a
       [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
       [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'FAILURE' }],
     ],
+
     config: { maxReviewRounds: 1 },
   });
   const originalError = console.error;
@@ -795,13 +898,18 @@ test('failed CI pauses at the review cap instead of launching another Worker', a
 test('escalated Arbiter findings move the run to human review without another Worker', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - unresolved contract finding',
     ],
+
     arbiterAction: 'escalate',
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterCommand: { command: 'codex', args: [] },
     },
   });
@@ -820,14 +928,17 @@ test('dispatcher continues when remote claim failure is reconciled by its artifa
   let reconciliations = 0;
   dispatcherHarness.dependencies.remote = {
     snapshot: () => ({ issue: 1, markers: [] }),
+
     claim: () => {
       claimAttempts += 1;
       throw new Error('remote claim response was lost');
     },
+
     reconcile: () => {
       reconciliations += 1;
       return true;
     },
+
     publish: () => {},
   };
 
@@ -843,38 +954,61 @@ test('dispatcher continues when failed remote publication is reconciled', async 
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       workerRunId: 'remote-recovery-run',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
     },
   });
   const manifest = {
     protocol: 1,
+
     runId: 'remote-recovery-run',
+
     issue: 1,
+
     pr: 14,
+
     branch: 'codex/issue-1',
+
     baseSha: 'abc1234',
+
     configFingerprint: 'config-v1',
+
     phase: 'blocked',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'remote-recovery-run' })],
   };
   const published = [];
   dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       issue: 1,
+
       pr: 14,
+
       prState: 'OPEN',
+
       branch: 'codex/issue-1',
+
       manifest,
+
       markers: ['sloop/v1/run/remote-recovery-run'],
     }),
+
     claim: () => assert.fail('existing remote run must not be claimed again'),
+
     reconcile: () => true,
+
     publish: () => {
       published.push('attempted');
       throw new Error('remote publication response was lost');
@@ -893,12 +1027,18 @@ test('dispatcher pauses an over-budget recovery before launching a replacement W
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       workerRunId: 'over-budget-recovery',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 3,
     },
+
     config: { maxReviewRounds: 1 },
   });
   dispatcherHarness.dependencies.checkoutWorkerBranch = () => {};
@@ -917,13 +1057,18 @@ test('dispatcher pauses an over-budget recovery before launching a replacement W
 test('Arbiter waits for its configured review threshold before intervening', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
     ],
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 3,
+
       arbiterStagnatingAppearances: 99,
+
       arbiterCommand: { command: 'codex', args: [] },
     },
   });

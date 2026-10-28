@@ -21,13 +21,20 @@ test('review-cap resolution uses the host for identity and publication while enf
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1', 'Q2'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -40,18 +47,26 @@ test('review-cap resolution uses the host for identity and publication while enf
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
+
         mergeable: 'MERGEABLE',
+
         mergeStateStatus: 'CLEAN',
+
         comments: [{ body: 'An unrelated pull request comment.' }],
+
         statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
       });
     return '';
   });
   const options = {
     steer: 'ship this',
+
     abandon: false,
+
     waiveAllOutstanding: false,
+
     waivedFindingIds: ['q1', 'q2'],
+
     additionalRounds: 0,
   };
 
@@ -123,9 +138,13 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
+
         mergeable: 'MERGEABLE',
+
         mergeStateStatus: 'CLEAN',
+
         comments: [],
+
         statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
       });
     return '';
@@ -134,9 +153,13 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
   resolveReviewCap(
     {
       steer: 'resume with the local listing reproduction',
+
       abandon: false,
+
       waiveAllOutstanding: false,
+
       waivedFindingIds: [],
+
       additionalRounds: 2,
     },
     { requiredPrChecks: ['pr-checks'] },
@@ -165,9 +188,13 @@ test('review-cap abandonment requires an active review-cap run', () => {
       resolveReviewCap(
         {
           steer: 'stop this run',
+
           abandon: true,
+
           waiveAllOutstanding: false,
+
           waivedFindingIds: [],
+
           additionalRounds: 0,
         },
         {},
@@ -186,13 +213,20 @@ test('review-cap resume rejects a remote manifest for a different PR', () => {
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -200,23 +234,37 @@ test('review-cap resume rejects a remote manifest for a different PR', () => {
   );
   const manifest = {
     protocol: 1,
+
     runId: 'remote-run',
+
     issue: 1,
+
     pr: 8,
+
     branch: 'codex/issue-1',
+
     baseSha: 'abc1234',
+
     configFingerprint: 'config-v1',
+
     phase: 'blocked',
+
     reviewRound: 2,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'remote-run' })],
   };
   const remote = {
     snapshot: () => ({
       issue: 1,
+
       pr: 7,
+
       prState: 'OPEN',
+
       branch: 'codex/issue-1',
+
       manifest,
     }),
   };
@@ -225,11 +273,17 @@ test('review-cap resume rejects a remote manifest for a different PR', () => {
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
+
         state: 'OPEN',
+
         headRefName: 'codex/issue-1',
+
         headRefOid: 'abc1234',
+
         mergeable: 'MERGEABLE',
+
         mergeStateStatus: 'CLEAN',
+
         comments: [],
       });
     return '';
@@ -240,9 +294,13 @@ test('review-cap resume rejects a remote manifest for a different PR', () => {
       resolveReviewCap(
         {
           steer: 'resume the reviewed work',
+
           abandon: false,
+
           waiveAllOutstanding: false,
+
           waivedFindingIds: [],
+
           additionalRounds: 1,
         },
         {},
@@ -264,13 +322,20 @@ test('review-cap resume rejects a PR head that changed after remote reconciliati
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -278,23 +343,37 @@ test('review-cap resume rejects a PR head that changed after remote reconciliati
   );
   const manifest = {
     protocol: 1,
+
     runId: 'remote-run',
+
     issue: 1,
+
     pr: 7,
+
     branch: 'codex/issue-1',
+
     baseSha: 'abc1234',
+
     configFingerprint: 'config-v1',
+
     phase: 'blocked',
+
     reviewRound: 2,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'remote-run' })],
   };
   const remote = {
     snapshot: () => ({
       issue: 1,
+
       pr: 7,
+
       prState: 'OPEN',
+
       branch: 'codex/issue-1',
+
       manifest,
     }),
   };
@@ -303,11 +382,17 @@ test('review-cap resume rejects a PR head that changed after remote reconciliati
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
+
         state: 'OPEN',
+
         headRefName: 'codex/issue-1-updated',
+
         headRefOid: 'def5678',
+
         mergeable: 'MERGEABLE',
+
         mergeStateStatus: 'CLEAN',
+
         comments: [],
       });
     return '';
@@ -318,9 +403,13 @@ test('review-cap resume rejects a PR head that changed after remote reconciliati
       resolveReviewCap(
         {
           steer: 'resume the reviewed work',
+
           abandon: false,
+
           waiveAllOutstanding: false,
+
           waivedFindingIds: [],
+
           additionalRounds: 1,
         },
         {},
@@ -342,13 +431,20 @@ test('review-cap waiver requires a clean PR with green checks', () => {
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -359,9 +455,13 @@ test('review-cap waiver requires a clean PR with green checks', () => {
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
+
         mergeable: 'CONFLICTING',
+
         mergeStateStatus: 'DIRTY',
+
         comments: [],
+
         statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'FAILURE' }],
       });
     if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
@@ -373,9 +473,13 @@ test('review-cap waiver requires a clean PR with green checks', () => {
       resolveReviewCap(
         {
           steer: 'waive after review',
+
           abandon: false,
+
           waiveAllOutstanding: false,
+
           waivedFindingIds: ['Q1'],
+
           additionalRounds: 0,
         },
         { requiredPrChecks: ['pr-checks'] },
@@ -396,14 +500,22 @@ test('review-cap resume republishes the updated remote manifest after granting a
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       branch: 'codex/issue-1',
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -411,27 +523,43 @@ test('review-cap resume republishes the updated remote manifest after granting a
   );
   const manifest = {
     protocol: 1,
+
     runId: 'remote-run',
+
     issue: 1,
+
     pr: 7,
+
     branch: 'codex/issue-1',
+
     baseSha: 'abc1234',
+
     configFingerprint: 'config-v1',
+
     phase: 'blocked',
+
     reviewRound: 2,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'remote-run' })],
   };
   const published = [];
   const remote = {
     snapshot: () => ({
       issue: 1,
+
       pr: 7,
+
       prState: 'OPEN',
+
       branch: 'codex/issue-1',
+
       sha: 'abc1234',
+
       manifest,
     }),
+
     publish: (issue, nextManifest) => published.push({ issue, manifest: nextManifest }),
   };
   const fake = createMockGitHubHost((args) => {
@@ -439,11 +567,17 @@ test('review-cap resume republishes the updated remote manifest after granting a
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
+
         state: 'OPEN',
+
         headRefName: 'codex/issue-1',
+
         headRefOid: 'abc1234',
+
         mergeable: 'MERGEABLE',
+
         mergeStateStatus: 'CLEAN',
+
         comments: [],
       });
     if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
@@ -453,9 +587,13 @@ test('review-cap resume republishes the updated remote manifest after granting a
   resolveReviewCap(
     {
       steer: 'resume the reviewed work',
+
       abandon: false,
+
       waiveAllOutstanding: false,
+
       waivedFindingIds: [],
+
       additionalRounds: 1,
     },
     {},
@@ -470,9 +608,12 @@ test('review-cap resume republishes the updated remote manifest after granting a
   assert.equal(published.length, 1);
   assert.deepEqual(published[0], {
     issue: 1,
+
     manifest: {
       ...manifest,
+
       phase: 'blocked',
+
       lease: undefined,
     },
   });
@@ -482,40 +623,65 @@ test('review-cap resume republishes the updated remote manifest after granting a
 test('prepared remote recovery rejects a manifest branch mismatch', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     prNumber: 7,
+
     initialState: {
       issue: 1,
+
       pr: 7,
+
       branch: 'codex/issue-1',
+
       status: 'worker_recovery_pending',
+
       workerRunId: 'prepared-run',
+
       preparedRecovery: true,
+
       reviewRound: 1,
     },
   });
   const manifest = {
     protocol: 1,
+
     runId: 'prepared-run',
+
     issue: 1,
+
     branch: 'codex/issue-99',
+
     baseSha: 'abc1234',
+
     configFingerprint: 'config-v1',
+
     phase: 'blocked',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'prepared-run' })],
   };
   dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       protocol: 1,
+
       issue: 1,
+
       pr: 7,
+
       prState: 'OPEN',
+
       branch: 'pending',
+
       manifest,
+
       markers: ['sloop/v1/run/prepared-run'],
     }),
+
     reconcile: () => true,
+
     claim: () => {},
+
     publish: () => {},
   };
 

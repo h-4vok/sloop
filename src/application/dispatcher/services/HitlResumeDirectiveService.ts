@@ -35,15 +35,24 @@ function hitlResumeDirective(
     return [
       {
         index,
+
         createdAt: createdAt ? Date.parse(createdAt) : undefined,
+
         id,
+
         value: {
           issue,
+
           pr,
+
           round: Number(match[3]),
+
           sha: match[4],
+
           waivedFindingIds: match[5] === 'none' ? [] : match[5].split(','),
+
           additionalRounds: Number(match[6]),
+
           steer: match[7],
         },
       },
@@ -60,5 +69,6 @@ function hitlResumeDirective(
 
 export const HitlResumeDirectiveService = {
   activeRunForHitl,
+
   hitlResumeDirective,
 };

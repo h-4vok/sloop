@@ -18,20 +18,32 @@ test(
     writeFileSync(join(root, 'normalize.mjs'), 'export const normalize = (value) => value;\n');
     const issue = {
       number: 41,
+
       title: 'Normalize surrounding whitespace in display names',
+
       body: 'Acceptance: normalize("  Ada  ") returns "Ada"; normalize("Ada") returns "Ada". Preserve internal spaces. Scope: string inputs only. No GitHub repository exists for this fictional issue.',
     };
     const pr = {
       number: 73,
+
       state: 'OPEN',
+
       baseRefName: 'main',
+
       headRefName: 'codex/issue-41',
+
       headRefOid: 'a'.repeat(40),
+
       body: 'Fictional implementation: normalize returns its input unchanged. Closes #41',
+
       mergeStateStatus: 'CLEAN',
+
       mergeable: 'MERGEABLE',
+
       comments: [],
+
       reviews: [],
+
       statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
     };
     let state = {};
@@ -45,10 +57,14 @@ test(
     const boundary = 'TEST_BOUNDARY: first Arbiter ruling consumed';
     const cfg = {
       baseBranch: 'main',
+
       workerCommand: { command: 'mock-worker', args: [] },
+
       qaCommand: { command: 'mock-qa', args: [] },
+
       arbiterCommand: {
         command: 'codex',
+
         args: [
           'exec',
           '--skip-git-repo-check',
@@ -59,32 +75,49 @@ test(
           '-c',
           'model_reasoning_effort=low',
         ],
+
         timeoutMs: 600_000,
+
         retries: 0,
       },
+
       arbiterReviewRounds: 3,
+
       arbiterStagnatingAppearances: 2,
+
       maxReviewRounds: 3,
+
       evidencePollIntervalMs: 0,
+
       evidenceTimeoutMs: 1000,
+
       checkPollIntervalMs: 0,
+
       checkTimeoutMs: 1000,
     };
     const dependencies = {
       root,
+
       load: () => structuredClone(state),
+
       save: (next) => {
         state = structuredClone(next);
       },
+
       eligible: () => [issue],
+
       comment: (number, body) => {
         issueComments.push({ number, body });
       },
+
       pullRequest: () => structuredClone(pr),
+
       pullRequestBody: () => pr.body,
+
       updatePullRequestBody: (_number, body) => {
         pr.body = body;
       },
+
       prComment: (number, body) => {
         assert.equal(number, pr.number);
         pr.comments.push({ body });
@@ -95,7 +128,9 @@ test(
           throw new Error(boundary);
         }
       },
+
       createIssue: () => 74,
+
       run: async (spec) => {
         const round = Number(spec.input?.match(/review round (\d+)/)?.[1]);
         if (spec.command === 'mock-worker') {
@@ -111,7 +146,9 @@ test(
           qa++;
           pr.reviews.push({
             body: `[QA/SDET Review] round=${round} verdict=changes_requested commit=${pr.headRefOid}\n- [Q1] fail - normalize("  Ada  ") returns "  Ada  ", expected "Ada" under issue #41. The implementation is still identity; the acceptance contract explicitly requires trimming.`,
+
             commitId: pr.headRefOid,
+
             submittedAt: new Date(qa * 1000).toISOString(),
           });
           return 'QA completed';
@@ -122,10 +159,15 @@ test(
         const record = JSON.parse(spec.input.split('Record:\n')[1]);
         expected = {
           run: record.state.workerRunId,
+
           issue: 41,
+
           pr: 73,
+
           round: 2,
+
           sha: pr.headRefOid,
+
           cursor: 'arbiter-2',
         };
         const result = await runCommand(spec, root);
@@ -135,14 +177,23 @@ test(
         console.info(`Unmodified Arbiter result: ${JSON.stringify(raw)}`);
         return result;
       },
+
       now: () => Date.now(),
+
       pid: () => process.pid,
+
       processAlive: () => false,
+
       sleep: async () => {},
+
       onReclaim: () => {},
+
       tryAcquire: () => true,
+
       release: () => {},
+
       prepareWorkerBranch: () => ({ branch: pr.headRefName, mainBaseSha: 'a'.repeat(40) }),
+
       checkoutWorkerBranch: () => {},
     };
 

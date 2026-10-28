@@ -30,11 +30,17 @@ function createMockCodexProcess({ stdout = [], stderr = [], code = 0 } = {}) {
 function createMockCodexHarness(response, calls, logs = []) {
   return new CodexHarness({
     cwd: 'fixture-repository',
+
     model: 'gpt-5-codex',
+
     sandbox: 'workspace-write',
+
     reasoningEffort: 'high',
+
     timeoutMs: 1000,
+
     log: (source, chunk) => logs.push([source, chunk]),
+
     spawn: (file, args, options) => {
       const child = createMockCodexProcess(response);
       calls.push({ file, args, options, child });
@@ -45,11 +51,17 @@ function createMockCodexHarness(response, calls, logs = []) {
 
 const context = {
   issue: 114,
+
   role: 'worker',
+
   run: 'run-a',
+
   repository: 'repo context',
+
   issueContext: 'issue context',
+
   progress: 'progress',
+
   qaUpdates: 'qa updates',
 };
 function getLaunchedCodexArgs(call) {
@@ -67,6 +79,7 @@ test('CodexHarness starts with typed CLI options, extracts the session, and logs
   const harness = createMockCodexHarness(
     {
       stdout: ['{"type":"thread.started","thread_id":"session-start"}\n', '{"type":"message"}\n'],
+
       stderr: ['diagnostic\n'],
     },
     calls,
@@ -124,7 +137,9 @@ test('CodexHarness returns completed agent messages as the turn output', async (
 
   assert.deepEqual(result, {
     accepted: true,
+
     session: 'session-start',
+
     output: 'WORKER_RESULT pr=35 base=main',
   });
 });
@@ -210,10 +225,15 @@ test('CodexHarness kills timed-out processes and rejects spawn errors', async ()
   timedOutChild.kill = () => queueMicrotask(() => timedOutChild.emit('close', null));
   const timedOutHarness = new CodexHarness({
     cwd: 'fixture-repository',
+
     model: 'gpt-5-codex',
+
     sandbox: 'workspace-write',
+
     reasoningEffort: 'high',
+
     timeoutMs: 1,
+
     spawn: () => timedOutChild,
   });
 
@@ -229,10 +249,15 @@ test('CodexHarness kills timed-out processes and rejects spawn errors', async ()
   failedChild.kill = () => {};
   const failedHarness = new CodexHarness({
     cwd: 'fixture-repository',
+
     model: 'gpt-5-codex',
+
     sandbox: 'workspace-write',
+
     reasoningEffort: 'high',
+
     timeoutMs: 1000,
+
     spawn: () => {
       queueMicrotask(() => failedChild.emit('error', new Error('spawn failed')));
       return failedChild;
@@ -253,10 +278,15 @@ test('CodexHarness kills a child process when its output streams are unavailable
   };
   const harness = new CodexHarness({
     cwd: 'fixture-repository',
+
     model: 'gpt-5-codex',
+
     sandbox: 'workspace-write',
+
     reasoningEffort: 'high',
+
     timeoutMs: 1000,
+
     spawn: () => childWithoutOutput,
   });
 
@@ -273,10 +303,12 @@ test('resumes the stored session for the same run issue and role', async () => {
   const calls = [];
   const harness = {
     capabilities: { sessions: true },
+
     async start(_, turn) {
       calls.push(['start', turn]);
       return { accepted: true, session: 'opaque-a' };
     },
+
     async resume(_, turn) {
       calls.push(['resume', turn]);
       return { accepted: true, session: turn.session };
@@ -335,10 +367,12 @@ test('starts a separate session for a different run key', async () => {
   const calls = [];
   const harness = {
     capabilities: { sessions: true },
+
     async start(_, turn) {
       calls.push(['start', turn]);
       return { accepted: true, session: `session-${turn.run}` };
     },
+
     async resume(_, turn) {
       calls.push(['resume', turn]);
       return { accepted: true, session: turn.session };
@@ -372,9 +406,11 @@ test('falls back with full context after a pre-turn resume rejection', async () 
   const first = new SessionStore(file);
   const initial = {
     capabilities: { sessions: true },
+
     async start() {
       return { accepted: true, session: 'old' };
     },
+
     async resume() {
       throw new ResumeRejectedError();
     },
@@ -392,10 +428,12 @@ test('falls back with full context after a pre-turn resume rejection', async () 
   const calls = [];
   const recovering = {
     capabilities: { sessions: true },
+
     async resume() {
       calls.push('resume');
       throw new ResumeRejectedError();
     },
+
     async start(_, turn) {
       calls.push(turn.prompt);
       return { accepted: true, session: 'new' };
@@ -425,6 +463,7 @@ test('preserves stored sessions when resume outcome is ambiguous', async () => {
   const store = new SessionStore(file);
   const initial = {
     capabilities: { sessions: true },
+
     async start() {
       return { accepted: true, session: 'stored' };
     },
@@ -440,9 +479,11 @@ test('preserves stored sessions when resume outcome is ambiguous', async () => {
 
   const ambiguous = {
     capabilities: { sessions: true },
+
     async resume() {
       throw new ResumeAmbiguousError();
     },
+
     async start() {
       throw new Error('must not retry');
     },
@@ -463,10 +504,12 @@ test('sessionless harness receives fresh invocations without a persisted referen
   const calls = [];
   const harness = {
     capabilities: { sessions: false },
+
     async start(_, turn) {
       calls.push(turn);
       return { accepted: true };
     },
+
     async resume() {
       throw new Error('unsupported');
     },

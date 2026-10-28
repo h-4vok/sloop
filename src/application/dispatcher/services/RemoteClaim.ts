@@ -11,11 +11,17 @@ function claimNewIssue(d: Deps, issue: number): void {
   const current = d.load();
   d.save({
     completedIssues: current.completedIssues ?? [],
+
     mainGreen: current.mainGreen,
+
     issue,
+
     status: 'claimed',
+
     reviewRound: 1,
+
     drainStatus: 'running',
+
     updatedAt: d.now(),
   });
   d.runLogger?.write('transition', { issue, from: current.status, to: 'claimed' });
@@ -113,6 +119,8 @@ function ensureRemoteClaim(
 
 export const RemoteClaim = {
   claimNewIssue,
+
   assertRemoteLeaseAvailable,
+
   ensureRemoteClaim,
 };

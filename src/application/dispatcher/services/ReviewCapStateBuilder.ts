@@ -23,12 +23,17 @@ function buildReviewCapState(
 
   return {
     ...reviewCap,
+
     additionalRounds: Math.max(0, requestedMaxRounds - baseMaxRounds),
+
     waivedFindingIds: [
       ...new Set([...(current.reviewCap?.waivedFindingIds ?? []), ...waivedFindingIds]),
     ],
+
     steer: options.steer.trim(),
+
     resolvedBy: gh(['api', 'user', '--jq', '.login'], cwd, repository, host),
+
     resolvedAt: new Date(host.now?.() ?? Date.now()).toISOString(),
   };
 }

@@ -76,6 +76,8 @@ function acquire(d: Deps, ttl: number): string {
 
 export const DispatcherLock = {
   dispatcherLockPath,
+
   recoverStaleLock,
+
   acquire,
 };

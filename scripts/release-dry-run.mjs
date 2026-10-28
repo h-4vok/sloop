@@ -17,14 +17,20 @@ for (const [titles, current, expected] of cases) {
 
 const released = {
   packageText: '{"version":"0.1.2"}\n',
+
   changelog: '## 0.1.2 - 2026-10-01\n\n- Merged pull request #113.\n\n# Changelog\n',
 };
 const retry = await calculateRelease({
   api: { closingIssueTitles: async () => ['[patch] fix'] },
+
   number: 113,
+
   body: '',
+
   tags: ['v0.1.2', 'v0.1.1'],
+
   readTagMetadata: (tag) => (tag === 'v0.1.2' ? released : null),
+
   packageVersion: '0.1.2',
 });
 if (retry.version !== '0.1.2' || !retry.reused)
@@ -33,8 +39,11 @@ console.log('retry matching PR => v0.1.2 reused');
 
 const state = {
   tagName: 'v0.1.2',
+
   tagTarget: 'abc123',
+
   releaseTagName: 'v0.1.2',
+
   releaseTarget: 'abc123',
 };
 verifyReleaseState(state, 'v0.1.2', 'abc123');

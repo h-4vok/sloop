@@ -18,6 +18,7 @@ function readState(file = stateFile): State {
   } catch (e) {
     return {
       status: 'blocked',
+
       lastError: `state corruption: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
@@ -44,16 +45,23 @@ function resetRunState(state: State, processAlive = defaultProcessAlive): State 
     throw new Error(`cannot reset while Worker process ${state.workerPid} is still running`);
   return {
     completedIssues: state.completedIssues ?? [],
+
     mainGreen: state.mainGreen,
+
     drainStatus: 'running',
+
     updatedAt: Date.now(),
   };
 }
 
 export const RunStateStore = {
   readState,
+
   writeState,
+
   resetRunState,
+
   stateDir,
+
   stateFile,
 };

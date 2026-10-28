@@ -19,23 +19,41 @@ function prepareRecovery(
   const staleAt = now - leaseMs - 1;
   return {
     ...state,
+
     issue,
+
     pr,
+
     branch: metadata?.headRefName ?? state.branch ?? workerBranchName(issue),
+
     mainBaseSha: metadata?.baseRefOid ?? state.mainBaseSha,
+
     headSha: metadata?.headRefOid ?? state.headSha,
+
     status: 'worker_running',
+
     workerRunId: randomUUID(),
+
     workerPid: -1,
+
     workerStartedAt: staleAt,
+
     workerHeartbeatAt: staleAt,
+
     workerRecoveryCount: state.workerRecoveryCount ?? 0,
+
     preparedRecovery: true,
+
     reviewRound: state.reviewRound ?? 1,
+
     completedIssues: (state.completedIssues ?? []).filter((number) => number !== issue),
+
     lastError: undefined,
+
     lastErrorVerbose: undefined,
+
     drainStatus: 'running',
+
     updatedAt: now,
   };
 }
@@ -62,6 +80,7 @@ function updateWorkerBase(cwd: string, remote: string, baseBranch: string): stri
   }
   const mainBaseSha = execFileSync('git', ['rev-parse', `${baseRef}^{commit}`], {
     cwd,
+
     encoding: 'utf8',
   }).trim();
   return mainBaseSha;
@@ -71,6 +90,7 @@ function hasLocalBranch(cwd: string, branch: string): boolean {
   try {
     execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
       cwd,
+
       stdio: 'ignore',
     });
     return true;
@@ -117,7 +137,10 @@ function checkoutWorkerBranch(branch: string, cwd = defaultRoot): void {
 
 export const WorkerBranch = {
   prepareRecovery,
+
   workerBranchName,
+
   prepareWorkerBranch,
+
   checkoutWorkerBranch,
 };

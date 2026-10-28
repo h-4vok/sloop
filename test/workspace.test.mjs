@@ -24,11 +24,17 @@ const createRepository = () => {
 };
 const createWorkspaceOptions = (root, extra = {}) => ({
   repositoryRoot: root,
+
   remote: 'origin',
+
   baseBranch: 'main',
+
   branchPrefix: 'sloop/',
+
   issue: 32,
+
   runId: 'run-12345678',
+
   ...extra,
 });
 
@@ -171,6 +177,7 @@ test('worker recovery retains dispatch ownership, refreshes a pushed head, and c
   runGitCommand(root, 'push', '-u', 'origin', 'main');
   const opts = createWorkspaceOptions(root, {
     runId: 'dispatch-12345678',
+
     worktreeRoot: join(root, 'isolated'),
   });
   const facts = prepareWorktreeWorkspace(opts);
@@ -191,7 +198,9 @@ test('worker recovery retains dispatch ownership, refreshes a pushed head, and c
 
   const recovered = recoverWorkspace({
     ...opts,
+
     runId: 'worker-87654321',
+
     branch: facts.branch,
   });
 
@@ -420,20 +429,32 @@ test('worktree parser ignores incomplete records and clear preserves unsafe regi
       workspaces: [
         {
           repositoryRoot: root,
+
           executionRoot: outside,
+
           branch: 'other',
+
           headSha: 'x',
+
           baseSha: 'x',
+
           worktreeRoot: root,
+
           ownership: { runId: 'x', issue: 1, protocol: 'wrong' },
         },
         {
           repositoryRoot: root,
+
           executionRoot: join(root, 'missing'),
+
           branch: 'other',
+
           headSha: 'x',
+
           baseSha: 'x',
+
           worktreeRoot: root,
+
           ownership: { runId: 'x', issue: 2, protocol: 'sloop-workspace-v1' },
         },
       ],

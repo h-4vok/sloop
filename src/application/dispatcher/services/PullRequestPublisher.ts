@@ -90,8 +90,12 @@ function withIssueClosingReference(
 
 export const PullRequestPublisher = {
   updatePullRequestBody,
+
   commentPullRequest,
+
   commentIssueOnce,
+
   commentPullRequestOnce,
+
   withIssueClosingReference,
 };

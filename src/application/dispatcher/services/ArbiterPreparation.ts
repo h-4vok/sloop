@@ -13,7 +13,9 @@ function createFindings(feedback: string, closedIds: ReadonlySet<string>): Arbit
     .filter((id) => !closedIds.has(id))
     .map((id) => ({
       id,
+
       owner: id.startsWith('Q') ? 'qa' : 'staff',
+
       summary: feedback.split(/\r?\n/).find((line) => line.includes(`[${id}]`)) ?? id,
     }));
 }
@@ -39,10 +41,15 @@ function createExpectedContext(
 ) {
   return {
     run: current.workerRunId ?? `arbiter-${round}`,
+
     issue: issue.number,
+
     pr,
+
     round,
+
     sha: evidence.headRefOid ?? 'unknown',
+
     cursor: `arbiter-${round}`,
   };
 }
@@ -76,16 +83,27 @@ function prepareArbiter(
 
   return {
     cfg,
+
     deps,
+
     issue,
+
     pr,
+
     round,
+
     evidence,
+
     current,
+
     feedback,
+
     findings,
+
     logger,
+
     spec,
+
     expectedContext: createExpectedContext(current, issue, pr, round, evidence),
   };
 }
@@ -98,8 +116,11 @@ function shouldRunArbiter(
 ): boolean {
   return shouldInvokeArbiter({
     substantiveRounds: round,
+
     findingAppearances: findingAppearances(evidence, findings),
+
     reviewRounds: cfg.arbiterReviewRounds,
+
     stagnatingAppearances: cfg.arbiterStagnatingAppearances,
   });
 }

@@ -38,6 +38,7 @@ test('PR closing references preserve authorized linked issues and remove stale o
 test('review cap pauses before a replacement Worker is launched', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
+
     config: { maxReviewRounds: 1 },
   });
   await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
@@ -52,48 +53,80 @@ test('stale remote run restores explicit HITL round and existing PR branch befor
   // Arrange
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     prNumber: 14,
+
     headRefName: 'codex/issue-1',
+
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1-40ae',
+
       workerRunId: 'replacement-run',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
     },
+
     qaVerdicts: ['passed'],
   });
   const original = {
     protocol: 1,
+
     runId: 'original-run',
+
     issue: 1,
+
     pr: 14,
+
     branch: 'codex/issue-1',
+
     baseSha: '1234567',
+
     configFingerprint: 'config-v1',
+
     phase: 'complete',
+
     reviewRound: 4,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'original-run' })],
   };
   const previous = {
     ...original,
+
     runId: 'previous-run',
+
     phase: 'review',
+
     reviewRound: 3,
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'previous-run' })],
   };
   let current = {
     protocol: 1,
+
     runId: 'replacement-run',
+
     issue: 1,
+
     pr: 14,
+
     branch: 'codex/issue-1-40ae',
+
     baseSha: '1234567',
+
     configFingerprint: 'config-v1',
+
     phase: 'review',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'replacement-run' })],
   };
   const comments = [
@@ -101,14 +134,17 @@ test('stale remote run restores explicit HITL round and existing PR branch befor
     { body: runManifestMarker(original), createdAt: '2026-10-20T10:00:00Z' },
     {
       body: '[HITL Review Cap] action=resume issue=#1 pr=#14 round=3 sha=older-sha waived=none additionalRounds=2 steer=Continue the prior request.',
+
       createdAt: '2026-10-20T10:00:30Z',
     },
     {
       body: '[HITL Review Cap] round=4 cap=3 sha=abc0 outstanding=Q1,Q2. Resolve with additional rounds.',
+
       createdAt: '2026-10-20T10:01:00Z',
     },
     {
       body: '[HITL Review Cap] action=resume issue=#1 pr=#14 round=4 sha=abc0 waived=none additionalRounds=4 steer=Fix Q1 and Q2, then request QA.',
+
       createdAt: '2026-10-20T10:02:00Z',
     },
   ];
@@ -117,20 +153,32 @@ test('stale remote run restores explicit HITL round and existing PR branch befor
   dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       issue: 1,
+
       pr: 14,
+
       prState: 'OPEN',
+
       branch: 'codex/issue-1',
+
       sha: 'abc0',
+
       manifest: current,
+
       markers: [`sloop/v1/run/${current.runId}`],
+
       comments,
+
       now: Date.now(),
+
       leaseOwner: 'this-dispatcher',
     }),
+
     reconcile: (_issue, key) => original.artifacts.includes(key),
+
     claim: () => {
       claimCount += 1;
     },
+
     publish: (_issue, manifest) => {
       current = manifest;
       published.push(manifest);
@@ -173,12 +221,18 @@ test('branch mismatch stops before Worker executes', async () => {
   // Arrange
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     prNumber: 14,
+
     headRefName: 'codex/issue-1',
+
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1-40ae',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 2,
     },
   });
@@ -200,18 +254,23 @@ test('branch mismatch stops before Worker executes', async () => {
 test('configured Arbiter upholds a finding and adds a Worker round', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested', 'passed'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
       '[QA/SDET Review] round=2 verdict=passed commit=abc2',
     ],
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterCommand: { command: 'codex', args: [] },
     },
   });
   dispatcherHarness.pr.comments.push({
     body: '[Worker] round=1 status=ready_for_review pr=14 base=main commit=abc1\n\n[Human Verification]\n1. Repeat the check.',
+
     createdAt: '0',
   });
   dispatcherHarness.reviews.push({ body: '[Staff Review] round=1 verdict=approved commit=abc1' });
@@ -234,24 +293,37 @@ test('Arbiter excludes findings already closed by an overrule decision', async (
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
+
       workerRunId: 'arbiter-filter-test',
+
       arbiterDecisions: [{ findingId: 'Q1', action: 'overrule' }],
     },
+
     qaVerdicts: ['changes_requested', 'passed'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - previously overruled finding\n- [Q2] fail - still open finding',
       '[QA/SDET Review] round=2 verdict=passed commit=abc2',
     ],
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterStagnatingAppearances: 1,
+
       arbiterCommand: { command: 'codex', args: [] },
     },
+
     arbiterFindingId: 'Q2',
   });
   await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
@@ -287,15 +359,20 @@ test('legacy dispatcher entry point forwards its command line to the CLI', async
 test('configured Codex Arbiter receives the output schema and returns its structured result', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested', 'passed'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
       '[QA/SDET Review] round=2 verdict=passed commit=abc2',
     ],
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterCommand: {
         command: 'codex',
+
         args: [
           'exec',
           '--sandbox',
@@ -369,13 +446,18 @@ test('configured Codex Arbiter receives the output schema and returns its struct
 test('configured Arbiter defer creates backlog follow-up without Automation Ready', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
     ],
+
     arbiterAction: 'defer',
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterCommand: { command: 'codex', args: [] },
     },
   });
@@ -389,12 +471,16 @@ test('configured Arbiter defer creates backlog follow-up without Automation Read
 test('configured Arbiter protocol failure stops the loop and preserves intervention budget', async () => {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
     ],
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
     },
   });
@@ -417,25 +503,40 @@ test('a local HITL budget and steer are included in the resumed Worker context',
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1',
+
       workerRunId: 'resumed-worker-session',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 1,
+
         additionalRounds: 1,
+
         waivedFindingIds: ['Q4'],
+
         outstandingFindingIds: ['Q4'],
+
         decisionSha: 'abc0',
+
         steer: 'Do not change GitHub configuration.',
       },
     },
+
     config: {
       maxReviewRounds: 1,
+
       workerCommand: {
         command: 'codex',
+
         args: ['exec', '--sandbox', 'read-only'],
+
         sessions: true,
       },
     },

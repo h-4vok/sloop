@@ -23,8 +23,11 @@ function reconcileReviewCapResume(stored: State, remote?: RemoteAuthority): Revi
       throw new Error('review-cap resume could not reconcile the same open PR and head branch');
     current = {
       ...current,
+
       branch: remoteSnapshot.branch,
+
       headSha: remoteSnapshot.sha ?? current.headSha,
+
       reviewRound: Math.max(current.reviewRound ?? 1, remoteManifest.reviewRound ?? 1),
     };
     if (remoteManifest.pr !== current.pr)

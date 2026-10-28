@@ -38,7 +38,9 @@ const dispatcherCliOutput = Object.freeze({
     ) {
       result.nextAction = {
         command: `sloop --prepare-recovery ${issue} --pr ${pr}`,
+
         description: 'Prepare local recovery for the failed Worker.',
+
         mutates: true,
       };
     }
@@ -52,39 +54,47 @@ const dispatcherCliCommandHandlers: DispatcherCliCommandHandlerMap = {
     dispatcherCliOutput.writeStatus(dependencies, command.verbose);
     return 0;
   },
+
   list: (_command, dependencies) => {
     console.log(JSON.stringify(dependencies.list(), null, 2));
     return 0;
   },
+
   'recover-lock': (_command, dependencies) => {
     console.log(dependencies.recoverLock());
     return 0;
   },
+
   reset: (_command, dependencies) => {
     dependencies.reset();
     console.log('Estado local del sloop reiniciado. Ejecutá npm run sloop.');
     return 0;
   },
+
   'resolve-review-cap': (command, dependencies) => {
     const config = dependencies.loadConfig();
     dependencies.resolveReviewCap(command.options, config);
     console.log('Resolución HITL registrada.');
     return 0;
   },
+
   'link-issue': (command, dependencies) => {
     dependencies.linkIssue(command.issue);
     console.log(`Issue #${command.issue} vinculada al PR activo.`);
     return 0;
   },
+
   'list-all-worktrees': (_command, dependencies) => {
     console.log(JSON.stringify(dependencies.listAllWorktrees?.() ?? [], null, 2));
     return 0;
   },
+
   'clear-all-worktrees': (_command, dependencies) => {
     dependencies.clearAllWorktrees?.();
     console.log('Sloop worktrees cleared.');
     return 0;
   },
+
   'prepare-recovery': (command, dependencies) => {
     const config = dependencies.loadConfig();
     const pr = dependencies.prepareRecovery(command.issue, command.pr, config);
@@ -93,6 +103,7 @@ const dispatcherCliCommandHandlers: DispatcherCliCommandHandlerMap = {
     );
     return 0;
   },
+
   workflow: (_command, dependencies, dispatchWorkflow) => {
     const config = dependencies.loadConfig();
     return dispatchWorkflow(config, dependencies);

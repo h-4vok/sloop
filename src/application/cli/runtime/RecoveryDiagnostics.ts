@@ -36,13 +36,18 @@ export const recoveryDiagnostics = Object.freeze({
 
       observations.push({
         phase,
+
         ...context,
+
         blocker,
+
         command: action,
+
         description:
           action === 'sloop status --verbose'
             ? 'Inspect the recorded state; no repair command is available without complete context.'
             : 'Prepare the recorded recovery for the issue and pull request.',
+
         mutates,
       });
     };
@@ -90,18 +95,25 @@ export const recoveryDiagnostics = Object.freeze({
   toDiagnostics(workflow: Record<string, unknown>): Diagnostic[] {
     return this.collect(workflow).map((item) => ({
       check: `recovery-${item.phase}`,
+
       message: `${item.blocker}${item.issue ? ` (issue #${item.issue}${item.pullRequest ? `, PR #${item.pullRequest}` : ''})` : ''}`,
+
       remediation: `Next: ${item.command}; ${item.mutates ? 'this mutates local recovery state' : 'read-only'}.`,
+
       phase: item.phase,
+
       ...(item.issue || item.pullRequest
         ? {
             context: {
               ...(item.issue ? { issue: item.issue } : {}),
+
               ...(item.pullRequest ? { pullRequest: item.pullRequest } : {}),
             },
           }
         : {}),
+
       nextAction: { command: item.command, description: item.description, mutates: item.mutates },
+
       mutates: false,
     }));
   },

@@ -258,6 +258,7 @@ test('configuration value result rethrows unexpected parser failures', () => {
   const unexpectedFailure = new Error('parser implementation failed');
   const field = {
     path: 'workspace.path',
+
     parser: () => {
       throw unexpectedFailure;
     },
@@ -300,6 +301,7 @@ test('argv uses bounded direct-process profiles', () => {
   const validCommand = parser(['git', 'show', 'README.english'], '$.health.command');
   assert.deepEqual(validCommand, {
     ok: true,
+
     value: ['git', 'show', 'README.english'],
   });
   for (const command of [
@@ -366,6 +368,7 @@ test('argv rejects embedded environment assignments', () => {
 
   assert.deepEqual(parser(['env', 'git', 'fetch'], '$.health.command'), {
     ok: true,
+
     value: ['env', 'git', 'fetch'],
   });
 });
@@ -394,6 +397,7 @@ test('argv rejects Git configuration that dispatches a shell', () => {
 
   assert.deepEqual(parser(['git', '-c', 'fetch.prune=true', 'fetch'], '$.health.command'), {
     ok: true,
+
     value: ['git', '-c', 'fetch.prune=true', 'fetch'],
   });
 });

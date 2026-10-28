@@ -20,10 +20,15 @@ function createArbiterPrompt(context: ArbiterRunContext, record: string): string
 function createArbiterRecord(context: ArbiterRunContext): string {
   return JSON.stringify({
     issue: context.issue,
+
     pr: context.evidence,
+
     round: context.round,
+
     state: context.current,
+
     qaFeedback: context.feedback,
+
     openFindings: context.findings,
   });
 }

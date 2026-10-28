@@ -45,5 +45,6 @@ function selectIssues(issues: readonly Issue[], priorityLabels: readonly string[
 
 export const IssueSelection = {
   eligible,
+
   selectIssues,
 };

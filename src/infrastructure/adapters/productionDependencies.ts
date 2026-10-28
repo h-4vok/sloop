@@ -36,11 +36,17 @@ const productionHarnessFactory = Object.freeze({
 
       return new CodexHarness({
         cwd: options.getExecutionRoot(),
+
         model: roleConfig.model,
+
         sandbox: roleConfig.sandbox,
+
         reasoningEffort: roleConfig.reasoningEffort,
+
         timeoutMs: spec.timeoutMs,
+
         log: (source, chunk) => logger.write(`harness-${source}`, { chunk }),
+
         spawn: options.codexSpawn,
       });
     };
@@ -64,35 +70,54 @@ const productionDependencyServicesFactory = Object.freeze({
     const remoteAuthority = remoteAuthorityFactory.create(client, repository, logGithub);
     const githubProvider = gitHubProviderFactory.create({
       root,
+
       repository,
+
       eligibleLabel: validatedConfig.github.labels.eligible,
+
       priorityLabels: validatedConfig.github.labels.priority,
+
       execute,
+
       logGithub,
     });
     const config = dispatcherConfigFactory.create(validatedConfig);
     const controls = dispatcherControlsFactory.create({
       root,
+
       stateFile,
+
       repository,
+
       remoteAuthority,
+
       config,
+
       listEligibleIssues: githubProvider.list,
+
       loadPullRequest: githubProvider.pullRequest,
     });
     const lockStore = dispatcherLockStoreFactory.create(root);
 
     return {
       config: validatedConfig,
+
       controls,
+
       githubProvider,
+
       lockStore,
+
       remoteAuthority,
+
       setRunLogger: (logger: RunEventLogger | undefined) => {
         runLogger = logger;
       },
+
       workspace,
+
       client,
+
       stateFile,
     };
   },
@@ -114,24 +139,39 @@ const productionDependenciesService = Object.freeze({
 
     return {
       remoteRequired: true,
+
       ...services.controls,
+
       ...services.githubProvider,
+
       ...services.lockStore,
+
       remote: services.remoteAuthority,
+
       harness: productionHarnessFactory.create({
         config: services.config,
+
         getExecutionRoot: services.workspace.getExecutionRoot,
+
         codexSpawn: options.codexSpawn,
       }),
+
       reconcileActiveRun: activeRunReconcilerFactory.create({
         client: services.client,
+
         config: services.config,
+
         root,
       }),
+
       setRunLogger: services.setRunLogger,
+
       runContext: () => services.workspace.adapter.context!(),
+
       workspaceAdapter: services.workspace.adapter,
+
       run: (spec) => runCommand(spec, services.workspace.getExecutionRoot()),
+
       prepareWorkerBranch: (issue) =>
         prepareWorkerBranch(
           issue,
@@ -140,13 +180,21 @@ const productionDependenciesService = Object.freeze({
           services.config.repository.baseBranch,
           services.config.repository.branchPrefix,
         ),
+
       checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
+
       listAllWorktrees: () => workspaceAdapter.listWorkspaces(root, services.stateFile),
+
       clearAllWorktrees: () => workspaceAdapter.clearWorkspaces(root, services.stateFile),
+
       pid: () => process.pid,
+
       processAlive: defaultProcessAlive,
+
       now: Date.now,
+
       sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+
       onReclaim: () => {},
     };
   },

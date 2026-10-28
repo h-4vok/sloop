@@ -42,8 +42,11 @@ export class RunLogger {
   write(type: string, data?: unknown): void {
     const event: RunEvent = {
       seq: ++this.sequence,
+
       at: new Date().toISOString(),
+
       type,
+
       ...(data === undefined ? {} : { data }),
     };
     appendFileSync(this.file, JSON.stringify(event) + '\n', { mode: 0o600 });

@@ -45,8 +45,11 @@ function buildReviewCapState(
   const { current, remoteSnapshot } = context;
   const reviewCap = current.reviewCap ?? {
     capRound: current.reviewRound ?? 1,
+
     outstandingFindingIds: [],
+
     additionalRounds: 0,
+
     waivedFindingIds: [],
   };
   const outstanding = new Set(reviewCap.outstandingFindingIds);
@@ -68,11 +71,17 @@ function buildReviewCapState(
 
   return {
     ...current,
+
     reviewCap: cap,
+
     status: options.additionalRounds > 0 ? 'worker_recovery_pending' : 'ready_for_human_merge',
+
     workerPid: options.additionalRounds > 0 ? undefined : current.workerPid,
+
     lastError: undefined,
+
     lastErrorVerbose: undefined,
+
     updatedAt: Date.now(),
   };
 }
@@ -115,10 +124,15 @@ function persistReviewCapDecision(
   if (remote && context.remoteManifest) {
     remote.publish(context.current.issue!, {
       ...context.remoteManifest,
+
       pr: context.current.pr,
+
       branch: context.current.branch!,
+
       phase: 'blocked',
+
       lease: undefined,
+
       reviewRound: context.current.reviewRound ?? context.remoteManifest.reviewRound ?? 1,
     });
   }
@@ -126,6 +140,8 @@ function persistReviewCapDecision(
 
 export const ReviewCapResume = {
   reconcileReviewCapResume,
+
   buildReviewCapState,
+
   persistReviewCapDecision,
 };

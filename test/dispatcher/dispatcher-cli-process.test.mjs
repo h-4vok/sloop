@@ -42,7 +42,9 @@ test('dispatcher rejects unsupported production configuration before starting a 
     () =>
       dispatch(dispatcherHarness.cfg, {
         ...dispatcherHarness.dependencies,
+
         remoteRequired: true,
+
         remote: undefined,
       }),
     /remote authority is required/,
@@ -74,6 +76,7 @@ test('dispatcher requires a valid Codex sandbox on role commands', async () => {
       dispatch(
         {
           ...dispatcherHarness.cfg,
+
           workerCommand: { command: 'codex', args: ['exec'] },
         },
         dispatcherHarness.dependencies,
@@ -92,6 +95,7 @@ test('dispatcher rejects legacy argv arrays for role commands', async () => {
       dispatch(
         {
           ...dispatcherHarness.cfg,
+
           workerCommand: ['codex', 'exec'],
         },
         dispatcherHarness.dependencies,
@@ -145,13 +149,20 @@ test('review-cap abandonment resumes safely after partial side effects', () => {
   const statePath = join(root, 'state.json');
   const state = {
     issue: 1,
+
     pr: 7,
+
     status: 'review_cap_pending',
+
     reviewRound: 2,
+
     reviewCap: {
       capRound: 2,
+
       outstandingFindingIds: ['Q1'],
+
       additionalRounds: 0,
+
       waivedFindingIds: [],
     },
   };
@@ -163,9 +174,13 @@ test('review-cap abandonment resumes safely after partial side effects', () => {
   });
   const abandon = {
     steer: 'stop safely',
+
     abandon: true,
+
     waiveAllOutstanding: false,
+
     waivedFindingIds: [],
+
     additionalRounds: 0,
   };
 
@@ -188,12 +203,18 @@ test('review-cap abandonment resumes safely after partial side effects', () => {
   writeState(
     {
       ...state,
+
       status: 'abandon_pending',
+
       abandonment: {
         steer: 'stop safely',
+
         commentPublished: true,
+
         prClosed: true,
+
         labelled: true,
+
         issueClosed: true,
       },
     },
@@ -216,7 +237,9 @@ test('Windows batch commands use cmd.exe without Node shell mode', () => {
     ),
     {
       command: 'C:\\Windows\\System32\\cmd.exe',
+
       args: ['/d', '/s', '/v:off', '/c', '""C:\\tools\\codex.cmd" "exec" "--full-auto""'],
+
       windowsVerbatimArguments: true,
     },
   );
@@ -259,7 +282,9 @@ test('Windows batch commands execute from paths containing spaces', (t) => {
     const launch = childProcessInvocation(executable, ['expected'], 'win32', process.env.ComSpec);
     const result = spawnSync(launch.command, launch.args, {
       encoding: 'utf8',
+
       shell: false,
+
       windowsVerbatimArguments: launch.windowsVerbatimArguments,
     });
     assert.equal(result.status, 0, result.stderr);
@@ -298,6 +323,7 @@ test('synchronous Windows batch shims preserve verbatim cmd.exe command text', (
   assert.equal(output, 'ok');
   assert.deepEqual(invocation, {
     command: 'C:\\Windows\\System32\\cmd.exe',
+
     args: [
       '/d',
       '/s',
@@ -305,10 +331,14 @@ test('synchronous Windows batch shims preserve verbatim cmd.exe command text', (
       '/c',
       '""C:\\Program Files\\GitHub CLI\\gh.cmd" "pr" "view" "40""',
     ],
+
     options: {
       cwd: process.cwd(),
+
       encoding: 'utf8',
+
       stdio: ['ignore', 'pipe', 'pipe'],
+
       windowsVerbatimArguments: true,
     },
   });
@@ -317,6 +347,7 @@ test('synchronous Windows batch shims preserve verbatim cmd.exe command text', (
 test('non-batch commands preserve their executable and arguments', () => {
   assert.deepEqual(childProcessInvocation('codex', ['exec'], 'win32'), {
     command: 'codex',
+
     args: ['exec'],
   });
 });
