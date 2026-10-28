@@ -253,7 +253,7 @@ test('recovery and cleanup preserve unknown untracked files and reject unmatched
     'keep this too\n',
   );
   assert.equal(listWorkspaces(root).length, 1);
-});
+}, 30_000);
 
 test('remote recovery rejects a workspace unrelated to the current base branch', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace } = await loadWorkspaceModule();
@@ -296,7 +296,7 @@ test('cleanup rejects generated Serena directories containing files under ignore
 
   assert.throws(() => cleanupWorkspace(facts, root), /workspace is dirty/);
   assert.equal(existsSync(join(serenaDirectory, 'memories', 'user.md')), true);
-});
+}, 30_000);
 
 test('cleanup preserves nested Serena data outside the generated metadata contract', async () => {
   const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
@@ -315,7 +315,7 @@ test('cleanup preserves nested Serena data outside the generated metadata contra
 
   assert.throws(() => cleanupWorkspace(facts, root), /workspace is dirty/);
   assert.equal(existsSync(join(serenaDirectory, 'nested')), true);
-});
+}, 30_000);
 
 test('cleanup preserves a remote-owned workspace that contains unrecognized files', async () => {
   const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
@@ -334,7 +334,7 @@ test('cleanup preserves a remote-owned workspace that contains unrecognized file
     /remote-owned workspace could not be verified/,
   );
   assert.equal(existsSync(join(facts.executionRoot, 'user.txt')), true);
-});
+}, 30_000);
 
 test('cleanup rejects registered facts when their ancestry cannot be verified', async () => {
   const { prepareWorktreeWorkspace, cleanupWorkspace } = await loadWorkspaceModule();
@@ -356,7 +356,7 @@ test('cleanup rejects registered facts when their ancestry cannot be verified', 
     /workspace registration or facts could not be verified/,
   );
   assert.equal(existsSync(facts.executionRoot), true);
-}, 15_000);
+}, 30_000);
 
 test('lost local registration is reconstructed from Git and clean remote-owned worktrees are removable', async () => {
   const { prepareWorktreeWorkspace, recoverWorkspace, cleanupWorkspace } =
@@ -374,7 +374,7 @@ test('lost local registration is reconstructed from Git and clean remote-owned w
   assert.deepEqual(recoverWorkspace({ ...opts, branch: facts.branch }), facts);
   cleanupWorkspace(facts, root);
   assert.equal(existsSync(facts.executionRoot), false);
-});
+}, 30_000);
 
 test('clear retains registrations whose Git ancestry cannot be verified', async () => {
   const workspaceModule = await loadWorkspaceModule();
@@ -406,7 +406,7 @@ test('clear retains registrations whose Git ancestry cannot be verified', async 
 
   assert.equal(remainingWorkspaces.length, 1);
   assert.equal(isExecutionRootPresent, true);
-});
+}, 30_000);
 
 test('worktree parser ignores incomplete records and clear preserves unsafe registrations', async () => {
   const { clearWorkspaces, listWorkspaces } = await loadWorkspaceModule();

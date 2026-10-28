@@ -1,0 +1,20 @@
+/** States available to the issue dispatch workflow. */
+export type Status =
+  | 'queued'
+  | 'claimed'
+  | 'in_progress'
+  | 'worker_running'
+  | 'worker_recovery_pending'
+  | 'worker_ready_for_review'
+  | 'ci_pending'
+  | 'ci_failed'
+  | 'qa_review_pending'
+  | 'qa_changes_requested'
+  | 'qa_approved'
+  | 'review_cap_pending'
+  | 'abandon_pending'
+  | 'abandoned'
+  | 'ready_for_human_merge'
+  | 'human_review_required'
+  | 'blocked'
+  | 'done';
