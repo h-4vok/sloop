@@ -1,4 +1,4 @@
-import type { RemoteAuthority } from '../../core/boundaries.js';
+import type { RemoteAuthority } from '../../core/RemoteAuthority.js';
 import { ExternalServiceError } from '../../core/ExternalServiceError.js';
 import { artifactKey } from '../../remote-state.js';
 import type { RunManifest } from '../../remote-state.js';
