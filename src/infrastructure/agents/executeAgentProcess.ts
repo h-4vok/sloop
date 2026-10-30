@@ -1,0 +1,39 @@
+import { spawn } from 'node:child_process';
+import type { ProcessExecutor } from './AgentEnvelope.js';
+
+/** Spawns an agent process without a shell and captures streams until completion. */
+export const executeAgentProcess: ProcessExecutor = (command, args, options) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, [...args], {
+      cwd: options.cwd,
+
+      env: options.env,
+
+      shell: false,
+
+      stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
+    if (!child.stdout || !child.stderr || (options.stdin !== undefined && !child.stdin)) {
+      child.kill();
+      return reject(new Error('Codex process streams were not created'));
+    }
+    if (options.stdin !== undefined) child.stdin?.end(options.stdin);
+    let stdout = '',
+      stderr = '';
+    const timer = setTimeout(() => child.kill(), options.timeoutMs);
+    child.stdout.on('data', (b) => {
+      const s = String(b);
+      stdout += s;
+      options.onStdout(s);
+    });
+    child.stderr.on('data', (b) => {
+      const s = String(b);
+      stderr += s;
+      options.onStderr(s);
+    });
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ stdout, stderr, code, signal });
+    });
+  });
