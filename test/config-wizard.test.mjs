@@ -989,6 +989,23 @@ test('config init migrates legacy skill names to canonical names', async () => {
   assert.match(migratedConfiguration, /sloop-worker/);
 });
 
+test('config init reports unknown keys while migrating legacy skill names', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-config-unknown-migration-'));
+  const file = join(root, 'sloop.config.yaml');
+  const configWithLegacySkill = canonicalConfigYaml().replaceAll('sloop-worker', 'worker');
+  const configWithUnknownKey = `${configWithLegacySkill}\nfutureSetting: true\n`;
+  const logger = { log: vi.fn(), error: vi.fn() };
+  writeFileSync(file, configWithUnknownKey);
+
+  const exitCode = await runConfigCommand(root, ['--init'], undefined, undefined, logger);
+
+  assert.equal(exitCode, 0);
+  assert.match(readFileSync(file, 'utf8'), /sloop-worker/);
+  assert.deepEqual(logger.error.mock.calls, [
+    ['$.futureSetting: unknown configuration key; ignoring it'],
+  ]);
+});
+
 test('invalid config command forms return the usage exit code', async () => {
   const { root } = createConfigFixture();
   const io = {
