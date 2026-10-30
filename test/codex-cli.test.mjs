@@ -53,7 +53,7 @@ test('Windows resolves the global Codex command and forwards argv as data', () =
 
 test(
   'Windows bridge preserves empty and special arguments at the global CLI process boundary',
-  { skip: process.platform !== 'win32' },
+  { skip: process.platform !== 'win32', timeout: 15_000 },
   async (t) => {
     const fixtureDir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-global-codex-'));
     t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
