@@ -30,10 +30,10 @@ import { PullRequestReader } from './application/dispatcher/services/PullRequest
 import { PullRequestPublisher } from './application/dispatcher/services/PullRequestPublisher.js';
 import { CommandRunner } from './application/dispatcher/services/CommandRunner.js';
 import { AgentRoles } from './application/dispatcher/services/AgentRoles.js';
-import { HumanReviewGuideService } from './application/dispatcher/services/HumanReviewGuideService.js';
-import { ReviewEvidence } from './application/dispatcher/services/ReviewEvidence.js';
+import { HumanReviewGuideService } from './application/dispatcher/services/hitl/HumanReviewGuideService.js';
+import { ReviewEvidence } from './application/dispatcher/services/review/ReviewEvidence.js';
 import { ReviewBudget } from './application/dispatcher/services/ReviewBudget.js';
-import { WorkerBranch } from './application/dispatcher/services/WorkerBranch.js';
+import { WorkerBranch } from './application/dispatcher/services/worker/WorkerBranch.js';
 import { ResolveReviewCap } from './application/dispatcher/services/ResolveReviewCap.js';
 import { IssueLink } from './application/dispatcher/services/IssueLink.js';
 import { Dispatcher } from './application/dispatcher/services/Dispatcher.js';

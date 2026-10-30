@@ -1,7 +1,7 @@
 import type { Config, Deps, Issue, IssueProgress, IssueRoundResult } from '../types/index.js';
 import { ReviewBudget } from './ReviewBudget.js';
 const { effectiveMaxRounds } = ReviewBudget;
-import { WorkerExecution } from './WorkerExecution.js';
+import { WorkerExecution } from './worker/WorkerExecution.js';
 const { runWorker } = WorkerExecution;
 import { IssueFeedback } from './IssueFeedback.js';
 const { createIssueProgress, shouldRunWorker, restoreCompletedWorkerEvidence } = IssueFeedback;

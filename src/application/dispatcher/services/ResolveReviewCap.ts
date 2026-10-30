@@ -5,7 +5,7 @@ const { defaultRoot, runStateStore, defaultProcessAlive } = DispatcherRuntime;
 const { readState, stateFile } = runStateStore;
 import { ReviewCapAbandonment } from './ReviewCapAbandonment.js';
 const { abandonReviewCap } = ReviewCapAbandonment;
-import { ReviewCapResume } from './ReviewCapResume.js';
+import { ReviewCapResume } from './review/ReviewCapResume.js';
 const { reconcileReviewCapResume, buildReviewCapState, persistReviewCapDecision } = ReviewCapResume;
 
 function validateReviewCapRequest(options: ReviewCapOptions): void {

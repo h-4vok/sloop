@@ -12,7 +12,7 @@ import { PreparedRecoveryPullRequest } from './PreparedRecoveryPullRequest.js';
 const { fetchPreparedRecoveryPullRequest } = PreparedRecoveryPullRequest;
 import { RemoteClaim } from './RemoteClaim.js';
 const { assertRemoteLeaseAvailable } = RemoteClaim;
-import { HitlResumeRestore } from '../HitlResumeRestore.js';
+import { HitlResumeRestore } from '../hitl/HitlResumeRestore.js';
 const { restoreHitlResume } = HitlResumeRestore;
 import { RemoteRecoveryHydration } from './RemoteRecoveryHydration.js';
 const { createHydrationManifest, savePreparedRecoveryPr, adoptRemotePullRequest } =
