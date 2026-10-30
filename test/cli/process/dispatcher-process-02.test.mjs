@@ -1,0 +1,147 @@
+import {
+  createIsolatedTemporaryDirectory,
+  assert,
+  rmSync,
+  writeFileSync,
+  tmpdir,
+  join,
+  spawnSync,
+  test,
+  childProcessInvocation,
+  checkoutWorkerBranch,
+  command,
+  dispatch,
+  eligible,
+  resolveReviewCap,
+  resolveExecutable,
+  runSyncCommand,
+  readState,
+  runDispatcherCli,
+  writeState,
+  createMockGitHubHost,
+  createMockDispatcherHarness,
+} from '../../dispatcher/dispatcher-test-support.mjs';
+
+test('review-cap abandonment resumes safely after partial side effects', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-abandon-host-'));
+  const statePath = join(root, 'state.json');
+  const state = {
+    issue: 1,
+
+    pr: 7,
+
+    status: 'review_cap_pending',
+
+    reviewRound: 2,
+
+    reviewCap: {
+      capRound: 2,
+
+      outstandingFindingIds: ['Q1'],
+
+      additionalRounds: 0,
+
+      waivedFindingIds: [],
+    },
+  };
+  writeState(state, statePath);
+  const fake = createMockGitHubHost((args) => {
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
+    if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({ number: 7, comments: [] });
+    return '';
+  });
+  const abandon = {
+    steer: 'stop safely',
+
+    abandon: true,
+
+    waiveAllOutstanding: false,
+
+    waivedFindingIds: [],
+
+    additionalRounds: 0,
+  };
+
+  resolveReviewCap(abandon, {}, statePath, root, undefined, fake.host);
+
+  assert.equal(readState(statePath).status, 'abandoned');
+  assert.equal(
+    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'pr close'),
+    true,
+  );
+  assert.equal(
+    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'issue edit'),
+    true,
+  );
+  assert.equal(
+    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'issue close'),
+    true,
+  );
+
+  writeState(
+    {
+      ...state,
+
+      status: 'abandon_pending',
+
+      abandonment: {
+        steer: 'stop safely',
+
+        commentPublished: true,
+
+        prClosed: true,
+
+        labelled: true,
+
+        issueClosed: true,
+      },
+    },
+    statePath,
+  );
+  const resumed = createMockGitHubHost(() => {
+    throw new Error('completed actions must not repeat');
+  });
+  resolveReviewCap(abandon, {}, statePath, root, undefined, resumed.host);
+  assert.equal(readState(statePath).status, 'abandoned');
+});
+
+test('Windows batch commands use cmd.exe without Node shell mode', () => {
+  assert.deepEqual(
+    childProcessInvocation(
+      'C:\\tools\\codex.cmd',
+      ['exec', '--full-auto'],
+      'win32',
+      'C:\\Windows\\System32\\cmd.exe',
+    ),
+    {
+      command: 'C:\\Windows\\System32\\cmd.exe',
+
+      args: ['/d', '/s', '/v:off', '/c', '""C:\\tools\\codex.cmd" "exec" "--full-auto""'],
+
+      windowsVerbatimArguments: true,
+    },
+  );
+});
+
+test('Windows executable resolution selects an npm command shim', () => {
+  assert.equal(
+    resolveExecutable('codex', 'win32', () => [
+      'C:\\Program Files\\nodejs\\codex',
+      'C:\\Program Files\\nodejs\\codex.cmd',
+      'C:\\tools\\codex.exe',
+    ]),
+    'C:\\Program Files\\nodejs\\codex.cmd',
+  );
+});
+
+test('executable resolution leaves Unix commands and explicit paths unchanged', () => {
+  const unexpectedLookup = () => {
+    throw new Error('lookup should not run');
+  };
+
+  assert.equal(resolveExecutable('codex', 'linux', unexpectedLookup), 'codex');
+  assert.equal(
+    resolveExecutable('C:\\tools\\codex.exe', 'win32', unexpectedLookup),
+    'C:\\tools\\codex.exe',
+  );
+});
