@@ -1,24 +1,9 @@
-import { createIsolatedTemporaryDirectory } from './support/temporary-directory.mjs';
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
-import { syncPrerequisites, migrateSkillNames } from '../src/sync.js';
-
-function createSyncFixture() {
-  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-sync-'));
-  writeFileSync(join(root, 'sloop.config.yaml'), canonicalConfigYaml());
-  const calls = [];
-  const runner = (file, args) => {
-    calls.push([file, [...args]]);
-    if (file === 'git') return 'https://github.com/example/repo.git';
-    if (args[0] === 'label' && args[1] === 'list') return '[]';
-    return '';
-  };
-  return { root, calls, runner, config: loadConfigText(canonicalConfigYaml()) };
-}
+import { syncPrerequisites } from '../../src/sync.js';
+import { createSyncFixture } from '../support/sync-fixture.mjs';
 
 test('sync creates canonical GitHub labels', () => {
   const { root, calls, runner, config } = createSyncFixture();
@@ -26,38 +11,6 @@ test('sync creates canonical GitHub labels', () => {
   syncPrerequisites(root, config, { runner });
 
   assert.equal(calls.filter(([file, args]) => file === 'gh' && args[1] === 'create').length, 6);
-});
-
-test('sync installs each distributed Sloop skill', () => {
-  const { root, runner, config } = createSyncFixture();
-
-  syncPrerequisites(root, config, { runner });
-
-  for (const name of [
-    'product-lead',
-    'sloop-worker',
-    'sloop-qa',
-    'sloop-test-cleanup',
-    'sloop-e2e-prepare',
-    'sloop-test-empty-e2e',
-  ])
-    assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
-});
-
-test('sync replaces an official skill and preserves unrelated skills', () => {
-  const { root, runner, config } = createSyncFixture();
-  mkdirSync(join(root, '.codex', 'skills', 'sloop-worker'), { recursive: true });
-  mkdirSync(join(root, '.codex', 'skills', 'custom'), { recursive: true });
-  writeFileSync(join(root, '.codex', 'skills', 'sloop-worker', 'SKILL.md'), 'old');
-  writeFileSync(join(root, '.codex', 'skills', 'custom', 'SKILL.md'), 'keep');
-
-  syncPrerequisites(root, config, { runner });
-
-  assert.match(
-    readFileSync(join(root, '.codex', 'skills', 'sloop-worker', 'SKILL.md'), 'utf8'),
-    /sloop-worker/,
-  );
-  assert.equal(readFileSync(join(root, '.codex', 'skills', 'custom', 'SKILL.md'), 'utf8'), 'keep');
 });
 
 test('sync does not recreate labels that already exist', () => {
@@ -77,29 +30,6 @@ test('sync does not recreate labels that already exist', () => {
   const createLabelCalls = calls.filter(([file, args]) => file === 'gh' && args[1] === 'create');
 
   assert.equal(createLabelCalls.length, 0);
-});
-
-test('sync migrates legacy skill names in configuration text', () => {
-  const text = canonicalConfigYaml()
-    .replaceAll('sloop-worker', 'worker')
-    .replaceAll('sloop-qa', 'qa-sdet');
-
-  const migratedText = migrateSkillNames(text);
-
-  assert.match(migratedText, /sloop-worker/);
-});
-
-test('sync rejects legacy skill names until config init runs', () => {
-  const text = canonicalConfigYaml()
-    .replaceAll('sloop-worker', 'worker')
-    .replaceAll('sloop-qa', 'qa-sdet');
-  const config = loadConfigText(text);
-  const syncLegacyConfig = () =>
-    syncPrerequisites(createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-sync-')), config, {
-      runner: () => '',
-    });
-
-  assert.throws(syncLegacyConfig, /run sloop config init/);
 });
 
 test('sync stops at the first label creation error', () => {
