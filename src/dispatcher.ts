@@ -22,10 +22,9 @@ export type {
   HitlResumeDirective,
 } from './application/dispatcher/types/index.js';
 export { CliFailure } from './application/dispatcher/types/CliFailure.js';
-import { RunStateStore } from './application/dispatcher/services/RunStateStore.js';
-import { RunStatePolicy } from './application/dispatcher/services/RunStatePolicy.js';
-import { StateDiagnostics } from './application/dispatcher/services/StateDiagnostics.js';
-import { DispatcherLock } from './application/dispatcher/services/DispatcherLock.js';
+import { DispatcherRuntime } from './application/dispatcher/services/DispatcherRuntime.js';
+import { StateDiagnostics } from './application/dispatcher/services/state/StateDiagnostics.js';
+import { DispatcherLock } from './application/dispatcher/services/recovery/DispatcherLock.js';
 import { IssueSelection } from './application/dispatcher/services/IssueSelection.js';
 import { PullRequestReader } from './application/dispatcher/services/PullRequestReader.js';
 import { PullRequestPublisher } from './application/dispatcher/services/PullRequestPublisher.js';
@@ -39,10 +38,28 @@ import { ResolveReviewCap } from './application/dispatcher/services/ResolveRevie
 import { IssueLink } from './application/dispatcher/services/IssueLink.js';
 import { Dispatcher } from './application/dispatcher/services/Dispatcher.js';
 
-const { readState, writeState, resetRunState } = RunStateStore;
-const { defaultProcessAlive } = RunStatePolicy;
+const { defaultProcessAlive } = DispatcherRuntime;
+const { runStateStore } = DispatcherRuntime;
+const { recoverStaleLock } = DispatcherRuntime;
+const {
+  readState,
+  writeState: writeStateResult,
+  resetRunState: resetRunStateResult,
+} = runStateStore;
+const writeState = (state: Parameters<typeof writeStateResult>[0], file?: string): void => {
+  const writeResult = writeStateResult(state, file);
+  if (!writeResult.ok) throw writeResult.error;
+};
+const resetRunState = (
+  state: Parameters<typeof resetRunStateResult>[0],
+  processAlive = defaultProcessAlive,
+) => {
+  const resetResult = resetRunStateResult(state, processAlive);
+  if (!resetResult.ok) throw resetResult.error;
+  return resetResult.value;
+};
 const { redactDiagnostic } = StateDiagnostics;
-const { dispatcherLockPath, recoverStaleLock, acquire } = DispatcherLock;
+const { dispatcherLockPath, acquire } = DispatcherLock;
 const { eligible, selectIssues } = IssueSelection;
 const { pullRequest, pullRequestBody } = PullRequestReader;
 const { updatePullRequestBody, commentPullRequest, withIssueClosingReference } =

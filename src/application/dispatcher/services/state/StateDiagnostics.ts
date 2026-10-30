@@ -1,6 +1,5 @@
 /** Coordinates state diagnostics operations for dispatcher workflows. */
-import type { Status, State } from '../../../application/dispatcher/types/index.js';
-import { join } from 'node:path';
+import type { Status, State } from '../../../../application/dispatcher/types/index.js';
 
 function redactDiagnostic(value: string): string {
   const credentialKey = String.raw`(?:[A-Za-z][A-Za-z0-9_-]*[-_])?(?:token|api[_-]?key|secret|password|cookie|credentials?)(?:[-_][A-Za-z0-9_-]*)?`;

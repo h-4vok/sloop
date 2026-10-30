@@ -1,7 +1,7 @@
 import type { Config, Deps, Issue, PullRequest } from '../types/index.js';
 import { AgentRoles } from './AgentRoles.js';
 const { workerMetadata } = AgentRoles;
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { WorkerBranch } from './WorkerBranch.js';
 const { workerBranchName } = WorkerBranch;

@@ -2,7 +2,7 @@
 import type { Config, Deps } from '../../../application/dispatcher/types/index.js';
 import type { RunManifest } from '../../../remote-state.js';
 import { artifactKey } from '../../../remote-state.js';
-import { RemoteRunState } from './RemoteRunState.js';
+import { RemoteRunState } from './recovery/RemoteRunState.js';
 const { remoteManifest, remoteOwner, remoteProjection } = RemoteRunState;
 
 function publishRemoteManifest(

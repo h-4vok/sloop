@@ -6,8 +6,12 @@ import type { ReviewCapResumeContext } from '../types/ReviewCapResumeContext.js'
 import { HitlResumeDirectiveService } from './HitlResumeDirectiveService.js';
 const { activeRunForHitl } = HitlResumeDirectiveService;
 
-function reconcileReviewCapResume(stored: State, remote?: RemoteAuthority): ReviewCapResumeContext {
-  let current = activeRunForHitl(stored);
+function reconcileReviewCapResume(
+  stored: State,
+  remote: RemoteAuthority | undefined,
+  processAlive: (pid: number) => boolean,
+): ReviewCapResumeContext {
+  let current = activeRunForHitl(stored, processAlive);
   const remoteSnapshot = remote?.snapshot(current.issue);
   const remoteManifest =
     remoteSnapshot?.manifest && validateRunManifest(remoteSnapshot.manifest, current.issue)

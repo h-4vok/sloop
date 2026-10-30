@@ -1,15 +1,18 @@
 /** Coordinates hitl resume directive service operations for dispatcher workflows. */
 import type { State } from '../../../application/dispatcher/types/index.js';
 import type { RemoteSnapshot } from '../../../remote-state.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
-const { isWorkerStatus, status, defaultProcessAlive } = RunStatePolicy;
+import { RunStatePolicy } from './state/RunStatePolicy.js';
+const { isWorkerStatus, status } = RunStatePolicy;
 import type { HitlResumeDirective } from '../types/HitlResumeDirective.js';
 
-function activeRunForHitl(state: State): Required<Pick<State, 'issue' | 'pr'>> & State {
+function activeRunForHitl(
+  state: State,
+  processAlive: (pid: number) => boolean,
+): Required<Pick<State, 'issue' | 'pr'>> & State {
   const staleWorker =
     isWorkerStatus(state.status) &&
     typeof state.workerPid === 'number' &&
-    !defaultProcessAlive(state.workerPid);
+    !processAlive(state.workerPid);
   if (
     (!['review_cap_pending', 'worker_recovery_pending'].includes(state.status ?? '') &&
       !staleWorker) ||

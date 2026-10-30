@@ -1,7 +1,7 @@
 import type { Config, Deps, Issue } from '../types/index.js';
 import { ReviewBudget } from './ReviewBudget.js';
 const { effectiveMaxRounds, findingIds } = ReviewBudget;
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 
 async function pauseForReviewCap(cfg: Config, d: Deps, issue: Issue, round: number): Promise<void> {

@@ -8,7 +8,7 @@ import type {
 } from '../types/index.js';
 import { ReviewBudget } from './ReviewBudget.js';
 const { effectiveMaxRounds } = ReviewBudget;
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { WorkerExecution } from './WorkerExecution.js';
 const { runWorker } = WorkerExecution;

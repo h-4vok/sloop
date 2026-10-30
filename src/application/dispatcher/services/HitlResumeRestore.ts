@@ -4,7 +4,7 @@ import type { RemoteSnapshot, RunManifest } from '../../../remote-state.js';
 import { artifactKey } from '../../../remote-state.js';
 import { HitlResumeDirectiveService } from './HitlResumeDirectiveService.js';
 const { hitlResumeDirective } = HitlResumeDirectiveService;
-import { RemoteRunState } from './RemoteRunState.js';
+import { RemoteRunState } from './recovery/RemoteRunState.js';
 const { remoteManifest } = RemoteRunState;
 import { HitlResumeHistory } from './HitlResumeHistory.js';
 const { previousManifest } = HitlResumeHistory;

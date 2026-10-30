@@ -37,6 +37,8 @@ export type Deps = Workspace<State> &
     workspaceAdapter?: WorkspaceAdapter;
     runLogger?: RunEventLogger;
     setRunLogger?: (logger: RunEventLogger | undefined) => void;
+    createRunLogger?: (issue: number, runId: string) => RunEventLogger;
+    reportStatus?: (message: string) => void;
     runContext?: () => RunContext;
     listAllWorktrees?: () => unknown;
     clearAllWorktrees?: () => void;
