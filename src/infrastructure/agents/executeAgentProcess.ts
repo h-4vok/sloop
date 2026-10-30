@@ -21,7 +21,11 @@ export const executeAgentProcess: ProcessExecutor = (command, args, options) =>
     if (options.stdin !== undefined) child.stdin?.end(options.stdin);
     let stdout = '',
       stderr = '';
-    const timer = setTimeout(() => terminateProcessTree(child), options.timeoutMs);
+    let hasTimedOut = false;
+    const timer = setTimeout(() => {
+      hasTimedOut = true;
+      terminateProcessTree(child);
+    }, options.timeoutMs);
     child.stdout.on('data', (b) => {
       const s = String(b);
       stdout += s;
@@ -35,6 +39,10 @@ export const executeAgentProcess: ProcessExecutor = (command, args, options) =>
     child.on('error', reject);
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      if (hasTimedOut) {
+        reject(new Error('runner timed out'));
+        return;
+      }
       resolve({ stdout, stderr, code, signal });
     });
   });
