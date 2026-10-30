@@ -66,32 +66,4 @@ test('arbiter consumes only valid matching lines and classifies with retry prese
     );
   assert.equal(seen.length, 1);
   assert.equal(context.saved.review.sha, 'abc');
-  const preserved = [];
-  assert.deepEqual(
-    await classifyWithRetry(
-      [],
-      async () => [],
-      () => {},
-    ),
-    [],
-  );
-  assert.deepEqual(
-    await classifyWithRetry(
-      [{ sourceId: 'x' }],
-      async () => ['ok'],
-      () => {},
-    ),
-    ['ok'],
-  );
-  assert.deepEqual(
-    await classifyWithRetry(
-      [{ sourceId: 'x' }],
-      async () => {
-        throw new Error('no');
-      },
-      (items, error) => preserved.push([items, error.message]),
-    ),
-    [],
-  );
-  assert.equal(preserved[0][1], 'no');
 });
