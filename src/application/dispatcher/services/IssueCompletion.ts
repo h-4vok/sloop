@@ -1,5 +1,5 @@
 import type { Deps, Issue, PullRequest } from '../types/index.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { HumanReviewGuideService } from './HumanReviewGuideService.js';
 const { publishHumanReviewGuide } = HumanReviewGuideService;

@@ -1,11 +1,10 @@
 import type { Config, Deps, Issue, State } from '../types/index.js';
 import type { RunManifest } from '../../../remote-state.js';
 import { artifactKey } from '../../../remote-state.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
-const { status } = RunStatePolicy;
-import { RemoteClaim } from './RemoteClaim.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
+const { status, claimNewIssue } = RunStatePolicy;
+import { RemoteClaim } from './recovery/RemoteClaim.js';
 const { ensureRemoteClaim } = RemoteClaim;
-const { claimNewIssue } = RemoteClaim;
 import { RemoteManifestPublisher } from './RemoteManifestPublisher.js';
 const { publishRemoteManifest } = RemoteManifestPublisher;
 
@@ -109,7 +108,7 @@ async function prepareWorkerWorkspace(
   manifest: RunManifest | undefined,
 ): Promise<RunManifest | undefined> {
   const key = artifactKey('run', { issue: issue.number, runId });
-  const claimed = ensureRemoteClaim(
+  const claimResult = ensureRemoteClaim(
     cfg,
     d,
     issue.number,
@@ -117,6 +116,8 @@ async function prepareWorkerWorkspace(
     key,
     isRecovery && manifest?.branch !== 'pending' ? manifest : undefined,
   );
+  if (!claimResult.ok) throw claimResult.error;
+  const claimed = claimResult.value;
   if (isRecovery) {
     await prepareRecoveryWorker(cfg, d, issue, claimed, manifest);
     return claimed;

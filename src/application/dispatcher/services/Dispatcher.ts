@@ -1,13 +1,14 @@
 import type { Config, Deps } from '../types/index.js';
+import type { Result } from '../../../core/Result.js';
 import { CliFailure } from '../types/CliFailure.js';
 import { applyRunRetention } from '../../../run-log.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { isActiveStatus, isStaleWorker, hasPersistedRecoveryContext } = RunStatePolicy;
-import { DispatcherPreflight } from './DispatcherPreflight.js';
+import { DispatcherPreflight } from './recovery/DispatcherPreflight.js';
 const { validateDispatcherCompatibility, reconcilePersistedRun, validateRequiredAgentCommands } =
   DispatcherPreflight;
-import { DispatcherLock } from './DispatcherLock.js';
-const { acquire } = DispatcherLock;
+import { DispatcherLock } from './recovery/DispatcherLock.js';
+const { acquireResult } = DispatcherLock;
 import { DispatcherQueue } from './DispatcherQueue.js';
 const {
   selectNextIssue,
@@ -18,8 +19,8 @@ const {
 } = DispatcherQueue;
 
 async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
-  validateDispatcherCompatibility(cfg, d);
-  reconcilePersistedRun(d, d.load());
+  requirePreflightSuccess(validateDispatcherCompatibility(cfg, d));
+  requirePreflightSuccess(reconcilePersistedRun(d, d.load()));
 
   const state = d.load();
   const hasRemoteAuthority = Boolean(d.remote);
@@ -31,9 +32,11 @@ async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   if (isActiveStatus(state.status) && !isRecovering && !hasRemoteAuthority)
     throw new CliFailure(3, `active run exists for issue #${state.issue}`);
 
-  const lockToken = acquire(d, cfg.lockTtlMs ?? 900000);
+  const acquisitionResult = acquireResult(d, cfg.lockTtlMs ?? 900000);
+  if (!acquisitionResult.ok) throw acquisitionResult.error;
+  const lockToken = acquisitionResult.value;
   try {
-    validateRequiredAgentCommands(cfg);
+    requirePreflightSuccess(validateRequiredAgentCommands(cfg));
     applyRunRetention(d.root, cfg.loggingRetentionMs);
     const existingIssue = findExistingRecoveryIssue(d, hasRemoteAuthority, isRecovering);
     markDispatchRunning(d);
@@ -44,6 +47,10 @@ async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
   } finally {
     d.release(lockToken);
   }
+}
+
+function requirePreflightSuccess(preflightResult: Result<void, Error>): void {
+  if (!preflightResult.ok) throw preflightResult.error;
 }
 
 /** Owns one dispatcher pass: preflight, serialization, issue selection, and dispatch. */

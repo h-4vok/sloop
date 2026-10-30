@@ -1,40 +1,15 @@
 /** Coordinates remote claim operations for dispatcher workflows. */
-import type { Deps, Config } from '../../../application/dispatcher/types/index.js';
-import type { WorkflowProjection, RunManifest } from '../../../remote-state.js';
-import { CliFailure } from '../types/CliFailure.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
-const { status, skillFor } = RunStatePolicy;
+import type { Deps, Config } from '../../../../application/dispatcher/types/index.js';
+import type { WorkflowProjection, RunManifest } from '../../../../remote-state.js';
+import { result, type Result } from '../../../../core/Result.js';
+import { CliFailure } from '../../types/CliFailure.js';
 import { RemoteRunState } from './RemoteRunState.js';
 const { remoteProjection, remoteOwner, remoteManifest, hydrateFromRemote } = RemoteRunState;
 
-function claimNewIssue(d: Deps, issue: number): void {
-  const current = d.load();
-  d.save({
-    completedIssues: current.completedIssues ?? [],
-
-    mainGreen: current.mainGreen,
-
-    issue,
-
-    status: 'claimed',
-
-    reviewRound: 1,
-
-    drainStatus: 'running',
-
-    updatedAt: d.now(),
-  });
-  d.runLogger?.write('transition', { issue, from: current.status, to: 'claimed' });
-  console.error(`[sloop] issue #${issue}: claimed`);
-  d.comment(
-    issue,
-    `Sloop engineering v2: estado claimed. Skill activa: ${skillFor('claimed')}. QA precede la decisión humana; no se hace merge automático.`,
-  );
-}
-
-function assertRemoteLeaseAvailable(projection: WorkflowProjection): void {
+function assertRemoteLeaseAvailable(projection: WorkflowProjection): Result<void, CliFailure> {
   if (projection.openGates.includes('lease:owned'))
-    throw new CliFailure(3, 'another dispatcher owns the remote run lease');
+    return result.failure(new CliFailure(3, 'another dispatcher owns the remote run lease'));
+  return result.success(undefined);
 }
 
 function publishReconciledManifest(
@@ -87,11 +62,27 @@ function ensureRemoteClaim(
   runId: string,
   key: string,
   recoveryManifest?: RunManifest,
-): RunManifest | undefined {
-  if (!d.remote) return undefined;
+): Result<RunManifest | undefined, Error> {
+  if (!d.remote) return result.success(undefined);
+  try {
+    return result.success(resolveRemoteClaim(cfg, d, issue, runId, key, recoveryManifest));
+  } catch (error) {
+    return result.failure(error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+function resolveRemoteClaim(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  runId: string,
+  key: string,
+  recoveryManifest: RunManifest | undefined,
+): RunManifest {
   const current = remoteProjection(d, issue);
   if (!current) throw new Error('remote authority is required for dispatcher lifecycle');
-  assertRemoteLeaseAvailable(current.projection);
+  const leaseResult = assertRemoteLeaseAvailable(current.projection);
+  if (!leaseResult.ok) throw leaseResult.error;
   const owner = remoteOwner(d, issue);
   const recoveryPhase = recoveryManifest?.phase === 'blocked' ? 'working' : recoveryManifest?.phase;
   const manifest = recoveryManifest
@@ -106,20 +97,40 @@ function ensureRemoteClaim(
         recoveryManifest,
       )
     : remoteManifest(cfg, d, issue, runId, key, 'claimed', owner);
-  if (current.projection.manifest) {
-    const existing = current.projection.manifest;
-    const existingKey = existing.artifacts.includes(key) || d.remote.reconcile(issue, key);
-    if (existingKey)
-      return reuseExistingClaim(cfg, d, issue, key, owner, existing, recoveryManifest, manifest);
-  }
+  const reusedClaim = reuseMatchingClaim(
+    cfg,
+    d,
+    issue,
+    key,
+    owner,
+    current.projection.manifest,
+    recoveryManifest,
+    manifest,
+  );
+  if (reusedClaim) return reusedClaim;
 
   claimRemoteIssue(d, issue, key, manifest);
   return manifest;
 }
 
-export const RemoteClaim = {
-  claimNewIssue,
+function reuseMatchingClaim(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  key: string,
+  owner: string,
+  existing: RunManifest | undefined,
+  recoveryManifest: RunManifest | undefined,
+  manifest: RunManifest,
+): RunManifest | undefined {
+  if (!existing) return undefined;
+  const hasExistingClaim = existing.artifacts.includes(key) || d.remote!.reconcile(issue, key);
+  if (!hasExistingClaim) return undefined;
 
+  return reuseExistingClaim(cfg, d, issue, key, owner, existing, recoveryManifest, manifest);
+}
+
+export const RemoteClaim = {
   assertRemoteLeaseAvailable,
 
   ensureRemoteClaim,

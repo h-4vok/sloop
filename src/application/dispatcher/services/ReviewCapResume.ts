@@ -1,8 +1,9 @@
 import type { Config, Deps, DispatcherHost, State } from '../types/index.js';
 import type { RemoteAuthority } from '../../../core/boundaries.js';
 import type { RunManifest } from '../../../remote-state.js';
-import { RunStateStore } from './RunStateStore.js';
-const { writeState } = RunStateStore;
+import { DispatcherRuntime } from './DispatcherRuntime.js';
+const { runStateStore } = DispatcherRuntime;
+const { writeState } = runStateStore;
 import { PullRequestReader } from './PullRequestReader.js';
 const { pullRequest } = PullRequestReader;
 import { ReviewCapPolicy } from './ReviewCapPolicy.js';
@@ -113,7 +114,8 @@ function persistReviewCapDecision(
   host: DispatcherHost,
   remote?: RemoteAuthority,
 ): void {
-  writeState(next, statePath);
+  const saveResult = writeState(next, statePath);
+  if (!saveResult.ok) throw saveResult.error;
   publishHitlDecision(
     next,
     options.additionalRounds > 0 ? 'resume' : 'waive_ready_for_human_merge',

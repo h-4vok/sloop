@@ -1,6 +1,7 @@
 import type { DispatcherHost, State } from '../types/index.js';
-import { RunStateStore } from './RunStateStore.js';
-const { writeState } = RunStateStore;
+import { DispatcherRuntime } from './DispatcherRuntime.js';
+const { runStateStore } = DispatcherRuntime;
+const { writeState } = runStateStore;
 import { GitHubCli } from './GitHubCli.js';
 const { gh } = GitHubCli;
 import { HitlDecisionPublisher } from './HitlDecisionPublisher.js';
@@ -16,7 +17,8 @@ function validateAbandonment(state: State): void {
 }
 
 function saveAbandonmentStep(state: State, statePath: string): State {
-  writeState(state, statePath);
+  const saveResult = writeState(state, statePath);
+  if (!saveResult.ok) throw saveResult.error;
   return state;
 }
 
@@ -61,7 +63,8 @@ function abandonReviewCap(
       statePath,
     );
   }
-  writeState({ ...state, status: 'abandoned' }, statePath);
+  const saveResult = writeState({ ...state, status: 'abandoned' }, statePath);
+  if (!saveResult.ok) throw saveResult.error;
 }
 
 export const ReviewCapAbandonment = { abandonReviewCap };

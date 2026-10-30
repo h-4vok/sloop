@@ -10,7 +10,7 @@ import { RunLogger, runDirectory } from '../../../run-log.js';
 import { allowlistedPublication } from '../../../publication.js';
 import { ReviewEvidence } from './ReviewEvidence.js';
 const { latestReview, reviewVerdict, waitForEvidence } = ReviewEvidence;
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { AgentRoles } from './AgentRoles.js';
 const { roleCommand, roleUpdate, rolePrompt } = AgentRoles;

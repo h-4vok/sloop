@@ -3,7 +3,7 @@ import type { State, PullRequest } from '../../../application/dispatcher/types/i
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { CliFailure } from '../types/CliFailure.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { DispatcherRuntime } from './DispatcherRuntime.js';
 const { defaultRoot } = DispatcherRuntime;
