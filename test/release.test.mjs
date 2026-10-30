@@ -11,6 +11,19 @@ import {
   verifyReleaseState,
   updateRepositoryMetadata,
 } from '../src/release.js';
+import {
+  deriveReleaseKind as serviceDeriveReleaseKind,
+  nextVersion as serviceNextVersion,
+  parseIssueReleaseKind as serviceParseIssueReleaseKind,
+} from '../src/application/release/index.js';
+import { updateRepositoryMetadata as infrastructureUpdateMetadata } from '../src/infrastructure/release/updateRepositoryMetadata.js';
+
+test('release root preserves the public service and filesystem adapter imports', () => {
+  assert.equal(parseIssueReleaseKind, serviceParseIssueReleaseKind);
+  assert.equal(deriveReleaseKind, serviceDeriveReleaseKind);
+  assert.equal(nextVersion, serviceNextVersion);
+  assert.equal(updateRepositoryMetadata, infrastructureUpdateMetadata);
+});
 
 test('parses only exact issue release prefixes', () => {
   const recognizedTitles = ['[patch] fix', '[minor] feature', '[major] breaking'];

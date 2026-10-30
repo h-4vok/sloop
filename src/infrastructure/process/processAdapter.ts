@@ -3,6 +3,13 @@ import { extname, isAbsolute } from 'node:path';
 
 type ExecutableLocator = (commandName: string) => readonly string[];
 
+/** Immutable command invocation returned to infrastructure callers. */
+type ProcessInvocation = Readonly<{
+  command: string;
+  args: readonly string[];
+  windowsVerbatimArguments?: boolean;
+}>;
+
 const locateExecutable: ExecutableLocator = (commandName) =>
   execFileSync('where.exe', [commandName], {
     encoding: 'utf8',
@@ -37,10 +44,10 @@ function resolveExecutable(
 
 function childProcessInvocation(
   executable: string,
-  args: string[],
+  args: readonly string[],
   platform = process.platform,
   commandProcessor = process.env.ComSpec,
-): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
+): ProcessInvocation {
   if (platform === 'win32' && /\.(cmd|bat)$/i.test(executable)) {
     // cmd.exe must parse batch files, so never pass arbitrary argv entries to
     // its command parser. The dispatcher only needs fixed CLI flags for batch
@@ -62,12 +69,12 @@ function childProcessInvocation(
       windowsVerbatimArguments: true,
     };
   }
-  return { command: executable, args };
+  return { command: executable, args: [...args] };
 }
 
 type SyncCommandExecutor = (
   command: string,
-  args: string[],
+  args: readonly string[],
   options: {
     cwd: string;
     encoding: 'utf8';
@@ -78,9 +85,9 @@ type SyncCommandExecutor = (
 
 function runSyncCommand(
   executable: string,
-  args: string[],
+  args: readonly string[],
   execute: SyncCommandExecutor = (command, commandArgs, options) =>
-    execFileSync(command, commandArgs, options) as string,
+    execFileSync(command, [...commandArgs], options) as string,
   platform = process.platform,
   commandProcessor = process.env.ComSpec,
   cwd = process.cwd(),
