@@ -1,6 +1,7 @@
 import type { Readable, Writable } from 'node:stream';
 import type { ConfigReconciler as CoreConfigReconciler } from '../../core/config/ConfigReconciler.js';
-import type { FieldMetadata } from '../../config.js';
+import type { ConfigFileStore, FieldMetadata } from '../../config.js';
+import type { Logger } from '../../core/Logger.js';
 
 export type ConfigReconciler = CoreConfigReconciler;
 export type ConfigReconcilerWithPreflight = ConfigReconciler & {
@@ -13,4 +14,14 @@ export type WizardIO = Readonly<{
   promptForSync?: boolean;
   /** Overrides terminal color detection for injected interactive IO. */
   useColor?: boolean;
+}>;
+
+/** Shares injected boundaries between config command routing and handlers. */
+export type ConfigCommandContext = Readonly<{
+  root: string;
+  args: readonly string[];
+  reconciler: ConfigReconcilerWithPreflight;
+  io: WizardIO;
+  logger: Logger;
+  fileStore: ConfigFileStore;
 }>;
