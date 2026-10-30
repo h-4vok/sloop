@@ -14,6 +14,11 @@ import { canonicalConfigYaml, loadConfigText } from '../src/config.js';
 import { ExternalServiceError } from '../src/core/ExternalServiceError.js';
 import { withEphemeralMutex, withEphemeralMutexAsync } from '../src/mutex.js';
 import { RunLogger, applyRunRetention, runDirectory } from '../src/run-log.js';
+import {
+  RunLogger as infrastructureRunLogger,
+  applyRunRetention as infrastructureApplyRunRetention,
+  runDirectory as infrastructureRunDirectory,
+} from '../src/infrastructure/logging/index.js';
 import { runManifestMarker } from '../src/remote-state.js';
 
 const createTemporaryDirectory = (prefix) =>
@@ -79,6 +84,12 @@ function createAlignedWorkerRepository(branch) {
 
   return root;
 }
+
+test('run-log root preserves its public infrastructure imports', () => {
+  assert.equal(RunLogger, infrastructureRunLogger);
+  assert.equal(applyRunRetention, infrastructureApplyRunRetention);
+  assert.equal(runDirectory, infrastructureRunDirectory);
+});
 
 test('remote snapshot normalizes issue and pull-request state', () => {
   const issueNumber = 81;
