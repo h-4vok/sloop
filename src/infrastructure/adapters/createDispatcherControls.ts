@@ -1,4 +1,6 @@
-import type { CliControl, RemoteAuthority, Workspace } from '../../core/boundaries.js';
+import type { CliControl } from '../../core/CliControl.js';
+import type { RemoteAuthority } from '../../core/RemoteAuthority.js';
+import type { Workspace } from '../../core/Workspace.js';
 import {
   linkIssueToActiveRun,
   prepareRecovery,

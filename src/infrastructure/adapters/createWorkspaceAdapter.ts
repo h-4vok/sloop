@@ -1,4 +1,5 @@
-import type { RunContext, WorkspaceAdapter } from '../../core/boundaries.js';
+import type { RunContext } from '../../core/RunContext.js';
+import type { WorkspaceAdapter } from '../../core/WorkspaceAdapter.js';
 import type { State } from '../../dispatcher.js';
 import { readState } from '../../dispatcher.js';
 import type { SloopConfig } from '../../config.js';

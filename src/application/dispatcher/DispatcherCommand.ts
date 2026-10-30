@@ -1,4 +1,4 @@
-import type { ReviewCapOptions } from '../../core/boundaries.js';
+import type { ReviewCapOptions } from './types/ReviewCapOptions.js';
 
 /** Commands accepted by the workflow dispatcher after CLI parsing. */
 export type DispatcherCommand =

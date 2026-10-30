@@ -1,4 +1,4 @@
-import type { ActiveRunReconciliation } from '../../core/boundaries.js';
+import type { ActiveRunReconciliation } from '../../core/ActiveRunReconciliation.js';
 import type { State } from '../../dispatcher.js';
 import { workspaceAdapter } from '../workspace/index.js';
 import type { SloopConfig } from '../../config.js';
