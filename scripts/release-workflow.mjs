@@ -23,38 +23,45 @@ async function main() {
     apiUrl: process.env.GITHUB_API_URL,
   });
 
-  if (command === 'calculate') {
-    const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-    const number = event.pull_request?.number;
-    if (!Number.isSafeInteger(number)) throw new Error('Missing merged PR number');
-
-    const result = await calculateRelease({
-      api,
-      number,
-      body: event.pull_request.body,
-      tags: gitTags(),
-      readTagMetadata,
-      packageVersion: JSON.parse(readFileSync('package.json', 'utf8')).version,
-    });
-    appendFileSync(process.env.GITHUB_OUTPUT, `kind=${result.kind}\nversion=${result.version}\n`);
-    console.log(
-      `Release for PR #${number}: ${result.kind} -> v${result.version}${result.reused ? ' (existing)' : ''}`,
-    );
-    return;
+  switch (command) {
+    case 'calculate':
+      await calculatePullRequestRelease(api);
+      return;
+    case 'publish':
+      await publishPullRequestRelease(api);
+      return;
+    default:
+      throw new Error('Usage: node scripts/release-workflow.mjs calculate|publish');
   }
+}
 
-  if (command === 'publish') {
-    const outcome = await publishRelease({
-      api,
-      version: process.env.VERSION,
-      pr: Number(process.env.PR_NUMBER),
-      date: new Date().toISOString().slice(0, 10),
-    });
-    console.log(`Release v${process.env.VERSION} for PR #${process.env.PR_NUMBER}: ${outcome}.`);
-    return;
-  }
+async function calculatePullRequestRelease(api) {
+  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  const number = event.pull_request?.number;
+  if (!Number.isSafeInteger(number)) throw new Error('Missing merged PR number');
 
-  throw new Error('Usage: node scripts/release-workflow.mjs calculate|publish');
+  const result = await calculateRelease({
+    api,
+    number,
+    body: event.pull_request.body,
+    tags: gitTags(),
+    readTagMetadata,
+    packageVersion: JSON.parse(readFileSync('package.json', 'utf8')).version,
+  });
+  appendFileSync(process.env.GITHUB_OUTPUT, `kind=${result.kind}\nversion=${result.version}\n`);
+  console.log(
+    `Release for PR #${number}: ${result.kind} -> v${result.version}${result.reused ? ' (existing)' : ''}`,
+  );
+}
+
+async function publishPullRequestRelease(api) {
+  const outcome = await publishRelease({
+    api,
+    version: process.env.VERSION,
+    pr: Number(process.env.PR_NUMBER),
+    date: new Date().toISOString().slice(0, 10),
+  });
+  console.log(`Release v${process.env.VERSION} for PR #${process.env.PR_NUMBER}: ${outcome}.`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -7,13 +7,12 @@ import {
 } from './RemoteManifest.js';
 import { leaseIsActiveResult } from './runManifestMarker.js';
 import { validateRunManifest } from './validateRunManifest.js';
+import { collectRemoteStateGates } from './collectRemoteStateGates.js';
 
 /** Project remote observations into an explicit workflow state or validation failure. */
 export function projectRemoteState(snapshot: RemoteSnapshot): Result<WorkflowProjection, Error> {
-  if (!Number.isInteger(snapshot.issue) || snapshot.issue <= 0)
-    return result.failure(new Error('invalid issue number'));
-  if (snapshot.protocol !== undefined && snapshot.protocol !== REMOTE_PROTOCOL)
-    return result.failure(new Error(`unsupported remote protocol: ${snapshot.protocol}`));
+  const validationError = snapshotValidationError(snapshot);
+  if (validationError) return result.failure(validationError);
   const markers = collectMarkers(snapshot);
   const manifest = snapshot.manifest;
   if (!hasCurrentManifest(manifest, snapshot.issue, markers))
@@ -24,6 +23,14 @@ export function projectRemoteState(snapshot: RemoteSnapshot): Result<WorkflowPro
       artifactKeys: markers,
     });
   return createProjection(snapshot, manifest as RunManifest, markers);
+}
+
+function snapshotValidationError(snapshot: RemoteSnapshot): Error | undefined {
+  if (!Number.isInteger(snapshot.issue) || snapshot.issue <= 0)
+    return new Error('invalid issue number');
+  if (snapshot.protocol !== undefined && snapshot.protocol !== REMOTE_PROTOCOL)
+    return new Error(`unsupported remote protocol: ${snapshot.protocol}`);
+  return undefined;
 }
 
 function collectMarkers(snapshot: RemoteSnapshot): string[] {
@@ -54,17 +61,14 @@ function createProjection(
   manifest: RunManifest,
   markers: readonly string[],
 ): Result<WorkflowProjection, Error> {
-  const lease = manifest.lease
-    ? leaseIsActiveResult(manifest.lease, snapshot.now ?? Date.now())
-    : undefined;
-  if (lease && !lease.ok) return result.failure(lease.error);
-  const leaseState =
-    manifest.lease && lease?.ok ? { ...manifest.lease, active: lease.value } : undefined;
-  const gates = collectGates(snapshot, manifest);
-  const phase =
-    manifest.phase === 'complete' ? 'complete' : gates.length ? 'review' : manifest.phase;
-  if (leaseState?.active && snapshot.leaseOwner && leaseState.owner !== snapshot.leaseOwner)
-    gates.push('lease:owned');
+  const leaseStateResult = createLeaseState(manifest, snapshot);
+  if (!leaseStateResult.ok) return result.failure(leaseStateResult.error);
+
+  const leaseState = leaseStateResult.value;
+  const gates = collectRemoteStateGates(snapshot, manifest);
+  const phase = projectedPhase(manifest, gates);
+  appendLeaseOwnershipGate(gates, leaseState, snapshot.leaseOwner);
+
   return result.success({
     protocol: REMOTE_PROTOCOL,
     phase,
@@ -72,57 +76,46 @@ function createProjection(
     runId: manifest.runId,
     manifest,
     artifactKeys: [...new Set([...markers, ...manifest.artifacts])].sort(),
-    ...(leaseState ? { lease: leaseState } : {}),
+    ...optionalLease(leaseState),
   });
 }
 
-function collectGates(snapshot: RemoteSnapshot, manifest: RunManifest): string[] {
-  return [
-    ...checkGates(snapshot),
-    ...reviewGates(snapshot),
-    ...countUnresolved(snapshot),
-    ...blockedLabels(snapshot),
-    ...branchGates(snapshot, manifest),
-    ...shaGates(snapshot, manifest),
-  ];
+function projectedPhase(
+  manifest: RunManifest,
+  gates: readonly string[],
+): WorkflowProjection['phase'] {
+  if (manifest.phase === 'complete') return 'complete';
+  if (gates.length) return 'review';
+  return manifest.phase;
 }
 
-function checkGates(snapshot: RemoteSnapshot): string[] {
-  return (snapshot.checks ?? [])
-    .filter((check) => check.conclusion !== 'success')
-    .map((check) => `check:${check.name}`)
-    .sort();
+function appendLeaseOwnershipGate(
+  gates: string[],
+  lease: WorkflowProjection['lease'],
+  leaseOwner: RemoteSnapshot['leaseOwner'],
+): void {
+  if (isLeaseOwnedByAnotherAgent(lease, leaseOwner)) gates.push('lease:owned');
 }
 
-function reviewGates(snapshot: RemoteSnapshot): string[] {
-  const hasOpenReview = (snapshot.reviews ?? []).some(
-    (review) => !['APPROVED', 'DISMISSED'].includes(review.state.toUpperCase()),
-  );
-  return hasOpenReview ? ['review'] : [];
+function optionalLease(lease: WorkflowProjection['lease']) {
+  return lease ? { lease } : {};
 }
 
-function branchGates(snapshot: RemoteSnapshot, manifest: RunManifest): string[] {
-  return snapshot.branch !== undefined && snapshot.branch !== manifest.branch
-    ? ['branch:mismatch']
-    : [];
+function createLeaseState(
+  manifest: RunManifest,
+  snapshot: RemoteSnapshot,
+): Result<WorkflowProjection['lease'], Error> {
+  if (!manifest.lease) return result.success(undefined);
+
+  const leaseResult = leaseIsActiveResult(manifest.lease, snapshot.now ?? Date.now());
+  if (!leaseResult.ok) return result.failure(leaseResult.error);
+
+  return result.success({ ...manifest.lease, active: leaseResult.value });
 }
 
-function shaGates(snapshot: RemoteSnapshot, manifest: RunManifest): string[] {
-  return hasShaMismatch(snapshot.sha, manifest.baseSha) ? ['sha:mismatch'] : [];
-}
-
-function countUnresolved(snapshot: RemoteSnapshot): string[] {
-  const count = (snapshot.inlineThreads ?? []).filter((thread) => !thread.resolved).length;
-  return count ? [`inline:${count}`] : [];
-}
-
-function blockedLabels(snapshot: RemoteSnapshot): string[] {
-  return [...(snapshot.labels ?? [])]
-    .sort()
-    .filter((label) => /^(Automation Blocked|Blocked)$/i.test(label))
-    .map((label) => `label:${label}`);
-}
-
-function hasShaMismatch(sha: string | undefined, baseSha: string): boolean {
-  return sha !== undefined && sha !== baseSha && sha !== baseSha.slice(0, 7);
+function isLeaseOwnedByAnotherAgent(
+  lease: WorkflowProjection['lease'],
+  leaseOwner: RemoteSnapshot['leaseOwner'],
+): boolean {
+  return Boolean(lease?.active && leaseOwner && lease.owner !== leaseOwner);
 }

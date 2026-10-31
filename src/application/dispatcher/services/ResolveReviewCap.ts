@@ -9,18 +9,28 @@ const { abandonReviewCap } = ReviewCapAbandonment;
 import { ReviewCapResume } from './review/ReviewCapResume.js';
 const { reconcileReviewCapResume, buildReviewCapState, persistReviewCapDecision } = ReviewCapResume;
 
-function validateReviewCapRequest(options: ReviewCapOptions): void {
-  if (
+function hasConflictingAbandonmentOptions(options: ReviewCapOptions): boolean {
+  return (
     options.abandon &&
-    (options.waiveAllOutstanding || options.waivedFindingIds.length || options.additionalRounds)
-  )
-    throw new Error('--abandon cannot be combined with waivers or additional rounds');
-  if (
+    (options.waiveAllOutstanding ||
+      options.waivedFindingIds.length > 0 ||
+      Boolean(options.additionalRounds))
+  );
+}
+
+function hasNoReviewCapAction(options: ReviewCapOptions): boolean {
+  return (
     !options.abandon &&
     !options.waiveAllOutstanding &&
-    !options.waivedFindingIds.length &&
+    options.waivedFindingIds.length === 0 &&
     options.additionalRounds === 0
-  )
+  );
+}
+
+function validateReviewCapRequest(options: ReviewCapOptions): void {
+  if (hasConflictingAbandonmentOptions(options))
+    throw new Error('--abandon cannot be combined with waivers or additional rounds');
+  if (hasNoReviewCapAction(options))
     throw new Error('choose --additional-rounds, --waive, --waive-all-outstanding, or --abandon');
 }
 

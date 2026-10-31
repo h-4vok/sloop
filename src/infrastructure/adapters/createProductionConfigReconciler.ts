@@ -16,22 +16,8 @@ export const productionConfigReconcilerFactory = Object.freeze({
     _root: string,
     synchronize: SyncPrerequisites = syncPrerequisites,
   ): ConfigReconcilerWithPreflight {
-    const reconcileConfig = (async (_rootPath, kind) => {
-      if (!kind || kind === 'none') return;
-      if (kind === 'github' || kind === 'skills') {
-        try {
-          const configText = readFileSync(join(_rootPath, 'sloop.config.yaml'), 'utf8');
-          synchronize(_rootPath, loadConfigText(configText));
-        } catch (error) {
-          const synchronizationFailure = `${kind} synchronization failed: ${error instanceof Error ? error.message : String(error)}`;
-          throw new Error(synchronizationFailure);
-        }
-
-        return;
-      }
-      const unsupportedReconciler = `No production reconciler is available for ${kind}.`;
-      throw new Error(unsupportedReconciler);
-    }) as ConfigReconcilerWithPreflight;
+    const reconcileConfig = (async (rootPath, kind) =>
+      reconcileConfigKind(rootPath, kind, synchronize)) as ConfigReconcilerWithPreflight;
 
     reconcileConfig.preflight = (_rootPath, kind: ConfigReconcilerKind) => {
       if (kind && !['none', 'github', 'skills'].includes(kind))
@@ -41,3 +27,31 @@ export const productionConfigReconcilerFactory = Object.freeze({
     return reconcileConfig;
   },
 });
+
+async function reconcileConfigKind(
+  rootPath: string,
+  kind: ConfigReconcilerKind,
+  synchronize: SyncPrerequisites,
+): Promise<void> {
+  if (isNoOpReconciler(kind)) return;
+  if (!supportsProductionReconciliation(kind))
+    throw new Error(`No production reconciler is available for ${kind}.`);
+  try {
+    const configText = readFileSync(join(rootPath, 'sloop.config.yaml'), 'utf8');
+    synchronize(rootPath, loadConfigText(configText));
+  } catch (error) {
+    throw new Error(`${kind} synchronization failed: ${errorMessage(error)}`);
+  }
+}
+
+function isNoOpReconciler(kind: ConfigReconcilerKind): boolean {
+  return !kind || kind === 'none';
+}
+
+function supportsProductionReconciliation(kind: ConfigReconcilerKind): boolean {
+  return kind === 'github' || kind === 'skills';
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

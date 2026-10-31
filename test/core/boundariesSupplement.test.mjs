@@ -50,29 +50,7 @@ test('production adapters create a missing Arbiter follow-up issue', () => {
 
 test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
   const calls = [];
-  const manifest = {
-    protocol: 1,
-
-    runId: 'run-1',
-
-    issue: 33,
-
-    pr: 77,
-
-    branch: 'codex/issue-33',
-
-    baseSha: 'abcdef1',
-
-    configFingerprint: 'config-1',
-
-    phase: 'review',
-
-    reviewRound: 1,
-
-    contextCursor: 'cursor-1',
-
-    artifacts: [],
-  };
+  const manifest = createRunManifest();
   const execute = (file, args, options) => {
     calls.push({ file, args: [...args], options });
     if (args[0] === 'issue')
@@ -101,6 +79,22 @@ test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
   assert.equal(apiCall.args.includes('--repo'), false);
   assert.deepEqual(snapshot.inlineThreads, [{ resolved: false }]);
 });
+
+function createRunManifest() {
+  return {
+    protocol: 1,
+    runId: 'run-1',
+    issue: 33,
+    pr: 77,
+    branch: 'codex/issue-33',
+    baseSha: 'abcdef1',
+    configFingerprint: 'config-1',
+    phase: 'review',
+    reviewRound: 1,
+    contextCursor: 'cursor-1',
+    artifacts: [],
+  };
+}
 
 test('production adapters run agent commands from the repository root', async () => {
   const config = loadConfigText(canonicalConfigYaml());

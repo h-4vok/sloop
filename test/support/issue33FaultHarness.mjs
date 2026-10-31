@@ -1,141 +1,109 @@
 import { createIsolatedTemporaryDirectory } from './temporary-directory.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createFaultWorkspaceAdapter } from './issue33FaultWorkspaceAdapter.mjs';
 import { createFaultAgentDependencies } from './issue33FaultAgentDependencies.mjs';
-import { createFaultRemoteAdapter } from './issue33FaultRemoteAdapter.mjs';
 import { createFaultLeaseDependencies } from './issue33FaultLeaseDependencies.mjs';
+import { faultConfig } from './issue33FaultFixtures.mjs';
+import { createIssue33FaultAdapters } from './createIssue33FaultAdapters.mjs';
 
-export function createMockFaultHarness({
-  remoteManifest,
-  outage = false,
-  ambiguous = false,
-  crashAfterClaim = false,
-  initialState = {},
-  pullRequestEvidence = {},
-} = {}) {
-  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-fault-'));
-  let state = structuredClone(initialState);
-  let remote = remoteManifest;
-  let claimCount = 0;
-  let publishCount = 0;
-  const publishedManifests = [];
-  let prepareCount = 0;
-  let hasSimulatedCrash = false;
-  const comments = [];
-  const reviews = [];
-  const events = [];
-  const pr = {
+export function createMockFaultHarness(options = {}) {
+  const fixture = createFaultFixture(options);
+  const dependencies = createFaultDependencies(fixture, options);
+  return createPublicFaultHarness(fixture, dependencies);
+}
+
+function createFaultFixture(options) {
+  const fixture = {
+    root: createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-fault-')),
+    state: structuredClone(options.initialState ?? {}),
+    remote: options.remoteManifest,
+    claimCount: 0,
+    publishCount: 0,
+    publishedManifests: [],
+    prepareCount: 0,
+    hasSimulatedCrash: false,
+    comments: [],
+    reviews: [],
+    events: [],
+  };
+  fixture.pr = createFaultPullRequest(fixture);
+  return fixture;
+}
+
+function createFaultPullRequest(fixture) {
+  return {
     number: 14,
-
     state: 'OPEN',
-
     baseRefName: 'main',
-
     headRefName: 'codex/issue-33-fault',
-
     headRefOid: 'abcdef1',
-
     body: 'Summary\n\nCloses #33',
-
     mergeStateStatus: 'CLEAN',
-
     mergeable: 'MERGEABLE',
-
-    comments,
-
-    reviews,
-
+    comments: fixture.comments,
+    reviews: fixture.reviews,
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   };
-  const snapshot = () => {
-    if (outage) throw new Error('GitHub outage');
-    return {
-      issue: 33,
+}
 
-      markers: remote ? [`sloop/v1/run/${remote.runId}`, ...remote.artifacts] : [],
-
-      manifest: remote,
-
-      branch: remote?.branch,
-
-      sha: remote?.baseSha,
-
-      now: Date.now(),
-
-      leaseOwner: '7001:33',
-    };
-  };
-  const dependencies = {
-    root,
-
-    load: () => state,
-
-    save: (next) => {
-      if (crashAfterClaim && claimCount > 0 && next.workerRunId && !hasSimulatedCrash) {
-        hasSimulatedCrash = true;
-        throw new Error('crash before local acknowledgement');
-      }
-      state = structuredClone(next);
-    },
-
-    loadConfig: () => faultConfig,
-
-    status: (verbose) => (verbose ? state : { issue: state.issue, status: state.status }),
-
-    list: () => [],
-
-    recoverLock: () => 'none',
-
-    reset: () => {},
-
-    resolveReviewCap: () => {},
-
-    linkIssue: () => {},
-
-    prepareRecovery: () => 14,
-
-    eligible: () => [{ number: 33, title: 'fault injection' }],
-
-    comment: (issue, body) => comments.push({ issue, body }),
-
-    ...createFaultAgentDependencies({ events, comments, reviews, pr, pullRequestEvidence }),
-
+function createFaultDependencies(fixture, options) {
+  return {
+    ...createFaultLocalDependencies(fixture, options),
+    ...createFaultAgentDependencies({
+      events: fixture.events,
+      comments: fixture.comments,
+      reviews: fixture.reviews,
+      pr: fixture.pr,
+      pullRequestEvidence: options.pullRequestEvidence ?? {},
+    }),
     ...createFaultLeaseDependencies(),
-
-    workspaceAdapter: createFaultWorkspaceAdapter({
-      root,
-      readState: () => state,
-      readRemote: () => remote,
-      onPrepare: () => {
-        prepareCount += 1;
-      },
-    }),
-    remote: createFaultRemoteAdapter({
-      snapshot,
-      readRemote: () => remote,
-      writeRemote: (value) => {
-        remote = value;
-      },
-      recordClaim: () => {
-        claimCount += 1;
-      },
-      recordPublication: (manifest) => {
-        publishCount += 1;
-        publishedManifests.push(manifest);
-      },
-      isAmbiguous: () => ambiguous,
-    }),
+    ...createIssue33FaultAdapters(fixture, options),
   };
+}
+
+function createFaultLocalDependencies(fixture, options) {
+  return {
+    root: fixture.root,
+    load: () => fixture.state,
+    save: (next) => saveFaultState(fixture, next, options.crashAfterClaim),
+    loadConfig: () => faultConfig,
+    status: (verbose) =>
+      verbose ? fixture.state : { issue: fixture.state.issue, status: fixture.state.status },
+    list: () => [],
+    recoverLock: () => 'none',
+    reset: () => {},
+    resolveReviewCap: () => {},
+    linkIssue: () => {},
+    prepareRecovery: () => 14,
+    eligible: () => [{ number: 33, title: 'fault injection' }],
+    comment: (issue, body) => fixture.comments.push({ issue, body }),
+  };
+}
+
+function saveFaultState(fixture, next, crashAfterClaim) {
+  if (shouldSimulateFaultCrash(fixture, next, crashAfterClaim)) {
+    fixture.hasSimulatedCrash = true;
+    throw new Error('crash before local acknowledgement');
+  }
+  fixture.state = structuredClone(next);
+}
+
+function shouldSimulateFaultCrash(fixture, next, crashAfterClaim) {
+  return (
+    crashAfterClaim && fixture.claimCount > 0 && next.workerRunId && !fixture.hasSimulatedCrash
+  );
+}
+
+function createPublicFaultHarness(fixture, dependencies) {
   return {
     dependencies,
-
-    counts: () => ({ claimCount, publishCount, prepareCount }),
-
-    remote: () => remote,
-
-    published: () => publishedManifests,
-
-    events: () => events,
+    counts: () => ({
+      claimCount: fixture.claimCount,
+      publishCount: fixture.publishCount,
+      prepareCount: fixture.prepareCount,
+    }),
+    remote: () => fixture.remote,
+    published: () => fixture.publishedManifests,
+    events: () => fixture.events,
   };
 }

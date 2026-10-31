@@ -38,23 +38,39 @@ function hasPersistedRecoveryContext(state: State): boolean {
 function isStaleWorker(s: State, cfg: Config, d: Deps): boolean {
   if (!isWorkerStatus(s.status)) return false;
   if (typeof s.workerPid === 'number') return !d.processAlive(s.workerPid);
+
+  return hasExpiredWorkerHeartbeat(s, cfg, d);
+}
+
+function hasExpiredWorkerHeartbeat(s: State, cfg: Config, d: Deps): boolean {
   const lastHeartbeat = s.workerHeartbeatAt ?? s.workerStartedAt;
   return Boolean(lastHeartbeat && d.now() - lastHeartbeat > (cfg.workerLeaseMs ?? 900000));
 }
 
-function recoveryEligibilityError(state: State, issue: number): Error {
-  const context = [
+function recoveryContext(state: State): string {
+  return [
     `status=${state.status ?? 'unknown'}`,
     `pr=${state.pr ?? 'none'}`,
     `branch=${state.branch ?? 'none'}`,
     `reviewRound=${state.reviewRound ?? 'unknown'}`,
   ].join(', ');
+}
+
+function recoveryCommand(state: State, issue: number): string {
+  const pullRequest = state.pr ? ` --pr ${state.pr}` : '';
+
+  return `then run "sloop --prepare-recovery ${issue}${pullRequest}" and retry "sloop".`;
+}
+
+function recoveryEligibilityError(state: State, issue: number): Error {
+  const context = recoveryContext(state);
+  const retryCommand = recoveryCommand(state, issue);
   return new Error(
     `Issue #${issue} cannot be recovered because it was not returned by the eligible-issues query. ` +
       `Sloop requires the issue to be open and labeled "Automation Ready". ` +
       `Persisted recovery context: ${context}. ` +
       `Verify with "gh issue view ${issue} --json state,labels"; add the label if needed, ` +
-      `then run "sloop --prepare-recovery ${issue}${state.pr ? ` --pr ${state.pr}` : ''}" and retry "sloop".`,
+      retryCommand,
   );
 }
 

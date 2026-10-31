@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { SloopConfig } from '../../config.js';
 import type { SyncOptions, SyncRunner } from './checkSyncPrerequisites.js';
+import { getSkillAsset, getSkillDestination } from './skillPaths.js';
 
 const canonicalLabels = [
   ['Automation Ready', '0E8A16', 'Issue fully specified and eligible for the local loop'],
@@ -27,41 +26,6 @@ const bundledSkills = [
 const defaultRunner: SyncRunner = (file, args, cwd) =>
   execFileSync(file, [...args], { cwd, encoding: 'utf8' });
 
-function getSkillDestination(root: string, config: SloopConfig): string {
-  const scopeRoot = config.skills.scope === 'repository' ? root : homedir();
-  const target =
-    config.skills.scope === 'repository'
-      ? join(root, '.codex', 'skills')
-      : join(homedir(), '.codex', 'skills');
-  const resolvedTarget = resolve(target);
-  const relativeTarget = relative(resolve(scopeRoot), resolvedTarget);
-  const parentPrefix = `..${process.platform === 'win32' ? '\\' : '/'}`;
-  if (
-    relativeTarget === '..' ||
-    relativeTarget.startsWith(parentPrefix) ||
-    isAbsolute(relativeTarget)
-  )
-    throw new Error('Configured skills destination escapes its allowed scope.');
-
-  return resolvedTarget;
-}
-
-function getSkillAsset(name: string): string {
-  const source = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    '..',
-    '..',
-    '..',
-    'assets',
-    'skills',
-    name,
-    'SKILL.md',
-  );
-  if (!existsSync(source)) throw new Error(`Missing bundled skill asset: ${name}`);
-
-  return source;
-}
-
 function syncLabels(
   root: string,
   config: SloopConfig,
@@ -77,48 +41,57 @@ function syncLabels(
   ];
 
   for (const label of labels) {
-    const metadata = canonicalLabels.find(([name]) => name === label);
-    if (!metadata) continue;
-
-    const response = runner(
-      'gh',
-      [
-        'label',
-        'list',
-        '--repo',
-        repository,
-        '--search',
-        label,
-        '--json',
-        'name,color,description',
-      ],
-      root,
-    );
-    const existingLabels = JSON.parse(response || '[]') as { name: string }[];
-    if (existingLabels.some((item) => item.name === label)) {
-      output(`Label '${label}' already exists; preserved its metadata.`);
-      continue;
-    }
-
-    runner(
-      'gh',
-      [
-        'label',
-        'create',
-        label,
-        '--repo',
-        repository,
-        '--color',
-        metadata[1],
-        '--description',
-        metadata[2],
-      ],
-      root,
-    );
-    output(`Label '${label}' installed.`);
+    syncLabel(root, repository, runner, output, label);
   }
 
   return labels.length;
+}
+
+function syncLabel(
+  root: string,
+  repository: string,
+  runner: SyncRunner,
+  output: (message: string) => void,
+  label: string,
+): void {
+  const metadata = canonicalLabels.find(([name]) => name === label);
+  if (!metadata) return;
+  if (labelAlreadyExists(root, repository, runner, output, label)) return;
+
+  runner(
+    'gh',
+    [
+      'label',
+      'create',
+      label,
+      '--repo',
+      repository,
+      '--color',
+      metadata[1],
+      '--description',
+      metadata[2],
+    ],
+    root,
+  );
+  output(`Label '${label}' installed.`);
+}
+
+function labelAlreadyExists(
+  root: string,
+  repository: string,
+  runner: SyncRunner,
+  output: (message: string) => void,
+  label: string,
+): boolean {
+  const response = runner(
+    'gh',
+    ['label', 'list', '--repo', repository, '--search', label, '--json', 'name,color,description'],
+    root,
+  );
+  const existingLabels = JSON.parse(response || '[]') as { name: string }[];
+  if (!existingLabels.some((item) => item.name === label)) return false;
+  output(`Label '${label}' already exists; preserved its metadata.`);
+  return true;
 }
 
 function syncSkills(root: string, config: SloopConfig, output: (message: string) => void): void {

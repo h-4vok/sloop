@@ -15,38 +15,7 @@ export function createProductionRuntimeIo(): RuntimeIo {
 
     homeDirectory: homedir(),
 
-    run(file, args, cwd) {
-      try {
-        return {
-          stdout: processAdapter.runSyncCommand(
-            processAdapter.resolveExecutable(file),
-            [...args],
-            undefined,
-            process.platform,
-            process.env.ComSpec,
-            cwd ?? process.cwd(),
-          ),
-
-          stderr: '',
-
-          status: 0,
-        };
-      } catch (error) {
-        const failure = error as {
-          stdout?: string | Buffer;
-          stderr?: string | Buffer;
-          status?: number;
-        };
-
-        return {
-          stdout: String(failure.stdout ?? ''),
-
-          stderr: String(failure.stderr ?? ''),
-
-          status: failure.status ?? 1,
-        };
-      }
-    },
+    run: (file, args, cwd) => runProductionCommand(file, args, cwd),
 
     readFile: (file) => readFileSync(file, 'utf8'),
 
@@ -65,4 +34,37 @@ export function createProductionRuntimeIo(): RuntimeIo {
   };
 
   return runtimeIo;
+}
+
+function runProductionCommand(
+  file: string,
+  args: readonly string[],
+  cwd: string | undefined,
+): ReturnType<RuntimeIo['run']> {
+  try {
+    const stdout = processAdapter.runSyncCommand(
+      processAdapter.resolveExecutable(file),
+      [...args],
+      undefined,
+      process.platform,
+      process.env.ComSpec,
+      cwd ?? process.cwd(),
+    );
+    return { stdout, stderr: '', status: 0 };
+  } catch (error) {
+    return processFailureResult(error);
+  }
+}
+
+function processFailureResult(error: unknown): ReturnType<RuntimeIo['run']> {
+  const failure = error as {
+    stdout?: string | Buffer;
+    stderr?: string | Buffer;
+    status?: number;
+  };
+  return {
+    stdout: String(failure.stdout ?? ''),
+    stderr: String(failure.stderr ?? ''),
+    status: failure.status ?? 1,
+  };
 }

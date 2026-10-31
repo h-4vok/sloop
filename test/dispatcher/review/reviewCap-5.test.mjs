@@ -12,111 +12,99 @@ import {
   createMockGitHubHost,
 } from '../dispatcher-test-support.mjs';
 
-test('review-cap resume rejects a PR head that changed after remote reconciliation', () => {
+function createHeadMismatchFixture() {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-review-cap-head-mismatch-'));
   const statePath = join(root, 'state.json');
-  writeState(
-    {
-      issue: 1,
+  writeState(createPendingReviewCapState(), statePath);
+  const manifest = createRemoteReviewCapManifest();
+  const remote = createRemoteReviewCapSnapshot(manifest);
+  const github = createChangedHeadGitHubHost();
+  return { root, statePath, remote, host: github.host };
+}
 
-      pr: 7,
-
-      status: 'review_cap_pending',
-
-      reviewRound: 2,
-
-      reviewCap: {
-        capRound: 2,
-
-        outstandingFindingIds: ['Q1'],
-
-        additionalRounds: 0,
-
-        waivedFindingIds: [],
-      },
-    },
-    statePath,
-  );
-  const manifest = {
-    protocol: 1,
-
-    runId: 'remote-run',
-
+function createPendingReviewCapState() {
+  return {
     issue: 1,
-
     pr: 7,
-
-    branch: 'codex/issue-1',
-
-    baseSha: 'abc1234',
-
-    configFingerprint: 'config-v1',
-
-    phase: 'blocked',
-
+    status: 'review_cap_pending',
     reviewRound: 2,
+    reviewCap: {
+      capRound: 2,
+      outstandingFindingIds: ['Q1'],
+      additionalRounds: 0,
+      waivedFindingIds: [],
+    },
+  };
+}
 
+function createRemoteReviewCapManifest() {
+  return {
+    protocol: 1,
+    runId: 'remote-run',
+    issue: 1,
+    pr: 7,
+    branch: 'codex/issue-1',
+    baseSha: 'abc1234',
+    configFingerprint: 'config-v1',
+    phase: 'blocked',
+    reviewRound: 2,
     contextCursor: '',
-
     artifacts: [artifactKey('run', { issue: 1, runId: 'remote-run' })],
   };
-  const remote = {
+}
+
+function createRemoteReviewCapSnapshot(manifest) {
+  return {
     snapshot: () => ({
       issue: 1,
-
       pr: 7,
-
       prState: 'OPEN',
-
       branch: 'codex/issue-1',
-
       manifest,
     }),
   };
-  const fake = createMockGitHubHost((args) => {
+}
+
+function createChangedHeadGitHubHost() {
+  return createMockGitHubHost((args) => {
     if (args[0] === 'api') return 'octocat';
     if (args[0] === 'pr' && args[1] === 'view')
       return JSON.stringify({
         number: 7,
-
         state: 'OPEN',
-
         headRefName: 'codex/issue-1-updated',
-
         headRefOid: 'def5678',
-
         mergeable: 'MERGEABLE',
-
         mergeStateStatus: 'CLEAN',
-
         comments: [],
       });
     return '';
   });
+}
+
+test('review-cap resume rejects a PR head changed after remote reconciliation', () => {
+  const fixture = createHeadMismatchFixture();
+  const request = {
+    steer: 'resume reviewed work',
+    abandon: false,
+    waiveAllOutstanding: false,
+    waivedFindingIds: [],
+    additionalRounds: 1,
+  };
 
   assert.throws(
     () =>
       resolveReviewCap(
-        {
-          steer: 'resume the reviewed work',
-
-          abandon: false,
-
-          waiveAllOutstanding: false,
-
-          waivedFindingIds: [],
-
-          additionalRounds: 1,
-        },
+        request,
         {},
-        statePath,
-        root,
+        fixture.statePath,
+        fixture.root,
         undefined,
-        fake.host,
-        remote,
+        fixture.host,
+        fixture.remote,
       ),
     /PR head changed while reconciling remote state/,
   );
-  assert.equal(readState(statePath).status, 'review_cap_pending');
-  rmSync(root, { recursive: true, force: true });
+  assert.equal(readState(fixture.statePath).status, 'review_cap_pending');
+  rmSync(fixture.root, { recursive: true, force: true });
 });

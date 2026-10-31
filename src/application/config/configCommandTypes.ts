@@ -25,3 +25,12 @@ export type ConfigCommandContext = Readonly<{
   logger: Logger;
   fileStore: ConfigFileStore;
 }>;
+
+export type ConfigCommandRequest = Readonly<{
+  file: string;
+  init: boolean;
+  wizardMode: boolean;
+  syncFlags: readonly string[];
+  sync?: string;
+  positional: readonly string[];
+}>;

@@ -51,68 +51,77 @@ test('malformed containers and list fields produce validation diagnostics', () =
     );
 });
 
-test('config parser rejects structural violations at their exact paths', () => {
-  const validConfig = JSON.parse(JSON.stringify(loadConfigText(canonical)));
-  const invalidConfigs = [
-    [
-      (value) => {
-        value.schemaVersion = 2;
-      },
-      '$.schemaVersion',
-    ],
-    [
-      (value) => {
-        value.workflow.reviewOrder = ['worker'];
-      },
-      '$.workflow.reviewOrder',
-    ],
-    [
-      (value) => {
-        value.github.roleMarkers.qa = value.github.roleMarkers.worker;
-      },
-      '$.github.roleMarkers',
-    ],
-    [
-      (value) => {
-        value.github.labels.priority = ['p', 'p'];
-      },
-      '$.github.labels.priority',
-    ],
-    [
-      (value) => {
-        value.workspace.path = '';
-      },
-      '$.workspace.path',
-    ],
-    [
-      (value) => {
-        value.workspace.mode = 'worktree';
-        value.workspace.worktreeRoot = '';
-      },
-      '$.workspace.worktreeRoot',
-    ],
-    [
-      (value) => {
-        value.schedule.enabled = true;
-        value.schedule.expression = '';
-      },
-      '$.schedule.expression',
-    ],
-    [
-      (value) => {
-        value.arbiter.decisions = 0;
-      },
-      '$.arbiter.decisions',
-    ],
-  ];
+const structuralViolationCases = [
+  [
+    'unsupported schema version',
+    (value) => {
+      value.schemaVersion = 2;
+    },
+    '$.schemaVersion',
+  ],
+  [
+    'invalid review order',
+    (value) => {
+      value.workflow.reviewOrder = ['worker'];
+    },
+    '$.workflow.reviewOrder',
+  ],
+  [
+    'overlapping role markers',
+    (value) => {
+      value.github.roleMarkers.qa = value.github.roleMarkers.worker;
+    },
+    '$.github.roleMarkers',
+  ],
+  [
+    'duplicate priority labels',
+    (value) => {
+      value.github.labels.priority = ['p', 'p'];
+    },
+    '$.github.labels.priority',
+  ],
+  [
+    'empty workspace path',
+    (value) => {
+      value.workspace.path = '';
+    },
+    '$.workspace.path',
+  ],
+  [
+    'missing worktree root',
+    (value) => {
+      value.workspace.mode = 'worktree';
+      value.workspace.worktreeRoot = '';
+    },
+    '$.workspace.worktreeRoot',
+  ],
+  [
+    'missing schedule expression',
+    (value) => {
+      value.schedule.enabled = true;
+      value.schedule.expression = '';
+    },
+    '$.schedule.expression',
+  ],
+  [
+    'invalid Arbiter decisions',
+    (value) => {
+      value.arbiter.decisions = 0;
+    },
+    '$.arbiter.decisions',
+  ],
+];
 
-  for (const [mutate, configPath] of invalidConfigs) {
+test.each(structuralViolationCases)(
+  'config parser rejects $1 at its path',
+  (_name, mutate, expectedPath) => {
+    const validConfig = JSON.parse(JSON.stringify(loadConfigText(canonical)));
     const invalidConfig = structuredClone(validConfig);
     mutate(invalidConfig);
 
     assert.throws(
       () => parseConfig(invalidConfig),
-      (error) => error.diagnostics.some((item) => item.path === configPath),
+      (error) => error.diagnostics.some((item) => item.path === expectedPath),
     );
-  }
-});
+  },
+);

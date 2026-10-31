@@ -22,6 +22,11 @@ function saveAbandonmentStep(state: State, statePath: string): State {
   return state;
 }
 
+function completeAbandonment(state: State, statePath: string): void {
+  const saveResult = writeState({ ...state, status: 'abandoned' }, statePath);
+  if (!saveResult.ok) throw saveResult.error;
+}
+
 function abandonReviewCap(
   stored: State,
   steer: string,
@@ -63,8 +68,7 @@ function abandonReviewCap(
       statePath,
     );
   }
-  const saveResult = writeState({ ...state, status: 'abandoned' }, statePath);
-  if (!saveResult.ok) throw saveResult.error;
+  completeAbandonment(state, statePath);
 }
 
 export const ReviewCapAbandonment = { abandonReviewCap };

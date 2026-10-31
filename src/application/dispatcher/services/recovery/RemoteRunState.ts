@@ -2,6 +2,7 @@
 import type { Deps, Config } from '../../../../application/dispatcher/types/index.js';
 import { artifactKey, projectRemoteState } from '../../../../remote-state.js';
 import type { RunManifest, WorkflowProjection } from '../../../../remote-state.js';
+import { createRemoteManifestFields } from './createRemoteManifestFields.js';
 function remoteOwner(d: Deps, issue: number): string {
   return `${d.pid()}:${issue}`;
 }
@@ -27,6 +28,7 @@ function remoteManifest(
   previous?: Partial<RunManifest>,
 ): RunManifest {
   const state = d.load();
+
   return {
     protocol: 1,
 
@@ -34,26 +36,13 @@ function remoteManifest(
 
     issue,
 
-    ...(phase !== 'claimed' && state.pr ? { pr: state.pr } : {}),
-
-    branch: phase === 'claimed' ? 'pending' : (state.branch ?? previous?.branch ?? 'pending'),
-
-    baseSha:
-      phase === 'claimed' ? '0000000' : (state.mainBaseSha ?? previous?.baseSha ?? '0000000'),
+    ...createRemoteManifestFields.identity(phase, state, previous),
 
     configFingerprint: remoteConfigFingerprint(cfg),
 
     phase,
 
-    ...(leaseOwner
-      ? {
-          lease: {
-            owner: leaseOwner,
-
-            expiresAt: new Date(d.now() + (cfg.workerLeaseMs ?? 900000)).toISOString(),
-          },
-        }
-      : {}),
+    ...createRemoteManifestFields.lease(leaseOwner, cfg, d),
 
     reviewRound: state.reviewRound ?? previous?.reviewRound ?? 1,
 

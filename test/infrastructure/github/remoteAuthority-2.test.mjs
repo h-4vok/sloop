@@ -45,6 +45,10 @@ test('production adapters cover alternate payload fields and lock error recovery
     },
   });
 
+  assertAlternatePayloadAndRecovery(root, config, dependencies);
+});
+
+function assertAlternatePayloadAndRecovery(root, config, dependencies) {
   assert.equal(dependencies.pullRequest(3).mergeStateStatus, 'CLEAN');
   assert.equal(dependencies.pullRequest(3).reviews[0].commitId, 'c');
   assert.equal(dependencies.pullRequest(3).statusCheckRollup[0].name, 'ci');
@@ -67,4 +71,4 @@ test('production adapters cover alternate payload fields and lock error recovery
   assert.throws(() => lock.readReclaimOwner());
   lock.release('base');
   lock.release('missing-owner');
-});
+}

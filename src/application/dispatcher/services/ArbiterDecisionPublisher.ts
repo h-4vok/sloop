@@ -10,30 +10,50 @@ function createFollowUps(
   context: ArbiterRunContext,
   decisions: readonly ArbiterDecision[],
 ): ArbiterRunContext['current'] {
-  let current = context.current;
-  for (const decision of decisions) {
-    if (decision.action !== 'defer' || !decision.followUp || !context.deps.createIssue) continue;
-    const key = followUpKey(context.issue.number, decision.findingId);
-    if (current.arbiterFollowUps?.[key]) continue;
-    const followUp = decision.followUp;
-    const followUpNumber = context.deps.createIssue(
-      followUp.title,
-      `Idempotency key: ${key}\n\nCreated from issue #${context.issue.number}, PR #${context.pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
-    );
-    current = {
-      ...current,
+  return decisions.reduce(
+    (current, decision) => createFollowUp(context, current, decision),
+    context.current,
+  );
+}
 
-      arbiterFollowUps: { ...(current.arbiterFollowUps ?? {}), [key]: followUpNumber },
+function createFollowUp(
+  context: ArbiterRunContext,
+  current: ArbiterRunContext['current'],
+  decision: ArbiterDecision,
+): ArbiterRunContext['current'] {
+  if (decision.action !== 'defer') return current;
+  const followUp = decision.followUp;
+  if (!followUp) return current;
 
-      arbiterFollowUpEligibility: {
-        ...(current.arbiterFollowUpEligibility ?? {}),
+  const createIssue = context.deps.createIssue;
+  if (!createIssue) return current;
 
-        [key]: followUpEligible(false, true),
-      },
-    };
-  }
+  const key = followUpKey(context.issue.number, decision.findingId);
+  if (current.arbiterFollowUps?.[key]) return current;
 
-  return current;
+  const followUpNumber = createIssue(
+    followUp.title,
+    `Idempotency key: ${key}\n\nCreated from issue #${context.issue.number}, PR #${context.pr}, finding ${decision.findingId}.\n\nDecision: defer\n\nRationale:\n${decision.rationale}\n\nContext:\n${followUp.context}\n\nAcceptance contract:\n${followUp.acceptance}\n\nThis remains backlog work and is not Automation Ready. It depends on the current PR completing its normal merge/readiness gate.`,
+  );
+
+  return {
+    ...current,
+    ...addFollowUpState(current, key, followUpNumber),
+  };
+}
+
+function addFollowUpState(
+  current: ArbiterRunContext['current'],
+  key: string,
+  followUpNumber: number,
+): Pick<ArbiterRunContext['current'], 'arbiterFollowUps' | 'arbiterFollowUpEligibility'> {
+  return {
+    arbiterFollowUps: { ...(current.arbiterFollowUps ?? {}), [key]: followUpNumber },
+    arbiterFollowUpEligibility: {
+      ...(current.arbiterFollowUpEligibility ?? {}),
+      [key]: followUpEligible(false, true),
+    },
+  };
 }
 
 function publishDecisions(
@@ -52,14 +72,33 @@ function publishDecisions(
   );
   const decisions = result.decisions.slice(-context.findings.length);
   const current = createFollowUps(context, decisions);
-  const steer = decisions
+  const steer = createArbiterSteer(decisions);
+  context.deps.save(createDecisionState(current, result, context.feedback, steer));
+
+  const body = createDecisionComment(context, result.interventions, decisions);
+  context.deps.comment(context.issue.number, body);
+  context.deps.prComment(context.pr, body);
+
+  return result.terminal ? 'terminal' : 'continue';
+}
+
+function createArbiterSteer(decisions: readonly ArbiterDecision[]): string {
+  return decisions
     .filter((decision) => decision.action === 'uphold')
     .map(
       (decision) =>
         `${decision.findingId}: ${decision.direction}; verify: ${decision.verification}`,
     )
     .join('\n');
-  context.deps.save({
+}
+
+function createDecisionState(
+  current: ArbiterRunContext['current'],
+  result: ReturnType<typeof applyArbiterDecisions>,
+  feedback: string,
+  steer: string,
+): ArbiterRunContext['current'] {
+  return {
     ...current,
 
     arbiterInterventions: result.interventions,
@@ -73,14 +112,17 @@ function publishDecisions(
     ...(result.terminal ? { arbiterTerminal: result.terminal } : {}),
 
     ...(steer
-      ? { lastQaFeedback: `${context.feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
+      ? { lastQaFeedback: `${feedback}\n\n[Sloop Arbiter] Worker steering:\n${steer}` }
       : {}),
-  });
-  const body = `[Sloop Arbiter] round=${context.round} intervention=${result.interventions} pr=${context.pr} commit=${context.evidence.headRefOid ?? 'unknown'}\n\n${JSON.stringify(decisions)}`;
-  context.deps.comment(context.issue.number, body);
-  context.deps.prComment(context.pr, body);
+  };
+}
 
-  return result.terminal ? 'terminal' : 'continue';
+function createDecisionComment(
+  context: ArbiterRunContext,
+  interventions: number,
+  decisions: readonly ArbiterDecision[],
+): string {
+  return `[Sloop Arbiter] round=${context.round} intervention=${interventions} pr=${context.pr} commit=${context.evidence.headRefOid ?? 'unknown'}\n\n${JSON.stringify(decisions)}`;
 }
 
 /** Persists Arbiter decisions and publishes their issue and PR records. */

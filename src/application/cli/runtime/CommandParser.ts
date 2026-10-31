@@ -20,6 +20,13 @@ const helpTargets = new Map<string, readonly string[]>([
   ['--link-issue', ['--link-issue', '--help']],
 ]);
 
+const configSubcommands: Readonly<
+  Record<string, (options: readonly string[]) => ParseResult<CliCommand | undefined>>
+> = {
+  init: parseConfigInit,
+  install: parseConfigInstall,
+};
+
 /** Composes domain parsers and preserves the CLI's public command contract. */
 export const commandParser = Object.freeze({
   parseDispatcherCommand(args: readonly string[]): ParseResult<DispatcherCommand> {
@@ -32,23 +39,44 @@ export const commandParser = Object.freeze({
 
   parseCliCommand(args: readonly string[]): ParseResult<CliCommand> {
     if (args.length === 1 && args[0] === '--version') return result.success({ kind: 'version' });
-    const legacy = rejectLegacyCommandMix(args);
-    if (!legacy.ok) return legacy;
-    const help = parseHelpCommand(args);
-    if (!help.ok) return help;
-    if (help.value) return result.success(help.value);
-    const readOnly = parseReadOnlyArguments.parse(args);
-    if (!readOnly.ok) return readOnly;
-    if (readOnly.value) return result.success({ kind: 'read-only', command: readOnly.value });
-    const config = parseConfigCommand(args);
-    if (!config.ok) return config;
-    if (config.value) return result.success(config.value);
-    const dispatcher = parseDispatcherArguments.parse(args);
-    return dispatcher.ok
-      ? result.success({ kind: 'dispatcher', command: dispatcher.value })
-      : dispatcher;
+
+    return parseCliCommandStages(args);
   },
 });
+
+function parseCliCommandStages(args: readonly string[]): ParseResult<CliCommand> {
+  const stages = [
+    parseLegacyCommand,
+    parseHelpCommand,
+    parseReadOnlyCliCommand,
+    parseConfigCommand,
+  ];
+  for (const parseStage of stages) {
+    const parsedStage = parseStage(args);
+    if (!parsedStage.ok) return parsedStage;
+    if (parsedStage.value) return result.success(parsedStage.value);
+  }
+
+  const dispatcher = parseDispatcherArguments.parse(args);
+  if (!dispatcher.ok) return dispatcher;
+
+  return result.success({ kind: 'dispatcher', command: dispatcher.value });
+}
+
+function parseLegacyCommand(args: readonly string[]): ParseResult<CliCommand | undefined> {
+  const legacyResult = rejectLegacyCommandMix(args);
+  if (!legacyResult.ok) return legacyResult;
+
+  return result.success(undefined);
+}
+
+function parseReadOnlyCliCommand(args: readonly string[]): ParseResult<CliCommand | undefined> {
+  const readOnlyResult = parseReadOnlyArguments.parse(args);
+  if (!readOnlyResult.ok) return readOnlyResult;
+  if (!readOnlyResult.value) return result.success(undefined);
+
+  return result.success({ kind: 'read-only', command: readOnlyResult.value });
+}
 
 function rejectLegacyCommandMix(args: readonly string[]): ParseResult<void> {
   if (args.includes('--list') && args.includes('--status'))
@@ -71,17 +99,23 @@ function parseHelpCommand(args: readonly string[]): ParseResult<CliCommand | und
 
 function parseConfigCommand(args: readonly string[]): ParseResult<CliCommand | undefined> {
   if (args[0] !== 'config') return result.success(undefined);
-  if (args[1] === 'init') {
-    const options = args.slice(2);
-    if (options.some((argument) => argument !== '--wizard'))
-      return result.failure('usage: sloop config init [--wizard]');
-    return result.success({ kind: 'config', args: ['--init', ...options] });
-  }
-  if (args[1] === 'install') {
-    const options = args.slice(2);
-    if (options.some((argument) => argument !== '--force'))
-      return result.failure('usage: sloop config install [--force]');
-    return result.success({ kind: 'config', args: ['--install', ...options] });
-  }
+
+  const parseSubcommand = configSubcommands[args[1]];
+  if (parseSubcommand) return parseSubcommand(args.slice(2));
+
   return result.success({ kind: 'config', args: args.slice(1) });
+}
+
+function parseConfigInit(options: readonly string[]): ParseResult<CliCommand | undefined> {
+  if (options.some((argument) => argument !== '--wizard'))
+    return result.failure('usage: sloop config init [--wizard]');
+
+  return result.success({ kind: 'config', args: ['--init', ...options] });
+}
+
+function parseConfigInstall(options: readonly string[]): ParseResult<CliCommand | undefined> {
+  if (options.some((argument) => argument !== '--force'))
+    return result.failure('usage: sloop config install [--force]');
+
+  return result.success({ kind: 'config', args: ['--install', ...options] });
 }

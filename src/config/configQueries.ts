@@ -55,20 +55,27 @@ function parseConfigValueResult(
   field: FieldMetadata,
   value: string,
 ): Result<unknown, ConfigValidationError> {
-  if (field.type === 'list' || field.type === 'argv')
-    return {
-      ok: false,
-
-      error: new ConfigValidationError([
-        { path: `$.${field.path}`, message: 'complex values require the interactive wizard' },
-      ]),
-    };
-  if (field.type === 'boolean') {
-    const booleanValue = value === 'true' ? true : value === 'false' ? false : value;
-    return field.parser(booleanValue, `$.${field.path}`);
-  }
+  if (field.type === 'list' || field.type === 'argv') return complexValueFailure(field);
+  if (field.type === 'boolean') return parseBooleanValue(field, value);
   if (field.type === 'integer') return field.parser(Number(value), `$.${field.path}`);
   return field.parser(value, `$.${field.path}`);
+}
+
+function complexValueFailure(field: FieldMetadata): Result<never, ConfigValidationError> {
+  return {
+    ok: false,
+    error: new ConfigValidationError([
+      { path: `$.${field.path}`, message: 'complex values require the interactive wizard' },
+    ]),
+  };
+}
+
+function parseBooleanValue(
+  field: FieldMetadata,
+  value: string,
+): Result<unknown, ConfigValidationError> {
+  const booleanValue = value === 'true' ? true : value === 'false' ? false : value;
+  return field.parser(booleanValue, `$.${field.path}`);
 }
 
 /** Provides read-only configuration lookups and safe display fingerprints. */

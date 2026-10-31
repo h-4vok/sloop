@@ -32,32 +32,39 @@ export function createPullRequestWriter(client: GitHubCommandClient, root: strin
       }
     },
 
-    createIssue(title: string, body: string): number {
-      const idempotencyKey = body.match(/Idempotency key:\s*(\S+)/)?.[1];
-      if (idempotencyKey) {
-        const existingIssues = client.runJson<{ number?: number; body?: string }[]>([
-          'issue',
-          'list',
-          '--state',
-          'all',
-          '--search',
-          idempotencyKey,
-          '--json',
-          'number,body',
-          '--limit',
-          '100',
-        ]);
-        const existingIssue = existingIssues.find((issue) => issue.body?.includes(idempotencyKey));
-        if (existingIssue?.number) return existingIssue.number;
-      }
-      const result = client
-        .run(['issue', 'create', '--title', title, '--body', publicationBody(body)], {
-          stdio: 'pipe',
-        })
-        .trim();
-      const issueNumber = result.match(/\/issues\/(\d+)(?:\D|$)/)?.[1];
-      if (!issueNumber) throw new Error(`gh issue create returned no issue number: ${result}`);
-      return Number(issueNumber);
-    },
+    createIssue: (title: string, body: string) => createIssue(client, title, body),
   };
+}
+
+function createIssue(client: GitHubCommandClient, title: string, body: string): number {
+  const idempotencyKey = body.match(/Idempotency key:\s*(\S+)/)?.[1];
+  if (idempotencyKey) {
+    const existingIssue = findExistingIssue(client, idempotencyKey);
+    if (existingIssue?.number) return existingIssue.number;
+  }
+
+  const result = client
+    .run(['issue', 'create', '--title', title, '--body', publicationBody(body)], {
+      stdio: 'pipe',
+    })
+    .trim();
+  const issueNumber = result.match(/\/issues\/(\d+)(?:\D|$)/)?.[1];
+  if (!issueNumber) throw new Error(`gh issue create returned no issue number: ${result}`);
+  return Number(issueNumber);
+}
+
+function findExistingIssue(client: GitHubCommandClient, idempotencyKey: string) {
+  const existingIssues = client.runJson<{ number?: number; body?: string }[]>([
+    'issue',
+    'list',
+    '--state',
+    'all',
+    '--search',
+    idempotencyKey,
+    '--json',
+    'number,body',
+    '--limit',
+    '100',
+  ]);
+  return existingIssues.find((issue) => issue.body?.includes(idempotencyKey));
 }

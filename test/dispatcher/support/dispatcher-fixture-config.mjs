@@ -15,6 +15,19 @@ export function createMockGitHubHost(respond) {
   };
 }
 
+export function createReviewCapGitHubHost({ pullRequest, issue = { comments: [] } }) {
+  const responses = new Map([
+    ['api', 'octocat'],
+    ['issue view', JSON.stringify(issue)],
+    ['pr view', JSON.stringify(pullRequest)],
+  ]);
+  return createMockGitHubHost((args) => responses.get(mockGitHubCommandKey(args)) ?? '');
+}
+
+function mockGitHubCommandKey(args) {
+  return args[0] === 'api' ? 'api' : args.slice(0, 2).join(' ');
+}
+
 export const baseConfig = {
   baseBranch: 'main',
   workerCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },

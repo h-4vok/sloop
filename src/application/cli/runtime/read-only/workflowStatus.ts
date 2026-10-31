@@ -16,22 +16,39 @@ export const workflowStatus = Object.freeze({
     const recovery = recoveryAction(workflowState, issue, pr);
     return resultOutput.createEnvelope(
       parsed.command,
-      parsed.command === 'status' ? statusFor(workflowState) : 'completed',
+      resultStatus(parsed.command, workflowState),
       'result',
       summary(parsed.command, workflowState, context.root),
-      {
-        repository: context.root,
-        configRef: context.ref,
-        workflow: details(parsed.verbose, workflow),
-        ...(parsed.verbose ? { config: context.config } : {}),
-        ...(recovery ? { nextAction: recovery } : {}),
-      },
+      resultValue(parsed, context, workflow, recovery),
       recoveryDiagnostics.toDiagnostics(workflow),
-      issue === undefined ? [] : [issue],
-      pr === undefined ? [] : [pr],
+      referenceNumbers(issue),
+      referenceNumbers(pr),
     );
   },
 });
+
+function resultStatus(command: ReadOnlyCommand['command'], status: string): ResultStatus {
+  return command === 'status' ? statusFor(status) : 'completed';
+}
+
+function resultValue(
+  parsed: ReadOnlyCommand,
+  context: ReadOnlyContext,
+  workflow: Record<string, unknown>,
+  recovery: ReturnType<typeof recoveryAction>,
+) {
+  return {
+    repository: context.root,
+    configRef: context.ref,
+    workflow: details(parsed.verbose, workflow),
+    ...(parsed.verbose ? { config: context.config } : {}),
+    ...(recovery ? { nextAction: recovery } : {}),
+  };
+}
+
+function referenceNumbers(value: number | undefined): number[] {
+  return value === undefined ? [] : [value];
+}
 
 function statusFor(status: string): ResultStatus {
   if (status === 'blocked') return 'blocked';
@@ -56,23 +73,34 @@ function details(verbose: boolean, workflow: Record<string, unknown>) {
 }
 
 function recoveryAction(status: string, issue?: number, pr?: number) {
-  if (['worker_recovery_pending', 'ci_failed', 'qa_changes_requested'].includes(status)) {
-    return {
-      ...(issue && pr
-        ? { command: `sloop --prepare-recovery ${issue} --pr ${pr}` }
-        : { command: 'sloop status --verbose' }),
-      description:
-        issue && pr
-          ? 'Prepare local recovery for the recorded issue and PR.'
-          : 'Inspect the recovery state; issue or PR context is unavailable.',
-      mutates: Boolean(issue && pr),
-    };
-  }
-  if (status === 'blocked' || status === 'abandoned')
-    return {
-      command: 'sloop status --verbose',
-      description: 'Inspect the recorded blocker and available context.',
-      mutates: false,
-    };
+  if (isRecoveryStatus(status)) return createRecoveryAction(issue, pr);
+  if (isBlockedStatus(status)) return createBlockedAction();
   return undefined;
+}
+
+function isRecoveryStatus(status: string): boolean {
+  return ['worker_recovery_pending', 'ci_failed', 'qa_changes_requested'].includes(status);
+}
+
+function isBlockedStatus(status: string): boolean {
+  return status === 'blocked' || status === 'abandoned';
+}
+
+function createRecoveryAction(issue?: number, pr?: number) {
+  const hasContext = Boolean(issue && pr);
+  return {
+    command: hasContext ? `sloop --prepare-recovery ${issue} --pr ${pr}` : 'sloop status --verbose',
+    description: hasContext
+      ? 'Prepare local recovery for the recorded issue and PR.'
+      : 'Inspect the recovery state; issue or PR context is unavailable.',
+    mutates: hasContext,
+  };
+}
+
+function createBlockedAction() {
+  return {
+    command: 'sloop status --verbose',
+    description: 'Inspect the recorded blocker and available context.',
+    mutates: false,
+  };
 }
