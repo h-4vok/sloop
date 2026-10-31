@@ -1,32 +1,31 @@
 # Refactoring v1.1 final verification
 
-Status as of 2026-10-31: **in progress**. This is an evidence ledger for issue [#155](https://github.com/h-4vok/sloop/issues/155), not completion evidence. The sequential milestone PRs remain open, so final accumulated-branch verification and the five-cycle E2E run are pending.
+Status as of 2026-10-31: **E2E complete; post-merge verification pending**. This ledger records issue [#155](https://github.com/h-4vok/sloop/issues/155). The five final cycles ran against the accumulated `codex/loop/v1.1-refactoring-155` checkout because later milestone PRs were still open. Re-run the final verification after the remaining code PRs are merged to `main`.
 
-## Verified context
+## Local verification
 
-- Starting code snapshot: #154 commit `41e17dee2ac34902dd6a7d2e11acb34a0386178a`, on `codex/loop/v1.1-refactoring-154`.
-- PR #180 is open, targets `codex/loop/v1.1-refactoring-153`, and GitHub reports it as `CLEAN`. `gh pr checks 180` reported no checks; the PR status rollup was empty. This is **not** evidence that CI passed.
-- One manual cycle was completed after #154 as a preliminary check. Fixture issue [#130](https://github.com/h-4vok/sloop-test-empty/issues/130) produced [PR #131](https://github.com/h-4vok/sloop-test-empty/pull/131) at SHA `8e2a9ea0392108f79e408569cb308f170903ae55`. Sloop exited 0 and reported `ready_for_human_merge`; the PR remained open, targeted `main`, was mergeable, and contained only `MANUAL-E2E.md` with the exact line `sloop-e2e-ok`. The current-head Worker marker was `ready_for_review`; QA/SDET round 1 verdict was `passed`; both cited that SHA. No PR checks were reported.
-- After that preliminary cycle, cleanup succeeded: fixture was on `main` with a clean worktree and `idle` Sloop state; there were 0 open Sloop E2E issues/PRs and 0 `codex/issue` branches. `sloop --clear-all-worktrees` and `sloop --reset` both exited 0. Detailed evidence was saved at `%TEMP%\sloop-e2e-154-cycle1-evidence.json`.
+- Final code snapshot tested: `596c123f04969b6ba6799ef093ca4ce95d20fe9a` on `codex/loop/v1.1-refactoring-155`.
+- `npm run pr-checks`: passed. Test run: 672 passed, 1 skipped. Coverage: statements 97.15%, branches 89.04%, functions 100% (1442/1442), lines 98.94%. Final TypeScript build passed.
+- `npm run link:local`: passed. Global `sloop` package junction targets `C:\src\sloop`; `sloop --version` returned `1.6.0`.
 
-The preliminary cycle above is context only and **does not count** toward issue #155's five final cycles. Its cleanup result describes the fixture at that time, not after the pending final run.
+## Five final Sloop Test Empty cycles
 
-## Issue #155 acceptance evidence
+Each cycle exited 0. Its fixture PR stayed unmerged, changed only `MANUAL-E2E.md` with exact content `sloop-e2e-ok`, and had one current-SHA Worker `ready_for_review` marker and one QA round 1 `passed` marker. Sloop reported `ready_for_human_merge`. GitHub reported **no checks** for every fixture PR; this is not a green CI result.
 
-### Five complete manual E2E cycles
+| Cycle | Fixture issue                                                 | Fixture PR                                                  | Head SHA                                   | Worker           | QA             | Sloop status          | CI                 |
+| ----- | ------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------ | ---------------- | -------------- | --------------------- | ------------------ |
+| 1     | [#132](https://github.com/h-4vok/sloop-test-empty/issues/132) | [#133](https://github.com/h-4vok/sloop-test-empty/pull/133) | `c4f930f560551a1df0a9e4724c9f91426d1a9bff` | ready_for_review | round 1 passed | ready_for_human_merge | no checks reported |
+| 2     | [#134](https://github.com/h-4vok/sloop-test-empty/issues/134) | [#135](https://github.com/h-4vok/sloop-test-empty/pull/135) | `1a8781771045c70fdfe879e824888510ed04b6aa` | ready_for_review | round 1 passed | ready_for_human_merge | no checks reported |
+| 3     | [#136](https://github.com/h-4vok/sloop-test-empty/issues/136) | [#137](https://github.com/h-4vok/sloop-test-empty/pull/137) | `ee624e08fba695e3178056feaa9edb1e79bf6991` | ready_for_review | round 1 passed | ready_for_human_merge | no checks reported |
+| 4     | [#138](https://github.com/h-4vok/sloop-test-empty/issues/138) | [#139](https://github.com/h-4vok/sloop-test-empty/pull/139) | `b26cbdb9ce60128319f6c91294eb5d5b91bcbb9d` | ready_for_review | round 1 passed | ready_for_human_merge | no checks reported |
+| 5     | [#140](https://github.com/h-4vok/sloop-test-empty/issues/140) | [#141](https://github.com/h-4vok/sloop-test-empty/pull/141) | `88b4686615d93f26868337ad265b336966f95471` | ready_for_review | round 1 passed | ready_for_human_merge | no checks reported |
 
-**Pending.** No final cycles are recorded yet. Record the issue, PR, Worker, QA, ready-for-human-merge state, reviewed SHA, and CI checks for each cycle. Exclude the preliminary cycle above.
+The preliminary cycle after #154 (fixture issue #130 / PR #131, SHA `8e2a9ea0392108f79e408569cb308f170903ae55`) is context only and is not counted above.
 
-### Final code checks and CI
+## Fixture cleanup
 
-**Pending.** Run `npm run pr-checks` after the sequential branch stack is ready. Current #180 status has no reported checks and cannot satisfy the requirement for green CI.
+After every final cycle, its test PR and issue were closed without merging. Final verification: fixture repository `h-4vok/sloop-test-empty`, branch `main`, clean worktree, Sloop `idle`, zero open `Sloop E2E` issues or PRs, and zero local or remote `codex/issue-*` branches. `sloop --clear-all-worktrees` and `sloop --reset` both exited 0. E2E automation remains disabled.
 
-### Final fixture cleanup
+## GitHub CI and merge state
 
-**Pending.** After all five final cycles, verify the fixture is on `main`, has no Sloop test state or artifacts, and has no open test issues or PRs.
-
-### Test PRs and automation
-
-**Constraint for final execution.** Keep all test PRs open and do not activate E2E automation, as issue #155 requires. Record the observed state in the final evidence.
-
-Update this ledger with the final run's actual evidence before treating issue #155 as complete. Do not replace missing checks or failed cycles with inferred success.
+GitHub returned empty `statusCheckRollup` for the milestone PRs in the final review; the open code PRs reported no checks, so CI cannot be claimed green from GitHub evidence. PRs #157–#162 now show `MERGED`; PRs #163–#181 were open and `CLEAN` at the review snapshot. No merge was performed as part of this task. Post-merge verification on `main` remains pending.
