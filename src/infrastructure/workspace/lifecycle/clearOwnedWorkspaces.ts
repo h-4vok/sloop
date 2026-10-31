@@ -5,8 +5,8 @@ import {
   isExactWorkspace,
   matchesLiveWorkspace,
   matchesWorkspaceFacts,
-  removeGeneratedSerenaMetadata,
 } from './validateWorkspaceOwnership.js';
+import { removeGeneratedSerenaMetadata } from './serenaMetadata.js';
 import { isInside, readWorkspaceState, runGit, writeWorkspaceState } from './workspaceState.js';
 import type { RegisteredWorkspace } from './workspaceState.js';
 
@@ -17,12 +17,18 @@ function isCleanWorkspace(entry: RegisteredWorkspace): boolean {
 function clearableWorkspace(root: string, entry: RegisteredWorkspace): boolean {
   const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
   return (
-    Boolean(entry?.ownership) &&
-    entry.repositoryRoot === root &&
-    entry.ownership.protocol === 'sloop-workspace-v1' &&
+    hasSloopWorkspaceOwner(root, entry) &&
     isInside(parent, entry.executionRoot) &&
     isExactWorkspace(root, entry) &&
     isCleanWorkspace(entry)
+  );
+}
+
+function hasSloopWorkspaceOwner(root: string, entry: RegisteredWorkspace): boolean {
+  return (
+    Boolean(entry?.ownership) &&
+    entry.repositoryRoot === root &&
+    entry.ownership.protocol === 'sloop-workspace-v1'
   );
 }
 
@@ -48,18 +54,38 @@ function cleanAfterMetadataRemoval(entry: RegisteredWorkspace): boolean {
 }
 
 function cleanupRegisteredWorkspace(entry: RegisteredWorkspace, file: string, root: string): void {
-  const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
-  if (!isInside(parent, entry.executionRoot)) throw new Error('unsafe worktree target');
-  if (!isExactWorkspace(root, entry))
-    throw new Error('workspace registration or facts could not be verified');
-  if (!removeGeneratedSerenaMetadata(entry))
-    throw new Error('workspace is dirty (untracked or modified files); refusing cleanup');
-  if (!isCleanWorkspace(entry)) throw new Error('workspace is dirty; refusing cleanup');
+  validateRegisteredWorkspaceForCleanup(entry, root);
   runGit(['worktree', 'remove', entry.executionRoot], root);
   writeWorkspaceState(
     file,
     readWorkspaceState(file).filter((candidate) => !matchesWorkspaceFacts(candidate, entry, root)),
   );
+}
+
+function validateRegisteredWorkspaceForCleanup(entry: RegisteredWorkspace, root: string): void {
+  const parent = resolve(entry.worktreeRoot ?? resolve(root, '.sloop/worktrees'));
+  assertWorkspaceInside(parent, entry.executionRoot);
+  assertWorkspaceIdentity(root, entry);
+  assertWorkspaceMetadataSafe(entry);
+  assertWorkspaceClean(entry);
+}
+
+function assertWorkspaceInside(parent: string, executionRoot: string): void {
+  if (!isInside(parent, executionRoot)) throw new Error('unsafe worktree target');
+}
+
+function assertWorkspaceIdentity(root: string, entry: RegisteredWorkspace): void {
+  if (!isExactWorkspace(root, entry))
+    throw new Error('workspace registration or facts could not be verified');
+}
+
+function assertWorkspaceMetadataSafe(entry: RegisteredWorkspace): void {
+  if (!removeGeneratedSerenaMetadata(entry))
+    throw new Error('workspace is dirty (untracked or modified files); refusing cleanup');
+}
+
+function assertWorkspaceClean(entry: RegisteredWorkspace): void {
+  if (!isCleanWorkspace(entry)) throw new Error('workspace is dirty; refusing cleanup');
 }
 
 function cleanupRemoteWorkspace(facts: WorkspaceFacts, root: string): void {
@@ -69,9 +95,17 @@ function cleanupRemoteWorkspace(facts: WorkspaceFacts, root: string): void {
     matchesLiveWorkspace(candidate, facts),
   );
   const entry: RegisteredWorkspace = { ...facts, repositoryRoot: root };
-  if (!live || !isExactWorkspace(root, entry) || !cleanAfterMetadataRemoval(entry))
+  if (!isVerifiedRemoteWorkspace(live !== undefined, root, entry))
     throw new Error('remote-owned workspace could not be verified');
   runGit(['worktree', 'remove', facts.executionRoot], root);
+}
+
+function isVerifiedRemoteWorkspace(
+  isLive: boolean,
+  root: string,
+  entry: RegisteredWorkspace,
+): boolean {
+  return isLive && isExactWorkspace(root, entry) && cleanAfterMetadataRemoval(entry);
 }
 
 /** Remove one workspace only after proving its persisted ownership and target. */

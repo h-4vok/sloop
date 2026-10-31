@@ -2,23 +2,38 @@ import type { Config, Deps, Issue, IssueProgress } from '../types/index.js';
 import { HumanReviewGuideService } from './hitl/HumanReviewGuideService.js';
 const { latestWorkerComment, humanReviewGuide } = HumanReviewGuideService;
 
+function expectedBaseBranch(cfg: Config): string {
+  return cfg.baseBranch ?? 'main';
+}
+
 function createIssueProgress(d: Deps): IssueProgress {
   const state = d.load();
   const feedback = [state.lastCiFeedback, state.lastQaFeedback].filter(Boolean).join('\n\n');
-  const reviewCapSteer = state.reviewCap?.steer;
-  const steerFeedback = reviewCapSteer
-    ? `HITL steer (binding): ${reviewCapSteer}. Waived findings at ${state.reviewCap?.decisionSha ?? 'the decision SHA'}: ${(state.reviewCap?.waivedFindingIds ?? []).join(', ') || 'none'}.`
-    : '';
+  const steerFeedback = createReviewCapSteerFeedback(state);
 
   return {
     round: state.reviewRound ?? 1,
 
     pr: state.pr,
 
-    feedback: [feedback, steerFeedback]
-      .filter(Boolean)
-      .join(feedback && steerFeedback ? '\n\n' : ''),
+    feedback: combineIssueFeedback(feedback, steerFeedback),
   };
+}
+
+function createReviewCapSteerFeedback(state: ReturnType<Deps['load']>): string {
+  const reviewCap = state.reviewCap;
+  if (!reviewCap?.steer) return '';
+
+  const decisionSha = reviewCap.decisionSha ?? 'the decision SHA';
+  const waivedFindingIds = reviewCap.waivedFindingIds ?? [];
+
+  return `HITL steer (binding): ${reviewCap.steer}. Waived findings at ${decisionSha}: ${waivedFindingIds.join(', ') || 'none'}.`;
+}
+
+function combineIssueFeedback(feedback: string, steerFeedback: string): string {
+  const separator = feedback && steerFeedback ? '\n\n' : '';
+
+  return [feedback, steerFeedback].filter(Boolean).join(separator);
 }
 
 function shouldRunWorker(d: Deps): boolean {
@@ -32,6 +47,21 @@ function shouldRunWorker(d: Deps): boolean {
   ].includes(state.status ?? 'queued');
 }
 
+function isCurrentReadyWorkerEvidence(
+  cfg: Config,
+  state: ReturnType<Deps['load']>,
+  evidence: Awaited<ReturnType<Deps['pullRequest']>>,
+  worker: ReturnType<typeof latestWorkerComment>,
+): boolean {
+  return Boolean(
+    evidence.state?.toUpperCase() === 'OPEN' &&
+    evidence.baseRefName === expectedBaseBranch(cfg) &&
+    evidence.headRefName === state.branch &&
+    worker?.body?.includes('status=ready_for_review') &&
+    humanReviewGuide(worker),
+  );
+}
+
 async function restoreCompletedWorkerEvidence(
   cfg: Config,
   d: Deps,
@@ -43,13 +73,7 @@ async function restoreCompletedWorkerEvidence(
 
   const evidence = await d.pullRequest(progress.pr);
   const worker = latestWorkerComment(evidence, progress.round, evidence.headRefOid);
-  const isCurrentReadyWorkerEvidence =
-    evidence.state?.toUpperCase() === 'OPEN' &&
-    evidence.baseRefName === (cfg.baseBranch ?? 'main') &&
-    evidence.headRefName === state.branch &&
-    worker?.body?.includes('status=ready_for_review') &&
-    humanReviewGuide(worker);
-  if (!isCurrentReadyWorkerEvidence) return false;
+  if (!isCurrentReadyWorkerEvidence(cfg, state, evidence, worker)) return false;
 
   d.save({ ...state, status: 'worker_ready_for_review', headSha: evidence.headRefOid });
   return true;

@@ -36,12 +36,16 @@ export const shellExecutables = new Set([
 export const shellExecutable = (argument: string): boolean => {
   const basename = executableBasename(argument);
   if (shellExecutables.has(basename)) return true;
-  return [...shellExecutables].some(
-    (shell) =>
-      basename.startsWith(`${shell}-`) ||
-      (basename.startsWith(shell) && /^\d/.test(basename.slice(shell.length))),
-  );
+  return [...shellExecutables].some((shell) => isVersionedShell(basename, shell));
 };
+
+function isVersionedShell(basename: string, shell: string): boolean {
+  return basename.startsWith(`${shell}-`) || hasNumericShellVersion(basename, shell);
+}
+
+function hasNumericShellVersion(basename: string, shell: string): boolean {
+  return basename.startsWith(shell) && /^\d/.test(basename.slice(shell.length));
+}
 
 export const allowedExecutables = new Set(['codex', 'env', 'gh', 'git', 'npm']);
 
@@ -64,14 +68,30 @@ export const gitConfigDispatchesShell = (argument: string): boolean => {
   const name = argument.slice(0, separator).toLowerCase();
   const configuredValue = argument.slice(separator + 1).trimStart();
   return (
-    (name.startsWith('alias.') && configuredValue.startsWith('!')) ||
-    /^(?:core\.(?:editor|gitproxy|pager|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/.test(
-      name,
-    ) ||
-    /^pager\..+$/.test(name) ||
-    /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/.test(name)
+    isShellAlias(name, configuredValue) ||
+    isShellLaunchingProgram(name) ||
+    isPagerProgram(name) ||
+    isExternalToolCommand(name)
   );
 };
+
+function isShellAlias(name: string, value: string): boolean {
+  return name.startsWith('alias.') && value.startsWith('!');
+}
+
+function isShellLaunchingProgram(name: string): boolean {
+  return /^(?:core\.(?:editor|gitproxy|pager|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/.test(
+    name,
+  );
+}
+
+function isPagerProgram(name: string): boolean {
+  return /^pager\..+$/.test(name);
+}
+
+function isExternalToolCommand(name: string): boolean {
+  return /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/.test(name);
+}
 
 export const environmentAssignment = (argument: string): boolean =>
   /^[A-Za-z_][A-Za-z0-9_]*=/.test(argument);

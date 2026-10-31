@@ -43,29 +43,28 @@ test('remaining public failure boundaries are deterministic', async () => {
 });
 
 test('native dispatcher GitHub operations preserve argv, repository scoping, and response normalization', () => {
-  const fake = createMockGitHubHost((args) => {
-    if (args[0] === 'issue' && args[1] === 'list')
-      return JSON.stringify([
+  const responses = new Map([
+    [
+      'issue list',
+      JSON.stringify([
         { number: 9, title: 'later' },
         { number: 2, title: 'first' },
-      ]);
-    if (args[0] === 'pr' && args[1] === 'view' && args.some((arg) => arg.includes('number,state')))
-      return JSON.stringify({
+      ]),
+    ],
+    [
+      'pr view details',
+      JSON.stringify({
         number: 7,
-
         body: undefined,
-
         merge_state_status: 'CLEAN',
-
         reviews: [{ body: 'review', submitted_at: 'two', commit: { oid: 'abc' } }],
-
         comments: [{ body: 'comment', created_at: 'one' }],
-
         statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'https://x' }],
-      });
-    if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({});
-    return '';
-  });
+      }),
+    ],
+    ['pr view summary', JSON.stringify({})],
+  ]);
+  const fake = createMockGitHubHost((args) => respondToDispatcherContractCommand(args, responses));
 
   // Arrange / Act / Assert: each operation receives only the adapter host.
   assert.deepEqual(
@@ -89,6 +88,14 @@ test('native dispatcher GitHub operations preserve argv, repository scoping, and
     true,
   );
 });
+
+function respondToDispatcherContractCommand(args, responses) {
+  const route = args.slice(0, 2).join(' ');
+  const detailRoute =
+    route === 'pr view' && args.some((argument) => argument.includes('number,state'));
+  const key = route === 'pr view' ? `${route} ${detailRoute ? 'details' : 'summary'}` : route;
+  return responses.get(key) ?? '';
+}
 
 test('native dispatcher GitHub writes redact bodies, clean temporary files, and classify execution failures', () => {
   let bodyFile;

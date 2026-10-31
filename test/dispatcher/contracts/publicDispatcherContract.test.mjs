@@ -47,94 +47,79 @@ test('post-preflight external adapter failures preserve exit 5', async () => {
   assert.equal(dispatcherHarness.state().status, 'claimed');
 });
 
-test('public CLI commands invoke only the injected control seams', async () => {
-  const dispatcherHarness = createMockDispatcherHarness([], {
-    initialState: { issue: 28, pr: 49, status: 'blocked' },
-  });
-  const calls = [];
-  dispatcherHarness.dependencies.loadConfig = () => (
-    calls.push(['loadConfig']),
-    dispatcherHarness.cfg
-  );
-  dispatcherHarness.dependencies.status = (verbose) => (
-    calls.push(['status', verbose]),
-    { status: 'injected' }
-  );
-  dispatcherHarness.dependencies.list = () => (
-    calls.push(['list']),
-    [{ number: 28, title: 'injected' }]
-  );
-  dispatcherHarness.dependencies.recoverLock = () => (
-    calls.push(['recoverLock']),
-    'injected recovery'
-  );
-  dispatcherHarness.dependencies.reset = () => calls.push(['reset']);
-  dispatcherHarness.dependencies.resolveReviewCap = (args, config) =>
-    calls.push(['resolveReviewCap', args, config]);
-  dispatcherHarness.dependencies.linkIssue = (issue) => calls.push(['linkIssue', issue]);
-  dispatcherHarness.dependencies.prepareRecovery = (issue, pr, config) => (
-    calls.push(['prepareRecovery', issue, pr, config]),
-    49
-  );
-  const originalLog = console.log;
-  console.log = () => {};
-  try {
-    const dispatcherArgs = ['--status', '--verbose'];
-    const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
-    await runDispatcherCli(parsedDispatcherCommand, dispatcherHarness.dependencies);
-    const dispatcherArgs2 = ['--list'];
-    const parsedDispatcherCommand2 = parseDispatcherCommand(dispatcherArgs2);
-    await runDispatcherCli(parsedDispatcherCommand2, dispatcherHarness.dependencies);
-    const dispatcherArgs3 = ['--recover-lock'];
-    const parsedDispatcherCommand3 = parseDispatcherCommand(dispatcherArgs3);
-    await runDispatcherCli(parsedDispatcherCommand3, dispatcherHarness.dependencies);
-    const dispatcherArgs4 = ['--reset'];
-    const parsedDispatcherCommand4 = parseDispatcherCommand(dispatcherArgs4);
-    await runDispatcherCli(parsedDispatcherCommand4, dispatcherHarness.dependencies);
-    const dispatcherArgs5 = [
-      '--resolve-review-cap',
-      '--steer',
-      'continue',
-      '--additional-rounds',
-      '1',
-    ];
-    const parsedDispatcherCommand5 = parseDispatcherCommand(dispatcherArgs5);
-    await runDispatcherCli(parsedDispatcherCommand5, dispatcherHarness.dependencies);
-    const dispatcherArgs6 = ['--link-issue', '29'];
-    const parsedDispatcherCommand6 = parseDispatcherCommand(dispatcherArgs6);
-    await runDispatcherCli(parsedDispatcherCommand6, dispatcherHarness.dependencies);
-    const dispatcherArgs7 = ['--prepare-recovery', '28', '--pr', '49'];
-    const parsedDispatcherCommand7 = parseDispatcherCommand(dispatcherArgs7);
-    await runDispatcherCli(parsedDispatcherCommand7, dispatcherHarness.dependencies);
-  } finally {
-    console.log = originalLog;
-  }
+test('public CLI status, list, recovery, and reset commands use injected controls', async () => {
+  const fixture = createInjectedControlFixture();
+
+  await runInjectedCommands(fixture.harness, [
+    ['--status', '--verbose'],
+    ['--list'],
+    ['--recover-lock'],
+    ['--reset'],
+  ]);
 
   assert.deepEqual(
-    calls.map(([name]) => name),
-    [
-      'status',
-      'list',
-      'recoverLock',
-      'reset',
-      'loadConfig',
-      'resolveReviewCap',
-      'linkIssue',
-      'loadConfig',
-      'prepareRecovery',
-    ],
+    fixture.calls.map(([name]) => name),
+    ['status', 'list', 'recoverLock', 'reset'],
   );
   assert.deepEqual(
-    calls.find(([name]) => name === 'status'),
+    fixture.calls.find(([name]) => name === 'status'),
     ['status', true],
   );
+});
+
+test('public CLI review-cap and recovery commands use injected controls', async () => {
+  const fixture = createInjectedControlFixture();
+
+  await runInjectedCommands(fixture.harness, [
+    ['--resolve-review-cap', '--steer', 'continue', '--additional-rounds', '1'],
+    ['--link-issue', '29'],
+    ['--prepare-recovery', '28', '--pr', '49'],
+  ]);
+
   assert.deepEqual(
-    calls.find(([name]) => name === 'linkIssue'),
+    fixture.calls.map(([name]) => name),
+    ['loadConfig', 'resolveReviewCap', 'linkIssue', 'loadConfig', 'prepareRecovery'],
+  );
+  assert.deepEqual(
+    fixture.calls.find(([name]) => name === 'linkIssue'),
     ['linkIssue', 29],
   );
-  assert.deepEqual(calls.find(([name]) => name === 'prepareRecovery').slice(0, 3), [
+  assert.deepEqual(fixture.calls.find(([name]) => name === 'prepareRecovery').slice(0, 3), [
     'prepareRecovery',
     28,
     49,
   ]);
 });
+
+function createInjectedControlFixture() {
+  const harness = createMockDispatcherHarness([], {
+    initialState: { issue: 28, pr: 49, status: 'blocked' },
+  });
+  const calls = [];
+  const dependencies = harness.dependencies;
+  dependencies.loadConfig = () => (calls.push(['loadConfig']), harness.cfg);
+  dependencies.status = (verbose) => (calls.push(['status', verbose]), { status: 'injected' });
+  dependencies.list = () => (calls.push(['list']), [{ number: 28, title: 'injected' }]);
+  dependencies.recoverLock = () => (calls.push(['recoverLock']), 'injected recovery');
+  dependencies.reset = () => calls.push(['reset']);
+  dependencies.resolveReviewCap = (args, config) => calls.push(['resolveReviewCap', args, config]);
+  dependencies.linkIssue = (issue) => calls.push(['linkIssue', issue]);
+  dependencies.prepareRecovery = (issue, pr, config) => (
+    calls.push(['prepareRecovery', issue, pr, config]),
+    49
+  );
+  return { harness, calls };
+}
+
+async function runInjectedCommands(harness, commands) {
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    for (const dispatcherArgs of commands) {
+      const parsedCommand = parseDispatcherCommand(dispatcherArgs);
+      await runDispatcherCli(parsedCommand, harness.dependencies);
+    }
+  } finally {
+    console.log = originalLog;
+  }
+}

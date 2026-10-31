@@ -43,14 +43,22 @@ export const listParser = (value: unknown, path: string): ParserResult<readonly 
 };
 
 export const durationParser = (value: unknown, path: string): ParserResult<number> => {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return valid(value);
+  if (isValidDurationNumber(value)) return valid(value);
   if (typeof value !== 'string') return invalid(path, 'expected a duration such as 5m');
+  return parseDurationString(value, path);
+};
+
+function isValidDurationNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function parseDurationString(value: string, path: string): ParserResult<number> {
   const match = /^(\d+)(ms|s|m|h|d)$/.exec(value);
   if (!match) return invalid(path, 'expected a duration such as 5m');
   const multiplier = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]!;
   const result = Number(match[1]) * multiplier;
   return Number.isSafeInteger(result) ? valid(result) : invalid(path, 'duration is too large');
-};
+}
 
 export const pathParser = (value: unknown, path: string): ParserResult<string> => {
   const result = stringParser(value, path);

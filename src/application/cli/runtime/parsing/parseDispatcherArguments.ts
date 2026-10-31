@@ -14,18 +14,21 @@ const singleArgumentCommands: Readonly<Record<string, DispatcherCommand>> = Obje
   '--clear-all-worktrees': { kind: 'clear-all-worktrees' },
 });
 
+const dispatcherCommandParsers = [
+  (args: readonly string[]) => parseDispatcherArguments.parseStatus(args),
+  (args: readonly string[]) => parseDispatcherArguments.parseSingle(args),
+  (args: readonly string[]) => parseDispatcherArguments.parseIssue(args),
+  (args: readonly string[]) => parseRecoveryArguments.parse(args),
+] as const;
+
 /** Parses dispatcher commands, preserving the legacy command precedence. */
 export const parseDispatcherArguments = Object.freeze({
   parse(args: readonly string[]): ParseResult<DispatcherCommand> {
     if (args.length === 0) return result.success({ kind: 'workflow' });
-    const status = this.parseStatus(args);
-    if (status) return result.success(status);
-    const single = this.parseSingle(args);
-    if (single) return result.success(single);
-    const issue = this.parseIssue(args);
-    if (issue) return result.success(issue);
-    const recovery = parseRecoveryArguments.parse(args);
-    if (recovery) return result.success(recovery);
+    const command = dispatcherCommandParsers
+      .map((parseCommand) => parseCommand(args))
+      .find((candidate) => candidate !== undefined);
+    if (command) return result.success(command);
     if (args[0] === '--resolve-review-cap' && args.length > 1)
       return parseReviewCapArguments.parse(args);
     return result.failure('mixed, duplicate, unknown, or unsupported command arguments');

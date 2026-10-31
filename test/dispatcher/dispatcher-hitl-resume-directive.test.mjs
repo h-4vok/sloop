@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { HitlResumeDirectiveService } from '../../dist/application/dispatcher/services/hitl/HitlResumeDirectiveService.js';
+import { HitlResumeDirectiveService } from '../../src/application/dispatcher/services/hitl/HitlResumeDirectiveService.ts';
 
 test('hitl resume directive selects the latest comment when rounds match', () => {
   // Arrange

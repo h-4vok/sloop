@@ -75,6 +75,13 @@ function hasIncompleteManifest(manifest: RunManifest | undefined): manifest is R
   return Boolean(manifest && manifest.phase !== 'complete');
 }
 
+function requiresRemoteRecovery(
+  manifest: RunManifest,
+  preparedPr: PullRequest | undefined,
+): boolean {
+  return manifest.branch !== 'pending' || Boolean(manifest.pr) || Boolean(preparedPr);
+}
+
 async function hydrateRemoteRecovery(
   cfg: Config,
   d: Deps,
@@ -87,7 +94,7 @@ async function hydrateRemoteRecovery(
   if (!leaseResult.ok) throw leaseResult.error;
   const preparedPr = await fetchPreparedPr(d, cfg, issue.number, manifest);
   const hydrationManifest = createHydrationManifest(manifest, preparedPr);
-  const recovery = manifest.branch !== 'pending' || Boolean(manifest.pr) || Boolean(preparedPr);
+  const recovery = requiresRemoteRecovery(manifest, preparedPr);
   hydrateFromRemote(d, hydrationManifest);
   savePreparedRecoveryPr(d, preparedPr);
   await adoptRemotePullRequest(d, manifest);

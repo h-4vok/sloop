@@ -44,52 +44,72 @@ function createAlignedWorkerRepository(branch) {
 }
 
 test('active-run reconciliation classifies open and unverifiable runs', () => {
-  const config = loadConfigText(canonicalConfigYaml());
-  let issueState = 'OPEN';
-  let pullRequest = {
-    number: 9,
+  assertReconciliationOutcomes(collectActiveRunOutcomes());
+}, 15_000);
 
-    state: 'OPEN',
-
-    baseRefName: config.repository.baseBranch,
-
-    headRefName: 'codex/issue-81-x',
-
-    body: 'Fixes #81',
-  };
-  const client = {
-    runJson: (args) => (args[0] === 'issue' ? { state: issueState } : pullRequest),
-  };
-  const workerRoot = createAlignedWorkerRepository('codex/issue-81-x');
-  const reconcile = activeRunReconcilerFactory.create({ client, config, root: workerRoot });
-
+function collectActiveRunOutcomes() {
+  const { config, state, client, reconcile } = createActiveRunScenario();
   const openResult = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
-  issueState = 'CLOSED';
-  pullRequest = { ...pullRequest, body: 'Unrelated change' };
+  state.issueState = 'CLOSED';
+  state.pullRequest = { ...state.pullRequest, body: 'Unrelated change' };
   const missingClosingReference = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
-  pullRequest = { ...pullRequest, body: 'Fixes #81' };
+  state.pullRequest = { ...state.pullRequest, body: 'Fixes #81' };
   const verifiedIdentity = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   const unavailableReconcile = activeRunReconcilerFactory.create({
     client,
-
     config,
-
     root: tmpdir(),
   })({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
-  pullRequest = { ...pullRequest, state: 'MERGED' };
-  issueState = 'OPEN';
+  state.pullRequest = { ...state.pullRequest, state: 'MERGED' };
+  state.issueState = 'OPEN';
   const mergedPullRequest = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
-  pullRequest = {
+  state.pullRequest = {
     number: 9,
-
     state: 'MERGED',
-
     baseRefName: config.repository.baseBranch,
-
     body: 'Fixes #81',
   };
   const missingBranch = reconcile({ issue: 81, pr: 9 });
 
+  return {
+    openResult,
+    missingClosingReference,
+    verifiedIdentity,
+    unavailableReconcile,
+    mergedPullRequest,
+    missingBranch,
+  };
+}
+
+function createActiveRunScenario() {
+  const config = loadConfigText(canonicalConfigYaml());
+  const state = {
+    issueState: 'OPEN',
+    pullRequest: {
+      number: 9,
+      state: 'OPEN',
+      baseRefName: config.repository.baseBranch,
+      headRefName: 'codex/issue-81-x',
+      body: 'Fixes #81',
+    },
+  };
+  const client = {
+    runJson: (args) => (args[0] === 'issue' ? { state: state.issueState } : state.pullRequest),
+  };
+  const workerRoot = createAlignedWorkerRepository('codex/issue-81-x');
+  const reconcile = activeRunReconcilerFactory.create({ client, config, root: workerRoot });
+
+  return { config, state, client, reconcile };
+}
+
+function assertReconciliationOutcomes({
+  openResult,
+  missingClosingReference,
+  verifiedIdentity,
+  unavailableReconcile,
+  mergedPullRequest,
+  missingBranch,
+}) {
   assert.deepEqual(openResult, {
     outcome: 'open',
 
@@ -110,4 +130,4 @@ test('active-run reconciliation classifies open and unverifiable runs', () => {
 
     reason: 'persisted worker branch is missing',
   });
-}, 15_000);
+}

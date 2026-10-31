@@ -32,35 +32,8 @@ test(
       'snowman ☃',
     ];
     const invocation = codexCliInvocation(expectedArgs);
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const systemPath = [
-      systemRoot,
-      join(systemRoot, 'System32'),
-      join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'),
-    ].join(delimiter);
-    const result = await new Promise((resolve, reject) => {
-      const child = spawn(invocation.command, invocation.args, {
-        cwd: fixtureDir,
-
-        env: {
-          ...process.env,
-
-          PATH: `${fixtureDir}${delimiter}${systemPath}`,
-
-          SLOOP_NODE_EXE: process.execPath,
-        },
-
-        shell: false,
-
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      let stdout = '';
-      let stderr = '';
-      child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
-      child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
-      child.on('error', reject);
-      child.on('close', (code) => resolve({ code, stdout, stderr }));
-      child.stdin.end(invocation.stdin);
+    const result = await runCodexShimInvocation(fixtureDir, invocation, {
+      SLOOP_NODE_EXE: process.execPath,
     });
 
     assert.equal(result.code, 0, result.stderr);
@@ -81,33 +54,39 @@ test(
     await writeFile(join(fixtureDir, 'codex.ps1'), "Write-Output 'shim was invoked'\n", 'utf8');
 
     const invocation = codexCliInvocation(['exec', '']);
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const systemPath = [
-      systemRoot,
-      join(systemRoot, 'System32'),
-      join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'),
-    ].join(delimiter);
-    const result = await new Promise((resolve, reject) => {
-      const child = spawn(invocation.command, invocation.args, {
-        cwd: fixtureDir,
-
-        env: { ...process.env, PATH: `${fixtureDir}${delimiter}${systemPath}` },
-
-        shell: false,
-
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      let stdout = '';
-      let stderr = '';
-      child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
-      child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
-      child.on('error', reject);
-      child.on('close', (code) => resolve({ code, stdout, stderr }));
-      child.stdin.end(invocation.stdin);
-    });
+    const result = await runCodexShimInvocation(fixtureDir, invocation, {});
 
     assert.equal(result.code, 127);
     assert.match(result.stderr, /cannot preserve empty arguments/);
     assert.doesNotMatch(result.stdout, /shim was invoked/);
   },
 );
+
+async function runCodexShimInvocation(fixtureDir, invocation, additionalEnvironment) {
+  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  const systemPath = [
+    systemRoot,
+    join(systemRoot, 'System32'),
+    join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'),
+  ].join(delimiter);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: fixtureDir,
+      env: {
+        ...process.env,
+        PATH: [fixtureDir, systemPath].join(delimiter),
+        ...additionalEnvironment,
+      },
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
+    child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.stdin.end(invocation.stdin);
+  });
+}

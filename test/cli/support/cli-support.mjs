@@ -41,22 +41,12 @@ async function runCli(args, nodeVersion = process.version, modules) {
         runtime: {
           ...modules.runtime,
 
-          parseCliCommand: (...parseArgs) => {
-            try {
-              const parsed = modules.runtime.parseCliCommand(...parseArgs);
-              return parsed && typeof parsed === 'object' && 'ok' in parsed
-                ? parsed
-                : { ok: true, value: parsed };
-            } catch (error) {
-              return { ok: false, error: error instanceof Error ? error.message : String(error) };
-            }
-          },
+          parseCliCommand: (...parseArgs) =>
+            invokeCompatibleParser(modules.runtime.parseCliCommand, parseArgs),
 
           discoverRepository: (...runtimeArgs) => {
             const discovered = modules.runtime.discoverRepository?.(...runtimeArgs);
-            return discovered && typeof discovered === 'object' && 'ok' in discovered
-              ? discovered
-              : { ok: true, value: discovered };
+            return normalizeCliResult(discovered);
           },
         },
       }
@@ -71,6 +61,19 @@ async function runCli(args, nodeVersion = process.version, modules) {
     modules: compatibleModules,
   });
   process.exitCode = await cliRunner.runCliCommand(args);
+}
+
+function invokeCompatibleParser(parser, args) {
+  try {
+    return normalizeCliResult(parser(...args));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function normalizeCliResult(value) {
+  if (value && typeof value === 'object' && 'ok' in value) return value;
+  return { ok: true, value };
 }
 
 function captureCliOutput() {

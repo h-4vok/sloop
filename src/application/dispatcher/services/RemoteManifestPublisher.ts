@@ -5,6 +5,25 @@ import { artifactKey } from '../../../remote-state.js';
 import { RemoteRunState } from './recovery/RemoteRunState.js';
 const { remoteManifest, remoteOwner, remoteProjection } = RemoteRunState;
 
+function remoteLeaseOwner(d: Deps, issue: number, phase: RunManifest['phase']): string | undefined {
+  if (!['claimed', 'working', 'review'].includes(phase)) return undefined;
+
+  return remoteOwner(d, issue);
+}
+
+function publishOrReconcile(
+  remote: NonNullable<Deps['remote']>,
+  issue: number,
+  key: string,
+  manifest: RunManifest,
+): void {
+  try {
+    remote.publish(issue, manifest);
+  } catch (error) {
+    if (!remote.reconcile(issue, key)) throw error;
+  }
+}
+
 function publishRemoteManifest(
   cfg: Config,
   d: Deps,
@@ -21,14 +40,10 @@ function publishRemoteManifest(
     previous.runId,
     key,
     phase,
-    ['claimed', 'working', 'review'].includes(phase) ? remoteOwner(d, issue) : undefined,
+    remoteLeaseOwner(d, issue, phase),
     previous,
   );
-  try {
-    d.remote.publish(issue, manifest);
-  } catch (error) {
-    if (!d.remote.reconcile(issue, key)) throw error;
-  }
+  publishOrReconcile(d.remote, issue, key, manifest);
 }
 
 function publishCurrentRemoteManifest(

@@ -26,28 +26,45 @@ const dispatcherCliOutput = Object.freeze({
     const issue = result.issue;
     const pr = result.pr;
 
-    if (
-      !verbose &&
-      result.status === 'worker_recovery_pending' &&
-      typeof issue === 'number' &&
-      Number.isInteger(issue) &&
-      issue > 0 &&
-      typeof pr === 'number' &&
-      Number.isInteger(pr) &&
-      pr > 0
-    ) {
-      result.nextAction = {
-        command: `sloop --prepare-recovery ${issue} --pr ${pr}`,
-
-        description: 'Prepare local recovery for the failed Worker.',
-
-        mutates: true,
-      };
-    }
+    const recoveryAction = createRecoveryAction(result.status, issue, pr, verbose);
+    if (recoveryAction) result.nextAction = recoveryAction;
 
     console.log(JSON.stringify(result, null, 2));
   },
 });
+
+function shouldSuggestRecovery(
+  status: Status | undefined,
+  issue: unknown,
+  pr: unknown,
+  verbose: boolean,
+): boolean {
+  return (
+    !verbose &&
+    status === 'worker_recovery_pending' &&
+    isPositiveIdentifier(issue) &&
+    isPositiveIdentifier(pr)
+  );
+}
+
+function isPositiveIdentifier(value: unknown): value is number {
+  if (typeof value !== 'number') return false;
+  return Number.isInteger(value) && value > 0;
+}
+
+function createRecoveryAction(
+  status: Status | undefined,
+  issue: unknown,
+  pr: unknown,
+  verbose: boolean,
+) {
+  if (!shouldSuggestRecovery(status, issue, pr, verbose)) return undefined;
+  return {
+    command: `sloop --prepare-recovery ${issue as number} --pr ${pr as number}`,
+    description: 'Prepare local recovery for the failed Worker.',
+    mutates: true,
+  };
+}
 
 const dispatcherCliCommandHandlers: DispatcherCliCommandHandlerMap = {
   status: (command, dependencies) => {

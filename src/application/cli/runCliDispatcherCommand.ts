@@ -12,8 +12,8 @@ export const runCliDispatcherCommand = Object.freeze({
     runtime: CliRuntime,
     context: CliExecutionContext,
   ): Promise<number> {
-    const dispatcher = context.modules?.dispatcher ?? (await import('../../dispatcher.js'));
-    const adapters = context.modules?.adapters ?? (await import('../../adapters.js'));
+    const dispatcher = await loadDispatcher(context);
+    const adapters = await loadAdapters(context);
     const preflight = runtime.runDispatcherPreflight(command.command, context.runtimeIo);
 
     if (!preflight.root || !preflight.config || !preflight.repository) {
@@ -29,3 +29,11 @@ export const runCliDispatcherCommand = Object.freeze({
     return dispatcher.runDispatcherCli(command.command, dispatcherDependencies);
   },
 });
+
+async function loadDispatcher(context: CliExecutionContext) {
+  return context.modules?.dispatcher ?? (await import('../../dispatcher.js'));
+}
+
+async function loadAdapters(context: CliExecutionContext) {
+  return context.modules?.adapters ?? (await import('../../adapters.js'));
+}

@@ -14,11 +14,7 @@ async function confirmConfigChanges(session: WizardSession): Promise<number> {
       ? `Preview\n${session.changed.join('\n')}\nConfirm changes? [y/N]`
       : 'No changes proposed.',
   );
-  if (
-    !session.changed.length ||
-    (await session.readline.question('> ')).trim().toLowerCase() !== 'y'
-  )
-    return 0;
+  if (!(await shouldSaveChanges(session))) return 0;
   const gitignore = await prepareGitignoreChange(session);
   const previousConfig = session.fileStore.exists(session.file)
     ? session.fileStore.read(session.file)
@@ -50,21 +46,27 @@ function changedReconcilerKinds(session: WizardSession): Set<FieldMetadata['requ
 async function prepareGitignoreChange(
   session: WizardSession,
 ): Promise<{ file: string; content: string } | undefined> {
-  if (
-    !session.init ||
-    (await session.readline.question('Add .sloop/ to .gitignore? [Y/n] ')).trim().toLowerCase() ===
-      'n'
-  )
-    return undefined;
+  if (!session.init || (await shouldAddGitignore(session)) === false) return undefined;
   const file = join(session.root, '.gitignore');
   const content = session.fileStore.exists(file) ? session.fileStore.read(file) : '';
 
-  return {
-    file,
-    content: content.split(/\r?\n/).includes('.sloop/')
-      ? content
-      : `${content && !content.endsWith('\n') ? '\n' : ''}.sloop/\n`,
-  };
+  return { file, content: withSloopGitignoreEntry(content) };
+}
+
+async function shouldSaveChanges(session: WizardSession): Promise<boolean> {
+  if (!session.changed.length) return false;
+  return (await session.readline.question('> ')).trim().toLowerCase() === 'y';
+}
+
+async function shouldAddGitignore(session: WizardSession): Promise<boolean> {
+  const answer = await session.readline.question('Add .sloop/ to .gitignore? [Y/n] ');
+  return answer.trim().toLowerCase() !== 'n';
+}
+
+function withSloopGitignoreEntry(content: string): string {
+  if (content.split(/\r?\n/).includes('.sloop/')) return content;
+  const separator = content && !content.endsWith('\n') ? '\n' : '';
+  return `${content}${separator}.sloop/\n`;
 }
 
 async function writeWizardFiles(
@@ -83,23 +85,30 @@ async function writeWizardFiles(
 }
 
 async function synchronizeWizard(session: WizardSession): Promise<void> {
-  if (session.sync === '--sync') {
-    for (const kind of changedReconcilerKinds(session))
-      if (kind !== 'none') await session.reconciler(session.root, kind);
-    session.logger.log('Synchronization completed after atomic configuration write.');
-  } else if (session.init && (session.io.promptForSync ?? session.io.input === input)) {
-    const answer = (
-      await session.readline.question('Synchronize GitHub labels and Sloop skills now? [Y/n] ')
-    )
-      .trim()
-      .toLowerCase();
-    if (answer !== 'n') {
-      await session.reconciler(session.root, 'github');
-      await session.reconciler(session.root, 'skills');
-    } else {
-      session.logger.log(
-        'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
-      );
-    }
+  if (session.sync === '--sync') return synchronizeChangedFields(session);
+  if (shouldPromptForSync(session)) await promptForSync(session);
+}
+
+function shouldPromptForSync(session: WizardSession): boolean {
+  return session.init && (session.io.promptForSync ?? session.io.input === input);
+}
+
+async function synchronizeChangedFields(session: WizardSession): Promise<void> {
+  for (const kind of changedReconcilerKinds(session))
+    if (kind !== 'none') await session.reconciler(session.root, kind);
+  session.logger.log('Synchronization completed after atomic configuration write.');
+}
+
+async function promptForSync(session: WizardSession): Promise<void> {
+  const answer = await session.readline.question(
+    'Synchronize GitHub labels and Sloop skills now? [Y/n] ',
+  );
+  if (answer.trim().toLowerCase() !== 'n') {
+    await session.reconciler(session.root, 'github');
+    await session.reconciler(session.root, 'skills');
+    return;
   }
+  session.logger.log(
+    'Prerequisites were not synchronized; run `sloop config install` to prepare them manually.',
+  );
 }

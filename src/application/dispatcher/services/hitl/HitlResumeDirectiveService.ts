@@ -95,7 +95,11 @@ function createHitlResumeCandidate(
 function compareHitlResumeCandidates(a: HitlResumeCandidate, b: HitlResumeCandidate): number {
   if (a.value.round !== b.value.round) return a.value.round - b.value.round;
 
-  return (a.createdAt ?? a.id ?? a.index) - (b.createdAt ?? b.id ?? b.index);
+  return hitlResumeCandidateOrder(a) - hitlResumeCandidateOrder(b);
+}
+
+function hitlResumeCandidateOrder(candidate: HitlResumeCandidate): number {
+  return candidate.createdAt ?? candidate.id ?? candidate.index;
 }
 
 export const HitlResumeDirectiveService = {

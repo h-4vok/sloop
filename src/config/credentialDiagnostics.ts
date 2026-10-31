@@ -36,27 +36,43 @@ function credentialArrayDiagnostics(
   path: string,
   ancestors: WeakSet<object>,
 ): ConfigDiagnostic[] {
-  return values.flatMap((child, index) => {
-    const previousValue = values[index - 1];
-    if (
-      index > 0 &&
-      typeof previousValue === 'string' &&
-      credentialValueOptions.test(previousValue) &&
-      typeof child === 'string' &&
-      child.length > 0
-    ) {
-      return [
-        {
-          path: `${path}[${index}]`,
+  return values.flatMap((child, index) =>
+    credentialArrayChildDiagnostics(values, child, index, path, ancestors),
+  );
+}
 
-          message:
-            'credentials are not accepted in sloop.config.yaml; use the external environment',
-        },
-      ];
-    }
+function credentialArrayChildDiagnostics(
+  values: readonly unknown[],
+  child: unknown,
+  index: number,
+  path: string,
+  ancestors: WeakSet<object>,
+): ConfigDiagnostic[] {
+  if (isCredentialOptionValue(values, child, index))
+    return [credentialDiagnostic(`${path}[${index}]`)];
+  return credentialDiagnostics(child, `${path}[${index}]`, ancestors);
+}
 
-    return credentialDiagnostics(child, `${path}[${index}]`, ancestors);
-  });
+function isCredentialOptionValue(
+  values: readonly unknown[],
+  child: unknown,
+  index: number,
+): boolean {
+  const previousValue = values[index - 1];
+  return (
+    index > 0 &&
+    typeof previousValue === 'string' &&
+    credentialValueOptions.test(previousValue) &&
+    typeof child === 'string' &&
+    child.length > 0
+  );
+}
+
+function credentialDiagnostic(path: string): ConfigDiagnostic {
+  return {
+    path,
+    message: 'credentials are not accepted in sloop.config.yaml; use the external environment',
+  };
 }
 
 function credentialDiagnostics(
@@ -68,8 +84,15 @@ function credentialDiagnostics(
   if (value === null || typeof value !== 'object') return [];
   if (ancestors.has(value)) return [{ path, message: 'YAML aliases must not form cycles' }];
   ancestors.add(value);
-  if (Array.isArray(value)) return credentialArrayDiagnostics(value, path, ancestors);
+  return containerCredentialDiagnostics(value, path, ancestors);
+}
 
+function containerCredentialDiagnostics(
+  value: object,
+  path: string,
+  ancestors: WeakSet<object>,
+): ConfigDiagnostic[] {
+  if (Array.isArray(value)) return credentialArrayDiagnostics(value, path, ancestors);
   return Object.entries(value).flatMap(([key, child]) =>
     credentialDiagnostics(child, `${path}.${key}`, ancestors),
   );

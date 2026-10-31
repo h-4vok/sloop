@@ -8,7 +8,7 @@ import {
   resolveReviewCap,
   readState,
   writeState,
-  createMockGitHubHost,
+  createReviewCapGitHubHost,
   rmSync,
 } from '../dispatcher-test-support.mjs';
 
@@ -23,22 +23,14 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
     100,
   );
   writeState(recovered, statePath);
-  const fake = createMockGitHubHost((args) => {
-    if (args[0] === 'api') return 'octocat';
-    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
-    if (args[0] === 'pr' && args[1] === 'view')
-      return JSON.stringify({
-        number: 7,
-
-        mergeable: 'MERGEABLE',
-
-        mergeStateStatus: 'CLEAN',
-
-        comments: [],
-
-        statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
-      });
-    return '';
+  const fake = createReviewCapGitHubHost({
+    pullRequest: {
+      number: 7,
+      mergeable: 'MERGEABLE',
+      mergeStateStatus: 'CLEAN',
+      comments: [],
+      statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+    },
   });
 
   resolveReviewCap(

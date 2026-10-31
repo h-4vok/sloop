@@ -56,28 +56,29 @@ test('production reconciler supports configured sync kinds and rejects unsupport
 test('production adapters expose deterministic local, GitHub, and lock contracts through one executor seam', async () => {
   const calls = [];
   const events = [];
-  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
-    calls.push([...args]);
-    if (args[0] === 'issue' && args[1] === 'list')
-      return JSON.stringify([
+  const responses = new Map([
+    [
+      'issue list',
+      JSON.stringify([
         { number: 4, title: 'four', body: 'body' },
         { number: 2, title: 'two', body: 'body' },
-      ]);
-    if (args[0] === 'pr' && args[1] === 'view' && args.includes('body'))
-      return JSON.stringify({ body: 'PR body' });
-    if (args[0] === 'pr' && args[1] === 'view')
-      return JSON.stringify({
+      ]),
+    ],
+    ['pr view body', JSON.stringify({ body: 'PR body' })],
+    [
+      'pr view summary',
+      JSON.stringify({
         number: 9,
-
         body: 'PR body',
-
         reviews: [{ commit: { oid: 'abcdef1' }, submitted_at: 'now' }],
-
         comments: [{ body: 'comment', created_at: 'then' }],
-
         statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'url' }],
-      });
-    return JSON.stringify({ comments: [] });
+      }),
+    ],
+  ]);
+  const dependencies = createAdapterDependenciesWithMockGitHubCommand((_file, args) => {
+    calls.push([...args]);
+    return respondToProductionCompositionCommand(args, responses);
   });
   dependencies.setRunLogger({ write: (type, data) => events.push({ type, data }) });
 
@@ -96,6 +97,17 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
   assert.ok(events.some(({ type }) => type === 'github-response'));
   assert.ok(calls.every((args) => args[0] === 'api' || args.includes('--repo')));
 
+  await assertLocalAndLockContracts(dependencies);
+});
+
+function respondToProductionCompositionCommand(args, responses) {
+  const route = args.slice(0, 2).join(' ');
+  const viewKind = args.includes('body') ? 'body' : 'summary';
+  const key = route === 'pr view' ? `${route} ${viewKind}` : route;
+  return responses.get(key) ?? JSON.stringify({ comments: [] });
+}
+
+async function assertLocalAndLockContracts(dependencies) {
   dependencies.save({ issue: 2, pr: 9, status: 'claimed' });
   assert.equal(dependencies.load().pr, 9);
   assert.deepEqual(dependencies.status(false), {
@@ -129,4 +141,4 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
   assert.equal(typeof dependencies.now(), 'number');
   await dependencies.sleep(0);
   dependencies.onReclaim();
-});
+}

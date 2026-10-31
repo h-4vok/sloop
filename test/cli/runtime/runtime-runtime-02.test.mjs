@@ -1,124 +1,99 @@
-import { createIsolatedTemporaryDirectory } from '../../support/temporary-directory.mjs';
 import assert from 'node:assert/strict';
-import { join, resolve } from 'node:path';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
 import { test } from 'vitest';
+import { EXIT, runDispatcherPreflight, runReadOnlyCommand } from '../../../src/runtime.js';
 import {
-  discoverRepository as discoverRepositoryResult,
-  EXIT,
-  parseCliCommand as parseCliCommandResult,
-  parseReadOnlyCommand as parseReadOnlyCommandResult,
-  parseDispatcherCommand as parseDispatcherCommandResult,
-  emitNodeVersionFailure,
-  emitUsageFailure,
-  resultOutput,
-  runDispatcherPreflight,
-  runReadOnlyCommand,
-} from '../../../src/runtime.js';
-import { canonicalConfigYaml } from '../../../src/config.js';
-
-import {
-  config,
-  unwrap,
-  parseCliCommand,
-  parseReadOnlyCommand,
   parseDispatcherCommand,
-  discoverRepository,
+  parseReadOnlyCommand,
   createMockRuntimeHarness,
 } from '../support/runtime-support.mjs';
 
-test('runtime diagnostics cover unavailable tools, malformed GitHub responses, and every read-only result', () => {
-  const cases = [
-    [{ 'gh --version': { stdout: '', stderr: '', status: 1 } }, ['issues', 'list', '--json'], 'gh'],
-    [
-      {
-        'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
-          stdout: '{',
-
-          stderr: '',
-
-          status: 0,
-        },
+const issueListArgs = ['issues', 'list', '--json'];
+const invalidPreflightCases = [
+  {
+    name: 'unavailable gh',
+    overrides: { 'gh --version': { stdout: '', stderr: '', status: 1 } },
+    check: 'gh',
+  },
+  {
+    name: 'malformed repository identity',
+    overrides: {
+      'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+        stdout: '{',
+        stderr: '',
+        status: 0,
       },
-      ['issues', 'list', '--json'],
-      'repository-identity',
-    ],
-    [
-      {
-        'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
-          stdout: '{"viewerPermission":"READ"}',
-
-          stderr: '',
-
-          status: 0,
-        },
+    },
+    check: 'repository-identity',
+  },
+  {
+    name: 'read-only repository permission',
+    overrides: {
+      'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+        stdout: '{"viewerPermission":"READ"}',
+        stderr: '',
+        status: 0,
       },
-      ['issues', 'list', '--json'],
-      'repository-identity',
-    ],
-    [
-      {
-        'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
-          stdout: '{"nameWithOwner":"o/r","viewerPermission":"NONE"}',
-
-          stderr: '',
-
-          status: 0,
-        },
+    },
+    check: 'repository-identity',
+  },
+  {
+    name: 'missing repository permission',
+    overrides: {
+      'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
+        stdout: '{"nameWithOwner":"o/r","viewerPermission":"NONE"}',
+        stderr: '',
+        status: 0,
       },
-      ['issues', 'list', '--json'],
-      'permissions',
-    ],
-    [
-      {
-        'gh label list --repo o/r --limit 1000 --json name': { stdout: '{', stderr: '', status: 0 },
-      },
-      ['issues', 'list', '--json'],
-      'labels',
-    ],
-    [
-      {
-        'gh label list --repo o/r --limit 1000 --json name': {
-          stdout: '[]',
+    },
+    check: 'permissions',
+  },
+  {
+    name: 'malformed labels',
+    overrides: {
+      'gh label list --repo o/r --limit 1000 --json name': { stdout: '{', stderr: '', status: 0 },
+    },
+    check: 'labels',
+  },
+  {
+    name: 'missing labels',
+    overrides: {
+      'gh label list --repo o/r --limit 1000 --json name': { stdout: '[]', stderr: '', status: 0 },
+    },
+    check: 'labels',
+  },
+  {
+    name: 'unavailable labels',
+    overrides: {
+      'gh label list --repo o/r --limit 1000 --json name': { stdout: '', stderr: '', status: 1 },
+    },
+    check: 'permissions',
+  },
+];
 
-          stderr: '',
+test.each(invalidPreflightCases)('runtime preflight reports $name', ({ overrides, check }) => {
+  const runtimeHarness = createMockRuntimeHarness(overrides);
+  const parsedCommand = parseReadOnlyCommand(issueListArgs);
 
-          status: 0,
-        },
-      },
-      ['issues', 'list', '--json'],
-      'labels',
-    ],
-    [
+  assert.equal(runReadOnlyCommand(parsedCommand, runtimeHarness.io), EXIT.preflight);
+  const diagnostics = JSON.parse(runtimeHarness.stdout[0]).diagnostics;
+  assert.ok(diagnostics.some((diagnostic) => diagnostic.check === check));
+});
+
+test.each([
+  ['malformed issue response', 'not json', EXIT.external],
+  ['valid empty issue response', '[]', EXIT.ok],
+])('read-only issue listing handles %s', (_name, stdout, expected) => {
+  const runtimeHarness = createMockRuntimeHarness({
+    'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
-        'gh label list --repo o/r --limit 1000 --json name': { stdout: '', stderr: '', status: 1 },
+        stdout,
+        stderr: '',
+        status: 0,
       },
-      ['issues', 'list', '--json'],
-      'permissions',
-    ],
-  ];
+  });
+  const parsedCommand = parseReadOnlyCommand(issueListArgs);
 
-  for (const [overrides, args, check] of cases) {
-    const runtimeHarness = createMockRuntimeHarness(overrides);
-    const parsedReadOnlyCommand = parseReadOnlyCommand(args);
-    assert.equal(runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io), EXIT.preflight);
-    assert.ok(
-      JSON.parse(runtimeHarness.stdout[0]).diagnostics.some((item) => item.check === check),
-    );
-  }
-  for (const [stdout, expected] of [
-    ['not json', EXIT.external],
-    ['[]', EXIT.ok],
-  ]) {
-    const runtimeHarness = createMockRuntimeHarness({
-      'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
-        { stdout, stderr: '', status: 0 },
-    });
-    const readOnlyArgs = ['issues', 'list', '--json'];
-    const parsedReadOnlyCommand2 = parseReadOnlyCommand(readOnlyArgs);
-    assert.equal(runReadOnlyCommand(parsedReadOnlyCommand2, runtimeHarness.io), expected);
-  }
+  assert.equal(runReadOnlyCommand(parsedCommand, runtimeHarness.io), expected);
 });
 
 test('dispatcher preflight reports an invalid GitHub repository URL', () => {
@@ -126,9 +101,7 @@ test('dispatcher preflight reports an invalid GitHub repository URL', () => {
     'git remote get-url origin': { stdout: 'not-a-github-url', stderr: '', status: 0 },
   });
   const dispatcherArgs = ['--status'];
-  const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
-  assert.equal(
-    runDispatcherPreflight(parsedDispatcherCommand, runtimeHarness.io).code,
-    EXIT.preflight,
-  );
+  const parsedCommand = parseDispatcherCommand(dispatcherArgs);
+
+  assert.equal(runDispatcherPreflight(parsedCommand, runtimeHarness.io).code, EXIT.preflight);
 });

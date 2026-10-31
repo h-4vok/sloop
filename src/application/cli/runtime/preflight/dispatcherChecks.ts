@@ -10,6 +10,7 @@ import { cleanOutput, createDiagnostic } from './checkSupport.js';
 import { checkGitHubPrerequisites } from './checkGitHubPrerequisites.js';
 import { checkGitHubIdentity } from './checkGitHubIdentity.js';
 import { checkCorePrerequisites } from './checkCorePrerequisites.js';
+import { commandNameForDispatcher } from './commandNameForDispatcher.js';
 
 /** Describes the CLI preflight result while preserving optional resolved inputs. */
 export type DispatcherPreflight = Readonly<{
@@ -51,28 +52,7 @@ export const dispatcherChecks = Object.freeze({
   },
 
   commandNameForDispatcher(command: DispatcherCommand): string {
-    switch (command.kind) {
-      case 'workflow':
-        return 'sloop';
-      case 'list':
-        return '--list';
-      case 'recover-lock':
-        return '--recover-lock';
-      case 'reset':
-        return '--reset';
-      case 'prepare-recovery':
-        return '--prepare-recovery';
-      case 'resolve-review-cap':
-        return '--resolve-review-cap';
-      case 'link-issue':
-        return '--link-issue';
-      case 'list-all-worktrees':
-        return '--list-all-worktrees';
-      case 'clear-all-worktrees':
-        return '--clear-all-worktrees';
-      case 'status':
-        return '--status';
-    }
+    return commandNameForDispatcher(command);
   },
 
   loadDispatcherContext(

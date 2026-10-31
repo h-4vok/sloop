@@ -12,7 +12,7 @@ export type LoadedRepositoryConfig = Readonly<{ config: SloopConfig; ref: string
 /** Resolves the Git repository that contains the current CLI directory. */
 export function discoverRepository(io: RuntimeIo): Result<string, Diagnostic> {
   const found = io.run('git', ['rev-parse', '--show-toplevel'], io.cwd);
-  if (found.status !== 0 || !cleanOutput(found.stdout))
+  if (!hasRepositoryRoot(found.status, found.stdout))
     return result.failure(
       createDiagnostic(
         'repository',
@@ -22,8 +22,7 @@ export function discoverRepository(io: RuntimeIo): Result<string, Diagnostic> {
     );
 
   const root = resolve(cleanOutput(found.stdout));
-  const pathFromRoot = relative(root, resolve(io.cwd));
-  if (pathFromRoot === '..' || pathFromRoot.startsWith(`..${sep}`) || isAbsolute(pathFromRoot))
+  if (!containsCurrentDirectory(root, io.cwd))
     return result.failure(
       createDiagnostic(
         'repository',
@@ -33,6 +32,15 @@ export function discoverRepository(io: RuntimeIo): Result<string, Diagnostic> {
     );
 
   return result.success(root);
+}
+
+function hasRepositoryRoot(status: number, stdout: string): boolean {
+  return status === 0 && Boolean(cleanOutput(stdout));
+}
+
+function containsCurrentDirectory(root: string, cwd: string): boolean {
+  const pathFromRoot = relative(root, resolve(cwd));
+  return pathFromRoot !== '..' && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot);
 }
 
 /** Reads and validates the repository's working-tree configuration. */
