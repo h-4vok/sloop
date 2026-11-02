@@ -79,11 +79,10 @@ test('Arbiter launch uses read-only Codex structured output and declared tempora
     assert.equal(invocations.length, 1);
     const invocation = invocations[0];
     assert.equal(invocation.command, process.platform === 'win32' ? 'powershell.exe' : 'codex');
-    const [argumentCount, ...encodedArguments] = invocation.options.stdin.split('\n');
-    assert.equal(Number(argumentCount), encodedArguments.length - 1);
-    const codexArguments = encodedArguments
-      .slice(0, Number(argumentCount))
-      .map((argument) => Buffer.from(argument, 'base64').toString('utf8'));
+    const codexArguments =
+      invocation.options.stdin === undefined
+        ? invocation.args
+        : decodePowerShellArguments(invocation.options.stdin);
     assert.ok(codexArguments.includes('--sandbox'));
     assert.ok(codexArguments.includes('read-only'));
     assert.ok(codexArguments.includes('--output-schema'));
@@ -96,3 +95,11 @@ test('Arbiter launch uses read-only Codex structured output and declared tempora
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function decodePowerShellArguments(stdin) {
+  const [argumentCount, ...encodedArguments] = stdin.split('\n');
+  assert.equal(Number(argumentCount), encodedArguments.length - 1);
+  return encodedArguments
+    .slice(0, Number(argumentCount))
+    .map((argument) => Buffer.from(argument, 'base64').toString('utf8'));
+}
