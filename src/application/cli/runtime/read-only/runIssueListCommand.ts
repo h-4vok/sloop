@@ -56,18 +56,7 @@ export const runIssueListCommand = Object.freeze({
   ): ExitCode {
     try {
       const issues = this.parseAndSelectIssues(response, context);
-      const envelope = resultOutput.createEnvelope(
-        parsed.command,
-        issues.length ? 'completed' : 'idle',
-        'result',
-        issues.length ? `${issues.length} eligible issue(s).` : 'No eligible issues.',
-        { repository: context.root, configRef: context.ref, issues },
-        [],
-        issues.map(({ number }) => number),
-      );
-      const humanIssues = issues.map((issue) => `#${issue.number} ${issue.title}`).join('\n');
-      if (!parsed.json && humanIssues) io.stdout(`${envelope.summary}\n${humanIssues}`);
-      else resultOutput.emit(envelope, parsed.json, EXIT.ok, io);
+      emitSelectedIssues(parsed, context, issues, io);
       return EXIT.ok;
     } catch {
       return this.emitInvalidIssueList(parsed, io);
@@ -121,3 +110,36 @@ export const runIssueListCommand = Object.freeze({
     return resultOutput.emit(envelope, parsed.json, EXIT.external, io);
   },
 });
+
+function emitSelectedIssues(
+  parsed: ReadOnlyCommand,
+  context: ReadOnlyContext,
+  issues: ReturnType<typeof selectIssues>,
+  io: RuntimeIo,
+): void {
+  const envelope = resultOutput.createEnvelope(
+    parsed.command,
+    issueListStatus(issues.length),
+    'result',
+    issueListSummary(issues.length),
+    { repository: context.root, configRef: context.ref, issues },
+    [],
+    issues.map(({ number }) => number),
+  );
+  const humanIssues = issues.map((issue) => `#${issue.number} ${issue.title}`).join('\n');
+  if (shouldWriteHumanIssueList(parsed, humanIssues))
+    io.stdout(`${envelope.summary}\n${humanIssues}`);
+  else resultOutput.emit(envelope, parsed.json, EXIT.ok, io);
+}
+
+function issueListStatus(issueCount: number) {
+  return issueCount ? 'completed' : 'idle';
+}
+
+function issueListSummary(issueCount: number): string {
+  return issueCount ? `${issueCount} eligible issue(s).` : 'No eligible issues.';
+}
+
+function shouldWriteHumanIssueList(parsed: ReadOnlyCommand, issues: string): boolean {
+  return !parsed.json && Boolean(issues);
+}

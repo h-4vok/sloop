@@ -19,11 +19,30 @@ export function exactKeys(
   name: string,
   optional: readonly string[] = [],
 ) {
-  for (const key of keys)
+  validateRequiredKeys(value, keys, name, optional);
+  validateKnownKeys(value, keys, name);
+}
+
+function validateRequiredKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  name: string,
+  optional: readonly string[],
+): void {
+  for (const key of keys) {
     if (!(key in value) && !optional.includes(key))
       throw new AgentContractError('malformed', `${name}.${key} is required`);
-  for (const key of Object.keys(value))
+  }
+}
+
+function validateKnownKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  name: string,
+): void {
+  for (const key of Object.keys(value)) {
     if (!keys.includes(key)) throw new AgentContractError('malformed', `${name}.${key} is unknown`);
+  }
 }
 export function strings(value: unknown, name: string) {
   if (
@@ -49,10 +68,8 @@ export function context(value: unknown): RunContext {
   exactKeys(c, ['run', 'issue', 'pr', 'round', 'sha', 'cursor'], 'context', ['pr']);
   const issue = c.issue as number;
   const round = c.round as number;
-  if (!Number.isInteger(issue) || issue < 1 || !Number.isInteger(round) || round < 1)
-    throw new AgentContractError('wrong-context', 'invalid issue or round');
-  if (c.pr !== undefined && (!Number.isSafeInteger(c.pr) || (c.pr as number) < 1))
-    throw new AgentContractError('wrong-context');
+  validateIssueAndRound(issue, round);
+  validatePullRequestNumber(c.pr);
   return {
     run: nonEmpty(c.run, 'run'),
 
@@ -66,4 +83,17 @@ export function context(value: unknown): RunContext {
 
     cursor: nonEmpty(c.cursor, 'cursor'),
   };
+}
+
+function validateIssueAndRound(issue: number, round: number): void {
+  const validIssue = Number.isInteger(issue) && issue >= 1;
+  const validRound = Number.isInteger(round) && round >= 1;
+  if (!validIssue || !validRound)
+    throw new AgentContractError('wrong-context', 'invalid issue or round');
+}
+
+function validatePullRequestNumber(pullRequest: unknown): void {
+  if (pullRequest === undefined) return;
+  if (!Number.isSafeInteger(pullRequest) || (pullRequest as number) < 1)
+    throw new AgentContractError('wrong-context');
 }

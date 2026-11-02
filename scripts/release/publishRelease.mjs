@@ -69,12 +69,17 @@ export async function publishRelease({
   readFile = readFileSync,
   updateMetadata = updateRepositoryMetadata,
 }) {
-  if (!/^\d+\.\d+\.\d+$/.test(version ?? '') || !Number.isSafeInteger(pr) || pr < 1)
-    throw new Error('Missing release version or PR number');
+  validateReleaseRequest(version, pr);
 
   const tag = `v${version}`;
   const target = readTagTarget(tag, gitCommand);
   if (target) return reuseOrCreateRelease(api, tag, target);
 
   return publishNewRelease({ api, tag, version, pr, date, gitCommand, readFile, updateMetadata });
+}
+
+function validateReleaseRequest(version, pr) {
+  const validVersion = /^\d+\.\d+\.\d+$/.test(version ?? '');
+  const validPullRequest = Number.isSafeInteger(pr) && pr >= 1;
+  if (!validVersion || !validPullRequest) throw new Error('Missing release version or PR number');
 }

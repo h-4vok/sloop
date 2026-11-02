@@ -32,45 +32,7 @@ test('runCli routes config commands through injected config adapters after disco
   process.exitCode = undefined;
 
   try {
-    await runCli(['config', 'show'], process.version, {
-      runtime: {
-        emitNodeVersionFailure: assert.fail,
-
-        emitUsageFailure: assert.fail,
-
-        parseCliCommand: () => ({ kind: 'config', args: ['show'] }),
-
-        runDispatcherPreflight: assert.fail,
-
-        runReadOnlyCommand: assert.fail,
-
-        discoverRepository: (io) => {
-          assert.equal(typeof io.run, 'function');
-          assert.equal(typeof io.readFile, 'function');
-          assert.equal(io.run(process.execPath, ['--version']).status, 0);
-          assert.match(io.readFile(resolve('package.json')), /"name": "sloop"/);
-          return 'C:/isolated';
-        },
-      },
-
-      dispatcher: { runDispatcherCli: assert.fail },
-
-      adapters: { productionDependencies: assert.fail },
-
-      config: {
-        productionConfigReconciler: (root) => {
-          calls.push(['reconciler', root]);
-          return async () => {};
-        },
-
-        runConfigCommand: {
-          run: async (root, args, reconciler) => {
-            calls.push(['run', root, args, typeof reconciler]);
-            return 0;
-          },
-        },
-      },
-    });
+    await runCli(['config', 'show'], process.version, createConfigCommandModules(calls));
     assert.equal(process.exitCode, 0);
   } finally {
     process.exitCode = undefined;
@@ -124,3 +86,36 @@ test('config command emits a discovery diagnostic when repository discovery fail
     output.restore();
   }
 });
+
+function createConfigCommandModules(calls) {
+  return {
+    runtime: {
+      emitNodeVersionFailure: assert.fail,
+      emitUsageFailure: assert.fail,
+      parseCliCommand: () => ({ kind: 'config', args: ['show'] }),
+      runDispatcherPreflight: assert.fail,
+      runReadOnlyCommand: assert.fail,
+      discoverRepository: (io) => {
+        assert.equal(typeof io.run, 'function');
+        assert.equal(typeof io.readFile, 'function');
+        assert.equal(io.run(process.execPath, ['--version']).status, 0);
+        assert.match(io.readFile(resolve('package.json')), /"name": "sloop"/);
+        return 'C:/isolated';
+      },
+    },
+    dispatcher: { runDispatcherCli: assert.fail },
+    adapters: { productionDependencies: assert.fail },
+    config: {
+      productionConfigReconciler: (root) => {
+        calls.push(['reconciler', root]);
+        return async () => {};
+      },
+      runConfigCommand: {
+        run: async (root, args, reconciler) => {
+          calls.push(['run', root, args, typeof reconciler]);
+          return 0;
+        },
+      },
+    },
+  };
+}

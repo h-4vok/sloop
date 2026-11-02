@@ -8,7 +8,21 @@ export function createMockDispatcherHarness(
   issues = [{ number: 1, title: 'one', body: 'acceptance criteria' }],
   overrides = {},
 ) {
-  const fixture = {
+  const fixture = createDispatcherFixture(issues, overrides);
+  return createPublicDispatcherHarness(fixture, overrides);
+}
+
+function createDispatcherFixture(issues, overrides) {
+  const fixture = createBaseFixture(issues, overrides);
+  fixture.pr = createMockPullRequest(fixture, overrides);
+  addExistingHumanGuides(fixture, overrides);
+  fixture.dependencies = createMockDispatcherDependencies(fixture);
+  return fixture;
+}
+
+function createBaseFixture(issues, overrides) {
+  return {
+    ...createReviewFixtureOptions(overrides),
     root: createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-')),
     state: overrides.initialState ?? {},
     issues,
@@ -25,15 +39,27 @@ export function createMockDispatcherHarness(
     staffCount: 0,
     checkIndex: 0,
     activeLogger: undefined,
-    qaVerdicts: overrides.qaVerdicts ?? ['passed'],
-    staffVerdicts: overrides.staffVerdicts ?? ['approved'],
     qaBodies: overrides.qaBodies,
     staffBodies: overrides.staffBodies,
+  };
+}
+
+function createReviewFixtureOptions(overrides) {
+  return {
+    qaVerdicts: overrides.qaVerdicts ?? ['passed'],
+    staffVerdicts: overrides.staffVerdicts ?? ['approved'],
     publishEvidence: { worker: true, qa: true, staff: true, ...(overrides.publishEvidence ?? {}) },
     humanVerification: overrides.humanVerification ?? true,
-    checkSequences: overrides.checkSequences ?? [],
+    checkSequences: createCheckSequences(overrides),
   };
-  fixture.pr = {
+}
+
+function createCheckSequences(overrides) {
+  return overrides.checkSequences ?? [];
+}
+
+function createMockPullRequest(fixture, overrides) {
+  const pullRequest = {
     number: overrides.prNumber ?? 14,
     state: 'OPEN',
     baseRefName: 'main',
@@ -46,14 +72,20 @@ export function createMockDispatcherHarness(
     reviews: fixture.reviews,
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   };
-  fixture.checkSequences = overrides.checkSequences ?? [fixture.pr.statusCheckRollup];
+  fixture.checkSequences = overrides.checkSequences ?? [pullRequest.statusCheckRollup];
+  return pullRequest;
+}
+
+function addExistingHumanGuides(fixture, overrides) {
   for (let guide = 0; guide < (overrides.existingHumanGuides ?? 0); guide += 1)
     fixture.pr.comments.push({ body: createExistingHumanReviewGuide() });
   if (overrides.malformedHumanGuide)
     fixture.pr.comments.push({
       body: '[Human Review Guide] round=1 commit=abc1\n<!-- sloop-dispatcher-human-review-guide -->',
     });
-  fixture.dependencies = createMockDispatcherDependencies(fixture);
+}
+
+function createPublicDispatcherHarness(fixture, overrides) {
   return {
     root: fixture.root,
     pr: fixture.pr,

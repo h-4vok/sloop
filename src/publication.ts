@@ -17,13 +17,27 @@ export function allowlistedPublication(value: unknown): unknown {
   if (typeof value === 'string')
     return value.replace(urlSecret, '$1<redacted>@').replace(secret, '$1<redacted>');
   if (Array.isArray(value)) return value.map(allowlistedPublication);
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (/^(stdout|stderr|raw|payload|environment)$/i.test(key)) continue;
-      out[key] = secretKey.test(key) ? '<redacted>' : allowlistedPublication(item);
-    }
-    return out;
+  if (!isPublicationRecord(value)) return value;
+  return sanitizePublicationRecord(value);
+}
+
+function sanitizePublicationRecord(value: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isPrivatePublicationField(key)) continue;
+    sanitized[key] = sanitizePublicationField(key, item);
   }
-  return value;
+  return sanitized;
+}
+
+function isPrivatePublicationField(key: string): boolean {
+  return /^(stdout|stderr|raw|payload|environment)$/i.test(key);
+}
+
+function sanitizePublicationField(key: string, value: unknown): unknown {
+  return secretKey.test(key) ? '<redacted>' : allowlistedPublication(value);
+}
+
+function isPublicationRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

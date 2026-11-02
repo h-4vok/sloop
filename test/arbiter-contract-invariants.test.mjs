@@ -12,30 +12,7 @@ for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
   test(`Arbiter ${action} accepts its structural contract without grading rationale vocabulary`, () => {
     // Arrange
     const findings = [{ id: 'Q1', owner: 'qa', summary: 'Trim surrounding whitespace' }];
-    const decision = {
-      findingId: 'Q1',
-
-      owner: 'qa',
-
-      action,
-
-      rationale: 'El requisito exige recortar los espacios.',
-
-      direction: action === 'uphold' ? 'Trim the input.' : null,
-
-      verification: action === 'uphold' ? 'Check surrounding and internal spaces.' : null,
-
-      followUp:
-        action === 'defer'
-          ? {
-              title: 'Trim names',
-
-              acceptance: 'Surrounding spaces are removed.',
-
-              context: 'Issue #41 / Q1',
-            }
-          : null,
-    };
+    const decision = createArbiterContractDecision(action);
     // Act
     const state = applyArbiterDecisions({ interventions: 0, decisions: [] }, findings, [decision]);
     // Assert
@@ -45,6 +22,25 @@ for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
     assert.equal(state.terminal, action === 'escalate' ? 'human_review_required' : undefined);
     assert.equal(state.decisions[0].followUp, decision.followUp ?? undefined);
   });
+}
+
+function createArbiterContractDecision(action) {
+  return {
+    findingId: 'Q1',
+    owner: 'qa',
+    action,
+    rationale: 'El requisito exige recortar los espacios.',
+    direction: action === 'uphold' ? 'Trim the input.' : null,
+    verification: action === 'uphold' ? 'Check surrounding and internal spaces.' : null,
+    followUp:
+      action === 'defer'
+        ? {
+            title: 'Trim names',
+            acceptance: 'Surrounding spaces are removed.',
+            context: 'Issue #41 / Q1',
+          }
+        : null,
+  };
 }
 
 test('arbiter decisions stop when the intervention limit has been reached', () => {

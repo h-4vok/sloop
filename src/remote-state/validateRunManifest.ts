@@ -5,20 +5,39 @@ export function validateRunManifest(
   manifest: Partial<RunManifest> | undefined,
   issue: number,
 ): manifest is RunManifest {
-  return Boolean(
-    manifest &&
+  if (!manifest) return false;
+
+  return (
+    hasValidManifestIdentity(manifest, issue) &&
+    hasValidManifestRepository(manifest) &&
+    hasValidManifestProgress(manifest)
+  );
+}
+
+function hasValidManifestIdentity(manifest: Partial<RunManifest>, issue: number): boolean {
+  return (
     manifest.protocol === REMOTE_PROTOCOL &&
     isNonEmptyString(manifest.runId) &&
-    manifest.issue === issue &&
+    manifest.issue === issue
+  );
+}
+
+function hasValidManifestRepository(manifest: Partial<RunManifest>): boolean {
+  return (
     isNonEmptyString(manifest.branch) &&
     typeof manifest.baseSha === 'string' &&
     /^[0-9a-f]{7,64}$/i.test(manifest.baseSha) &&
-    isNonEmptyString(manifest.configFingerprint) &&
+    isNonEmptyString(manifest.configFingerprint)
+  );
+}
+
+function hasValidManifestProgress(manifest: Partial<RunManifest>): boolean {
+  return (
     isPhase(manifest.phase) &&
     Number.isSafeInteger(manifest.reviewRound) &&
     (manifest.reviewRound as number) >= 1 &&
     typeof manifest.contextCursor === 'string' &&
-    Array.isArray(manifest.artifacts),
+    Array.isArray(manifest.artifacts)
   );
 }
 

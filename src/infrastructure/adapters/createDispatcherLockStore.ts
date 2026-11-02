@@ -53,14 +53,16 @@ export const dispatcherLockStoreFactory = Object.freeze({
 
       abandonReclaim: () => rmSync(reclaimDirectory, { recursive: true, force: true }),
 
-      release: (token) => {
-        try {
-          const owner = JSON.parse(readFileSync(ownerFile, 'utf8')) as LockOwner;
-          if (owner.token === token) rmSync(lockDirectory, { recursive: true, force: true });
-        } catch {
-          /* The lock may have been reclaimed before release. */
-        }
-      },
+      release: (token) => releaseOwnedLock(lockDirectory, ownerFile, token),
     };
   },
 });
+
+function releaseOwnedLock(lockDirectory: string, ownerFile: string, token: string): void {
+  try {
+    const owner = JSON.parse(readFileSync(ownerFile, 'utf8')) as LockOwner;
+    if (owner.token === token) rmSync(lockDirectory, { recursive: true, force: true });
+  } catch {
+    /* The lock may have been reclaimed before release. */
+  }
+}

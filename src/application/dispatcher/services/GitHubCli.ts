@@ -5,6 +5,27 @@ import { CliFailure } from '../types/CliFailure.js';
 import { DispatcherRuntime } from './DispatcherRuntime.js';
 const { defaultRoot } = DispatcherRuntime;
 
+function scopeGitHubArguments(args: string[], repository?: string): string[] {
+  return repository && args[0] !== 'api' && !args.includes('--repo')
+    ? [...args, '--repo', repository]
+    : args;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function resolveGitHubExecution(host: DispatcherHost) {
+  const platform = host.platform ?? process.platform;
+
+  return {
+    executable: (host.resolveExecutable ?? resolveExecutable)('gh', platform),
+    platform,
+    comSpec: host.comSpec ?? process.env.ComSpec,
+    run: host.runSyncCommand ?? runSyncCommand,
+  };
+}
+
 function gh(
   args: string[],
   cwd = defaultRoot,
@@ -13,21 +34,19 @@ function gh(
 ): string {
   // `gh api` has no `--repo` flag. API requests must scope themselves through
   // their endpoint or request fields; regular gh commands use `--repo`.
-  const scoped =
-    repository && args[0] !== 'api' && !args.includes('--repo')
-      ? [...args, '--repo', repository]
-      : args;
+  const scoped = scopeGitHubArguments(args, repository);
+  const execution = resolveGitHubExecution(host);
   try {
-    return (host.runSyncCommand ?? runSyncCommand)(
-      (host.resolveExecutable ?? resolveExecutable)('gh', host.platform ?? process.platform),
+    return execution.run(
+      execution.executable,
       scoped,
       undefined,
-      host.platform ?? process.platform,
-      host.comSpec ?? process.env.ComSpec,
+      execution.platform,
+      execution.comSpec,
       cwd,
     );
   } catch (error) {
-    throw new CliFailure(5, error instanceof Error ? error.message : String(error));
+    throw new CliFailure(5, errorMessage(error));
   }
 }
 
@@ -41,10 +60,7 @@ function ghJson<T>(
   try {
     return JSON.parse(output) as T;
   } catch (error) {
-    throw new CliFailure(
-      5,
-      `gh returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new CliFailure(5, `gh returned invalid JSON: ${errorMessage(error)}`);
   }
 }
 

@@ -7,13 +7,21 @@ export function closingIssueNumbers(body) {
 
 /** Resolves issue titles from GitHub links, with pull request text as a fallback. */
 export async function resolveIssueTitles(api, number, body, warn = console.warn) {
+  const linkedTitles = await resolveLinkedIssueTitles(api, number, warn);
+  if (linkedTitles.length) return linkedTitles;
+  return resolveBodyIssueTitles(api, body, warn);
+}
+
+async function resolveLinkedIssueTitles(api, number, warn) {
   try {
-    const linkedTitles = await api.closingIssueTitles(number);
-    if (linkedTitles.length) return linkedTitles;
+    return await api.closingIssueTitles(number);
   } catch (error) {
     warn(`Closing-issue lookup failed; trying PR body: ${error.message}`);
+    return [];
   }
+}
 
+async function resolveBodyIssueTitles(api, body, warn) {
   const titles = [];
   for (const issueNumber of closingIssueNumbers(body ?? '')) {
     try {

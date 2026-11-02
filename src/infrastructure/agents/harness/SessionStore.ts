@@ -39,13 +39,20 @@ export class SessionStore {
     if (this.loaded) return;
     this.loaded = true;
     try {
-      const raw = JSON.parse(await this.io.read(this.file)) as unknown;
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
-      for (const [key, value] of Object.entries(raw))
-        if (typeof value === 'string' && value) this.entries.set(key, value);
+      const serialized = await this.io.read(this.file);
+      this.restoreEntries(JSON.parse(serialized) as unknown);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      ignoreMissingSessionFile(error);
     }
+  }
+
+  private restoreEntries(raw: unknown): void {
+    if (!isSessionRecord(raw)) return;
+    for (const [key, value] of Object.entries(raw)) this.restoreEntry(key, value);
+  }
+
+  private restoreEntry(key: string, value: unknown): void {
+    if (typeof value === 'string' && value) this.entries.set(key, value);
   }
 
   async get(key: SessionKey): Promise<string | undefined> {
@@ -59,4 +66,12 @@ export class SessionStore {
     this.entries.set(encodeKey(key), reference);
     await this.io.write(this.file, JSON.stringify(Object.fromEntries(this.entries)) + '\n');
   }
+}
+
+function isSessionRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function ignoreMissingSessionFile(error: unknown): void {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 }

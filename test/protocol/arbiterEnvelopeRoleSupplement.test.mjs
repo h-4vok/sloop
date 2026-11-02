@@ -23,36 +23,7 @@ const guide = {
 };
 
 test('agent envelope rejects each role-specific invalid boundary', () => {
-  const worker = {
-    schema: 'sloop.agent-output/v1',
-
-    context: { ...context, pr: undefined },
-
-    producer: 'worker',
-
-    status: 'ready',
-
-    payload: { summary: 's', findingResolutions: [], verification: ['v'], guide },
-  };
-  const reviewer = {
-    schema: 'sloop.agent-output/v1',
-
-    context,
-
-    producer: 'qa',
-
-    status: 'accepted',
-
-    payload: {
-      summary: 's',
-
-      evidence: ['e'],
-
-      newFindings: [{ id: 'Q1', summary: 's', severity: 'low' }],
-
-      dispositions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
-    },
-  };
+  const { worker, reviewer } = createRoleEnvelopeFixtures();
 
   assert.equal(validateAgentEnvelope(worker).context.pr, undefined);
   for (const value of [
@@ -78,3 +49,27 @@ test('agent envelope rejects each role-specific invalid boundary', () => {
   ])
     assert.throws(() => validateAgentEnvelope(value), AgentContractError);
 });
+
+function createRoleEnvelopeFixtures() {
+  return {
+    worker: {
+      schema: 'sloop.agent-output/v1',
+      context: { ...context, pr: undefined },
+      producer: 'worker',
+      status: 'ready',
+      payload: { summary: 's', findingResolutions: [], verification: ['v'], guide },
+    },
+    reviewer: {
+      schema: 'sloop.agent-output/v1',
+      context,
+      producer: 'qa',
+      status: 'accepted',
+      payload: {
+        summary: 's',
+        evidence: ['e'],
+        newFindings: [{ id: 'Q1', summary: 's', severity: 'low' }],
+        dispositions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
+      },
+    },
+  };
+}

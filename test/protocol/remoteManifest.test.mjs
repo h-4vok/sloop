@@ -11,27 +11,7 @@ import {
 } from '../../src/remote-state.js';
 
 test('remote manifest contracts reject malformed markers and validate boundaries', () => {
-  const manifest = {
-    protocol: 1,
-
-    runId: 'run-1',
-
-    issue: 33,
-
-    branch: 'codex/issue-33',
-
-    baseSha: 'abcdef1',
-
-    configFingerprint: 'cfg',
-
-    phase: 'working',
-
-    reviewRound: 1,
-
-    contextCursor: '',
-
-    artifacts: [],
-  };
+  const manifest = createRemoteManifest();
 
   assert.deepEqual(parseRunManifestMarker(runManifestMarker(manifest), 33), manifest);
   assert.equal(parseRunManifestMarker('<!-- sloop/v1/manifest !!! -->', 33), undefined);
@@ -62,6 +42,21 @@ test('remote manifest contracts reject malformed markers and validate boundaries
   );
   assert.throws(() => leaseIsActive({ expiresAt: 'not-a-date' }), /invalid lease/);
 });
+
+function createRemoteManifest() {
+  return {
+    protocol: 1,
+    runId: 'run-1',
+    issue: 33,
+    branch: 'codex/issue-33',
+    baseSha: 'abcdef1',
+    configFingerprint: 'cfg',
+    phase: 'working',
+    reviewRound: 1,
+    contextCursor: '',
+    artifacts: [],
+  };
+}
 
 test('remote state validates durable records and canonical helper contracts', () => {
   const manifest = {

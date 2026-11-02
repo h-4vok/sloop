@@ -30,20 +30,7 @@ export function createAgentDependencies(
   | 'sleep'
   | 'onReclaim'
 > {
-  const harness = (role: string, spec: Spec, _context: unknown, logger: RunLogger) => {
-    const roleConfig = config.agents[role as keyof typeof config.agents];
-    if (!roleConfig || roleConfig.harness !== 'codex')
-      throw new Error(`unsupported harness for role ${role}`);
-    return new CodexHarness({
-      cwd: workspace.getExecutionRoot(),
-      model: roleConfig.model,
-      sandbox: roleConfig.sandbox,
-      reasoningEffort: roleConfig.reasoningEffort,
-      timeoutMs: spec.timeoutMs,
-      log: (source, chunk) => logger.write(`harness-${source}`, { chunk }),
-      spawn: options.codexSpawn,
-    });
-  };
+  const harness = createAgentHarness(config, options, workspace);
   return {
     harness,
     reconcileActiveRun: activeRunReconcilerFactory.create({ client, config, root }),
@@ -63,5 +50,27 @@ export function createAgentDependencies(
     now: Date.now,
     sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     onReclaim: () => {},
+  };
+}
+
+function createAgentHarness(
+  config: SloopConfig,
+  options: ProductionAdapterOptions,
+  workspace: { getExecutionRoot: () => string },
+) {
+  return (role: string, spec: Spec, _context: unknown, logger: RunLogger) => {
+    const roleConfig = config.agents[role as keyof typeof config.agents];
+    if (!roleConfig || roleConfig.harness !== 'codex')
+      throw new Error(`unsupported harness for role ${role}`);
+
+    return new CodexHarness({
+      cwd: workspace.getExecutionRoot(),
+      model: roleConfig.model,
+      sandbox: roleConfig.sandbox,
+      reasoningEffort: roleConfig.reasoningEffort,
+      timeoutMs: spec.timeoutMs,
+      log: (source, chunk) => logger.write(`harness-${source}`, { chunk }),
+      spawn: options.codexSpawn,
+    });
   };
 }

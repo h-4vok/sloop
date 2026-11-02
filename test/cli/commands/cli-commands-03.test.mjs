@@ -95,43 +95,7 @@ test('runCli dispatches commands after successful preflight', async () => {
   let exitCode;
   process.exitCode = undefined;
   try {
-    await runCli(['--list'], process.version, {
-      runtime: {
-        emitNodeVersionFailure: assert.fail,
-
-        emitUsageFailure: assert.fail,
-
-        parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
-
-        runDispatcherPreflight: () => ({
-          code: 0,
-
-          diagnostics: [],
-
-          root: '/repo',
-
-          config: { mode: 'test' },
-
-          repository: 'owner/repo',
-        }),
-
-        runReadOnlyCommand: assert.fail,
-      },
-
-      dispatcher: {
-        runDispatcherCli: async (command, dependencies) => {
-          calls.push(['dispatcher', command, dependencies]);
-          return 0;
-        },
-      },
-
-      adapters: {
-        productionDependencies: (root, config, repository) => {
-          calls.push(['dependencies', root, config, repository]);
-          return { isolated: true };
-        },
-      },
-    });
+    await runCli(['--list'], process.version, createSuccessfulPreflightModules(calls));
     exitCode = process.exitCode;
   } finally {
     process.exitCode = undefined;
@@ -143,3 +107,33 @@ test('runCli dispatches commands after successful preflight', async () => {
     ['dispatcher', { kind: 'list' }, { isolated: true }],
   ]);
 });
+
+function createSuccessfulPreflightModules(calls) {
+  return {
+    runtime: {
+      emitNodeVersionFailure: assert.fail,
+      emitUsageFailure: assert.fail,
+      parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+      runDispatcherPreflight: () => ({
+        code: 0,
+        diagnostics: [],
+        root: '/repo',
+        config: { mode: 'test' },
+        repository: 'owner/repo',
+      }),
+      runReadOnlyCommand: assert.fail,
+    },
+    dispatcher: {
+      runDispatcherCli: async (command, dependencies) => {
+        calls.push(['dispatcher', command, dependencies]);
+        return 0;
+      },
+    },
+    adapters: {
+      productionDependencies: (root, config, repository) => {
+        calls.push(['dependencies', root, config, repository]);
+        return { isolated: true };
+      },
+    },
+  };
+}

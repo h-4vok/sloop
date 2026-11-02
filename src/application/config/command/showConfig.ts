@@ -22,17 +22,9 @@ function executeConfigShow(
       logger.error(`${unknownPath}: unknown configuration key; ignoring it`),
     );
     if (!configResult.ok) return fail(configResult.error.message, logger);
-    if (!path) logger.log(fileStore.read(file));
-    else {
-      const field = getConfigField(path);
-      if (!field && configPaths(path).length === 0)
-        throw new Error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
-      logger.log(JSON.stringify(configValue(configResult.value, path)));
-    }
-
-    return 0;
+    return showConfigValue(file, path, configResult.value, logger, fileStore);
   } catch (error) {
-    return fail(String(error instanceof Error ? error.message : error), logger);
+    return fail(errorMessage(error), logger);
   }
 }
 
@@ -43,4 +35,30 @@ function fail(message: string, logger: Logger): number {
   logger.error(message);
 
   return 2;
+}
+
+function showConfigValue(
+  file: string,
+  path: string | undefined,
+  config: unknown,
+  logger: Logger,
+  fileStore: ConfigFileStore,
+): number {
+  if (!path) {
+    logger.log(fileStore.read(file));
+    return 0;
+  }
+  validateConfigPath(path);
+  logger.log(JSON.stringify(configValue(config as never, path)));
+  return 0;
+}
+
+function validateConfigPath(path: string): void {
+  const field = getConfigField(path);
+  if (!field && configPaths(path).length === 0)
+    throw new Error(`unknown path ${path}; valid paths: ${configPaths().join(', ')}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

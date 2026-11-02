@@ -22,10 +22,43 @@ export function createRepositoryDependencies(
 ) {
   const stateFile = join(root, '.sloop', 'state.json');
   const execute = options.execFileSync ?? execFileSync;
-  const client = gitHubCommandClientFactory.create(root, repository, execute);
   let runLogger: RunEventLogger | undefined;
   const logGithub = (phase: string, operation: string, data: unknown) =>
     runLogger?.write(`github-${phase}`, { operation, data });
+  const adapters = createRepositoryAdapters(
+    root,
+    stateFile,
+    config,
+    repository,
+    execute,
+    logGithub,
+  );
+
+  return {
+    config,
+    ...adapters,
+    setRunLogger: (logger: RunEventLogger | undefined) => {
+      runLogger = logger;
+    },
+    createRunLogger: (issue: number, runId: string) =>
+      new RunLogger(runDirectory(root, issue, runId)),
+    reportStatus: (message: string) => console.error(message),
+    stateFile,
+    root,
+    repository,
+    ...createWorktreeCommands(root, stateFile),
+  };
+}
+
+function createRepositoryAdapters(
+  root: string,
+  stateFile: string,
+  config: SloopConfig,
+  repository: string,
+  execute: NonNullable<ProductionAdapterOptions['execFileSync']>,
+  logGithub: (phase: string, operation: string, data: unknown) => void,
+) {
+  const client = gitHubCommandClientFactory.create(root, repository, execute);
   const workspace = workspaceAdapterFactory.create({ root, stateFile, config });
   const remoteAuthority = remoteAuthorityFactory.create(client, repository, logGithub);
   const githubProvider = gitHubProviderFactory.create({
@@ -46,26 +79,20 @@ export function createRepositoryDependencies(
     listEligibleIssues: githubProvider.list,
     loadPullRequest: githubProvider.pullRequest,
   });
-  const lockStore = dispatcherLockStoreFactory.create(root);
 
   return {
-    config,
+    client,
+    workspace,
+    remoteAuthority,
+    githubProvider,
     dispatcherConfig,
     controls,
-    githubProvider,
-    lockStore,
-    remoteAuthority,
-    setRunLogger: (logger: RunEventLogger | undefined) => {
-      runLogger = logger;
-    },
-    createRunLogger: (issue: number, runId: string) =>
-      new RunLogger(runDirectory(root, issue, runId)),
-    reportStatus: (message: string) => console.error(message),
-    workspace,
-    client,
-    stateFile,
-    root,
-    repository,
+    lockStore: dispatcherLockStoreFactory.create(root),
+  };
+}
+
+function createWorktreeCommands(root: string, stateFile: string) {
+  return {
     listAllWorktrees: () => workspaceAdapter.listWorkspaces(root, stateFile),
     clearAllWorktrees: () => workspaceAdapter.clearWorkspaces(root, stateFile),
   };

@@ -14,6 +14,14 @@ const { handleQaFailure } = IssueQaFailure;
 import { IssueCompletion } from './IssueCompletion.js';
 const { completeIssue } = IssueCompletion;
 
+function ciFailureFeedback(feedback?: string): string {
+  return feedback ?? 'Required PR checks failed.';
+}
+
+function qaFailureFeedback(body?: string): string {
+  return body ?? 'QA requested changes or was blocked.';
+}
+
 async function processIssueReviewRound(
   cfg: Config,
   d: Deps,
@@ -26,22 +34,18 @@ async function processIssueReviewRound(
   }
 
   const ci = await waitForCi(d, cfg, issue.number, progress.pr!);
-  if (!ci.passed)
-    return handleCiFailure(cfg, d, issue, progress, ci.feedback ?? 'Required PR checks failed.');
+  if (!ci.passed) return handleCiFailure(cfg, d, issue, progress, ciFailureFeedback(ci.feedback));
 
   const qa = await runReview(cfg, d, issue, 'qa', progress.pr!, progress.round, ci.evidence);
-  if (qa.verdict !== 'passed' && qa.verdict !== 'approved')
-    return handleQaFailure(
-      cfg,
-      d,
-      issue,
-      progress,
-      qa.evidence,
-      qa.body ?? 'QA requested changes or was blocked.',
-    );
+  if (!isApprovedReview(qa.verdict))
+    return handleQaFailure(cfg, d, issue, progress, qa.evidence, qaFailureFeedback(qa.body));
 
   completeIssue(d, issue, progress.round, progress.pr!, qa.evidence, qa.body);
   return { finished: true };
+}
+
+function isApprovedReview(verdict: string | undefined): boolean {
+  return verdict === 'passed' || verdict === 'approved';
 }
 
 export const IssueReviewRound = { processIssueReviewRound };

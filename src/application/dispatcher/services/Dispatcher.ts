@@ -24,17 +24,44 @@ async function dispatch(cfg: Config, d: Deps): Promise<0 | 4> {
 
   const state = d.load();
   const hasRemoteAuthority = Boolean(d.remote);
-  const isRecovering =
-    !hasRemoteAuthority &&
-    (state.status === 'worker_recovery_pending' ||
-      isStaleWorker(state, cfg, d) ||
-      (state.status === 'blocked' && hasPersistedRecoveryContext(state)));
-  if (isActiveStatus(state.status) && !isRecovering && !hasRemoteAuthority)
-    throw new CliFailure(3, `active run exists for issue #${state.issue}`);
+  const isRecovering = isRecoveringRun(state, cfg, d, hasRemoteAuthority);
+  requireNoActiveRun(state, isRecovering, hasRemoteAuthority);
 
   const acquisitionResult = acquireResult(d, cfg.lockTtlMs ?? 900000);
   if (!acquisitionResult.ok) throw acquisitionResult.error;
-  const lockToken = acquisitionResult.value;
+  return runLockedDispatch(cfg, d, acquisitionResult.value, hasRemoteAuthority, isRecovering);
+}
+
+function isRecoveringRun(
+  state: ReturnType<Deps['load']>,
+  cfg: Config,
+  d: Deps,
+  hasRemoteAuthority: boolean,
+): boolean {
+  return (
+    !hasRemoteAuthority &&
+    (state.status === 'worker_recovery_pending' ||
+      isStaleWorker(state, cfg, d) ||
+      (state.status === 'blocked' && hasPersistedRecoveryContext(state)))
+  );
+}
+
+function requireNoActiveRun(
+  state: ReturnType<Deps['load']>,
+  isRecovering: boolean,
+  hasRemoteAuthority: boolean,
+): void {
+  if (isActiveStatus(state.status) && !isRecovering && !hasRemoteAuthority)
+    throw new CliFailure(3, `active run exists for issue #${state.issue}`);
+}
+
+async function runLockedDispatch(
+  cfg: Config,
+  d: Deps,
+  lockToken: string,
+  hasRemoteAuthority: boolean,
+  isRecovering: boolean,
+): Promise<0 | 4> {
   try {
     requirePreflightSuccess(validateRequiredAgentCommands(cfg));
     applyRunRetention(d.root, cfg.loggingRetentionMs);

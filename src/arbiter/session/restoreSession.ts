@@ -6,7 +6,18 @@ export function restoreSession(
   base: EngineeringSession,
   journal: JsonlJournal,
 ): EngineeringSession {
-  const restored: EngineeringSession = {
+  const restored = createRestoredSession(base);
+  for (const item of journal.read()) {
+    if (!isNewSessionEvent(item, base, restored)) continue;
+    restored.processedEventIds.push(item.id);
+    restoreEvent(restored, item);
+  }
+  restored.updatedAt = new Date().toISOString();
+  return restored;
+}
+
+function createRestoredSession(base: EngineeringSession): EngineeringSession {
+  return {
     ...base,
     agents: { ...base.agents },
     processedEventIds: [...base.processedEventIds],
@@ -14,13 +25,14 @@ export function restoreSession(
     answeredClarificationIds: [...(base.answeredClarificationIds ?? [])],
     classifications: [...(base.classifications ?? [])],
   };
-  for (const item of journal.read()) {
-    if (item.sessionId !== base.sessionId || restored.processedEventIds.includes(item.id)) continue;
-    restored.processedEventIds.push(item.id);
-    restoreEvent(restored, item);
-  }
-  restored.updatedAt = new Date().toISOString();
-  return restored;
+}
+
+function isNewSessionEvent(
+  item: ReturnType<JsonlJournal['read']>[number],
+  base: EngineeringSession,
+  restored: EngineeringSession,
+): boolean {
+  return item.sessionId === base.sessionId && !restored.processedEventIds.includes(item.id);
 }
 
 function restoreEvent(session: EngineeringSession, item: ReturnType<JsonlJournal['read']>[number]) {

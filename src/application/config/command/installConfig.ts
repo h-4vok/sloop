@@ -11,34 +11,46 @@ async function executeConfigInstall(
   if (!fileStore.exists(file))
     return fail('No valid sloop.config.yaml; run sloop config init', logger);
   if (!forceSync) {
-    if (!io.input.isTTY || !io.output.isTTY)
+    if (!hasInstallTerminal(io))
       return fail(
         'sloop config install requires a TTY; use --force for non-interactive installation',
         logger,
       );
-    const readline = createInterface({ input: io.input, output: io.output });
-    try {
-      const answer = await readline.question(
-        'Install configured GitHub labels and Sloop skills now? [Y/n] ',
-      );
-      if (answer.trim().toLowerCase() === 'n') {
-        logger.log('Installation skipped.');
-
-        return 0;
-      }
-    } finally {
-      readline.close();
+    if (!(await confirmConfigInstall(io))) {
+      logger.log('Installation skipped.');
+      return 0;
     }
   }
+  return synchronizeConfigInstall(root, reconciler, logger);
+}
+
+function hasInstallTerminal(io: ConfigCommandContext['io']): boolean {
+  return Boolean(io.input.isTTY && io.output.isTTY);
+}
+
+async function confirmConfigInstall(io: ConfigCommandContext['io']): Promise<boolean> {
+  const readline = createInterface({ input: io.input, output: io.output });
+  try {
+    const answer = await readline.question(
+      'Install configured GitHub labels and Sloop skills now? [Y/n] ',
+    );
+    return answer.trim().toLowerCase() !== 'n';
+  } finally {
+    readline.close();
+  }
+}
+
+async function synchronizeConfigInstall(
+  root: string,
+  reconciler: ConfigCommandContext['reconciler'],
+  logger: ConfigCommandContext['logger'],
+): Promise<number> {
   try {
     await reconciler(root, 'github');
-
     return 0;
   } catch (error) {
-    return fail(
-      `Synchronization failed: ${error instanceof Error ? error.message : String(error)}`,
-      logger,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(`Synchronization failed: ${message}`, logger);
   }
 }
 

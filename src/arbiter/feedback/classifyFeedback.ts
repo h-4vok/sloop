@@ -16,21 +16,40 @@ export function classifyFeedback(
 }
 
 function parseClassification(value: unknown, knownIds: ReadonlySet<string>): Classification[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-  const item = value as Record<string, unknown>;
-  if (typeof item.sourceId !== 'string' || !knownIds.has(item.sourceId)) return [];
+  if (!isClassificationRecord(value)) return [];
+  const item = value;
+  if (!isKnownFeedback(item.sourceId, knownIds)) return [];
   if (!isIntent(item.intent)) return [];
-  const confidence = Number(item.confidence);
-  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return [];
-  return [
-    {
-      sourceId: item.sourceId,
-      intent: item.intent,
-      confidence,
-      target: typeof item.target === 'string' ? item.target : undefined,
-      rationale: typeof item.rationale === 'string' ? item.rationale : undefined,
-    },
-  ];
+  const confidence = validConfidence(item.confidence);
+  if (confidence === undefined) return [];
+  return [createClassification(item, confidence)];
+}
+
+function createClassification(item: Record<string, unknown>, confidence: number): Classification {
+  return {
+    sourceId: item.sourceId as string,
+    intent: item.intent as Classification['intent'],
+    confidence,
+    target: optionalText(item.target),
+    rationale: optionalText(item.rationale),
+  };
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isClassificationRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isKnownFeedback(sourceId: unknown, knownIds: ReadonlySet<string>): sourceId is string {
+  return typeof sourceId === 'string' && knownIds.has(sourceId);
+}
+
+function validConfidence(value: unknown): number | undefined {
+  const confidence = Number(value);
+  return Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : undefined;
 }
 
 function isIntent(value: unknown): value is Classification['intent'] {

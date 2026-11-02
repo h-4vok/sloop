@@ -75,61 +75,55 @@ test('status diagnoses every recovery observation with contextual safe guidance'
   try {
     mkdirSync(join(root, '.sloop'));
     for (const [flag, phase, blocker] of observations) {
-      writeFileSync(
-        join(root, '.sloop', 'state.json'),
-        JSON.stringify({ status: 'ci_failed', issue: 45, pr: 107, [flag]: true }),
-      );
-      const runtimeHarness = createMockRuntimeHarness({
-        'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
-
-        readableFiles: [join(root, '.sloop', 'state.json')],
-      });
-      runtimeHarness.io.cwd = root;
-      runtimeHarness.io.readFile = (file) =>
-        file.endsWith(join('.sloop', 'state.json')) ? readFileSync(file, 'utf8') : config;
-
-      const readOnlyArgs = ['status', '--json'];
-      const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
-      assert.equal(
-        runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
-        EXIT.ok,
-        `status should inspect ${flag}`,
-      );
-      const diagnostic = JSON.parse(runtimeHarness.stdout[0]).diagnostics.find(
-        (item) => item.check === `recovery-${phase}`,
-      );
-      assert.deepEqual(diagnostic, {
-        check: `recovery-${phase}`,
-
-        message: `${blocker} (issue #45, PR #107)`,
-
-        remediation:
-          'Next: sloop --prepare-recovery 45 --pr 107; this mutates local recovery state.',
-
-        phase,
-
-        context: { issue: 45, pullRequest: 107 },
-
-        nextAction: {
-          command: 'sloop --prepare-recovery 45 --pr 107',
-
-          description: 'Prepare the recorded recovery for the issue and pull request.',
-
-          mutates: true,
-        },
-
-        mutates: false,
-      });
-      assert.equal(
-        runtimeHarness.calls.some(
-          ({ file, args }) =>
-            file === 'gh' || ['checkout', 'reset', 'clean', 'push'].includes(args[0]),
-        ),
-        false,
-        `${flag} diagnosis must not mutate local or remote state`,
-      );
+      assertRecoveryObservation(root, flag, phase, blocker);
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+function assertRecoveryObservation(root, flag, phase, blocker) {
+  const statePath = join(root, '.sloop', 'state.json');
+  writeFileSync(
+    statePath,
+    JSON.stringify({ status: 'ci_failed', issue: 45, pr: 107, [flag]: true }),
+  );
+  const runtimeHarness = createMockRuntimeHarness({
+    'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+    readableFiles: [statePath],
+  });
+  runtimeHarness.io.cwd = root;
+  runtimeHarness.io.readFile = (file) =>
+    file.endsWith(join('.sloop', 'state.json')) ? readFileSync(file, 'utf8') : config;
+
+  const readOnlyArgs = ['status', '--json'];
+  const parsedReadOnlyCommand = parseReadOnlyCommand(readOnlyArgs);
+  assert.equal(
+    runReadOnlyCommand(parsedReadOnlyCommand, runtimeHarness.io),
+    EXIT.ok,
+    `status should inspect ${flag}`,
+  );
+  const diagnostic = JSON.parse(runtimeHarness.stdout[0]).diagnostics.find(
+    (item) => item.check === `recovery-${phase}`,
+  );
+  assert.deepEqual(diagnostic, {
+    check: `recovery-${phase}`,
+    message: `${blocker} (issue #45, PR #107)`,
+    remediation: 'Next: sloop --prepare-recovery 45 --pr 107; this mutates local recovery state.',
+    phase,
+    context: { issue: 45, pullRequest: 107 },
+    nextAction: {
+      command: 'sloop --prepare-recovery 45 --pr 107',
+      description: 'Prepare the recorded recovery for the issue and pull request.',
+      mutates: true,
+    },
+    mutates: false,
+  });
+  assert.equal(
+    runtimeHarness.calls.some(
+      ({ file, args }) => file === 'gh' || ['checkout', 'reset', 'clean', 'push'].includes(args[0]),
+    ),
+    false,
+    `${flag} diagnosis must not mutate local or remote state`,
+  );
+}

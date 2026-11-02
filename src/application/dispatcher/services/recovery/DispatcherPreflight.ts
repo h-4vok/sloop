@@ -7,18 +7,30 @@ const { roleCommand } = AgentRoles;
 const { isActiveStatus } = RunStatePolicy;
 type ActiveRunReconciliation = ReturnType<NonNullable<Deps['reconcileActiveRun']>>;
 
+function hasMissingRemoteAuthority(d: Deps): boolean {
+  return Boolean(d.remoteRequired && !d.remote);
+}
+
+function hasLegacyCodexSandbox(cfg: Config): boolean {
+  return 'codexSandbox' in (cfg as Record<string, unknown>);
+}
+
+function hasUnsupportedBaseBranch(cfg: Config): boolean {
+  return cfg.baseBranch !== undefined && cfg.baseBranch !== 'main';
+}
+
 function validateDispatcherCompatibility(cfg: Config, d: Deps): Result<void, Error> {
-  if (d.remoteRequired && !d.remote)
+  if (hasMissingRemoteAuthority(d))
     return result.failure(
       new Error('remote authority is required for production dispatcher lifecycle'),
     );
-  if ('codexSandbox' in (cfg as Record<string, unknown>))
+  if (hasLegacyCodexSandbox(cfg))
     return result.failure(
       new Error(
         'codexSandbox is no longer supported; configure --sandbox in each role command args',
       ),
     );
-  if (cfg.baseBranch !== undefined && cfg.baseBranch !== 'main')
+  if (hasUnsupportedBaseBranch(cfg))
     return result.failure(new Error(`Worker PR baseBranch must be main; found ${cfg.baseBranch}`));
 
   return result.success(undefined);

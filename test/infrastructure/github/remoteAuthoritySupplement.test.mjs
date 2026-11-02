@@ -86,17 +86,12 @@ test('remote snapshot normalizes issue and pull-request state', () => {
       },
     },
   };
-  const mockGitHubCommand = (_commandFile, commandArgs) => {
-    const isIssueSnapshotRequest = commandArgs[0] === 'issue' && commandArgs[1] === 'view';
-    const isPullRequestSnapshotRequest = commandArgs[0] === 'pr' && commandArgs[1] === 'view';
-    const isReviewThreadQuery = commandArgs[0] === 'api';
-
-    if (isIssueSnapshotRequest) return JSON.stringify(mockIssueResponse);
-    if (isPullRequestSnapshotRequest) return JSON.stringify(mockPullRequestResponse);
-    if (isReviewThreadQuery) return JSON.stringify(mockReviewThreadsResponse);
-
-    throw new Error(`Unexpected mock GitHub command: ${commandArgs.join(' ')}`);
-  };
+  const mockGitHubCommand = (_commandFile, commandArgs) =>
+    respondToMockGitHubCommand(commandArgs, {
+      'issue view': mockIssueResponse,
+      'pr view': mockPullRequestResponse,
+      api: mockReviewThreadsResponse,
+    });
   const adapterDependencies = createAdapterDependenciesWithMockGitHubCommand(mockGitHubCommand);
   const expectedLabels = ['eligible'];
   const expectedInlineThreads = [{ resolved: true }, { resolved: false }];
@@ -109,3 +104,10 @@ test('remote snapshot normalizes issue and pull-request state', () => {
   assert.deepEqual(remoteSnapshot.inlineThreads, expectedInlineThreads);
   assert.ok(remoteSnapshot.markers.includes('sloop-v1/legacy'));
 });
+
+function respondToMockGitHubCommand(commandArgs, responses) {
+  const command = commandArgs[0] === 'api' ? 'api' : commandArgs.slice(0, 2).join(' ');
+  const response = responses[command];
+  if (response) return JSON.stringify(response);
+  throw new Error(`Unexpected mock GitHub command: ${commandArgs.join(' ')}`);
+}

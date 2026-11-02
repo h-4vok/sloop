@@ -72,19 +72,29 @@ test('dispatcher runs Worker and QA and uses Markdown PR evidence', async () => 
   assert.match(guide, /documented output appears/);
   assert.equal(dispatcherHarness.state().branch, 'codex/issue-1');
   assert.equal(dispatcherHarness.state().mainBaseSha, 'main-sha-1');
-  const runDirectories = readdirSync(join(dispatcherHarness.root, '.sloop', 'runs'));
-  const events = runDirectories.flatMap((directory) =>
-    readFileSync(join(dispatcherHarness.root, '.sloop', 'runs', directory, 'events.jsonl'), 'utf8')
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => JSON.parse(line)),
-  );
-  assert.ok(events.some((event) => event.type === 'context'));
-  assert.ok(events.some((event) => event.type === 'transition'));
-  assert.ok(events.some((event) => event.type === 'prompt'));
-  assert.ok(events.some((event) => event.type === 'result'));
-  assert.ok(events.some((event) => event.type === 'stdout'));
-  assert.ok(events.some((event) => event.type === 'stderr'));
-  assert.ok(events.some((event) => event.type === 'codex'));
-  assert.ok(events.every((event) => Number.isInteger(event.seq)));
+  assertRunEventLog(dispatcherHarness);
 });
+
+function assertRunEventLog(dispatcherHarness) {
+  const runsDirectory = join(dispatcherHarness.root, '.sloop', 'runs');
+  const runDirectories = readdirSync(runsDirectory);
+  const events = runDirectories.flatMap((directory) => {
+    const eventPath = join(runsDirectory, directory, 'events.jsonl');
+    const eventLines = readFileSync(eventPath, 'utf8').split('\n').filter(Boolean);
+    return eventLines.map((line) => JSON.parse(line));
+  });
+  const expectedEventTypes = [
+    'context',
+    'transition',
+    'prompt',
+    'result',
+    'stdout',
+    'stderr',
+    'codex',
+  ];
+
+  for (const eventType of expectedEventTypes) {
+    assert.ok(events.some((event) => event.type === eventType));
+  }
+  assert.ok(events.every((event) => Number.isInteger(event.seq)));
+}

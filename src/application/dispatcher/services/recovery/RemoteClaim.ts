@@ -71,6 +71,21 @@ function ensureRemoteClaim(
   }
 }
 
+function createClaimManifest(
+  cfg: Config,
+  d: Deps,
+  issue: number,
+  runId: string,
+  key: string,
+  owner: string,
+  recoveryManifest: RunManifest | undefined,
+): RunManifest {
+  if (!recoveryManifest) return remoteManifest(cfg, d, issue, runId, key, 'claimed', owner);
+
+  const phase = recoveryManifest.phase === 'blocked' ? 'working' : recoveryManifest.phase;
+  return remoteManifest(cfg, d, issue, recoveryManifest.runId, key, phase, owner, recoveryManifest);
+}
+
 function resolveRemoteClaim(
   cfg: Config,
   d: Deps,
@@ -79,24 +94,11 @@ function resolveRemoteClaim(
   key: string,
   recoveryManifest: RunManifest | undefined,
 ): RunManifest {
-  const current = remoteProjection(d, issue);
-  if (!current) throw new Error('remote authority is required for dispatcher lifecycle');
+  const current = requireRemoteProjection(d, issue);
   const leaseResult = assertRemoteLeaseAvailable(current.projection);
   if (!leaseResult.ok) throw leaseResult.error;
   const owner = remoteOwner(d, issue);
-  const recoveryPhase = recoveryManifest?.phase === 'blocked' ? 'working' : recoveryManifest?.phase;
-  const manifest = recoveryManifest
-    ? remoteManifest(
-        cfg,
-        d,
-        issue,
-        recoveryManifest.runId,
-        key,
-        recoveryPhase!,
-        owner,
-        recoveryManifest,
-      )
-    : remoteManifest(cfg, d, issue, runId, key, 'claimed', owner);
+  const manifest = createClaimManifest(cfg, d, issue, runId, key, owner, recoveryManifest);
   const reusedClaim = reuseMatchingClaim(
     cfg,
     d,
@@ -111,6 +113,16 @@ function resolveRemoteClaim(
 
   claimRemoteIssue(d, issue, key, manifest);
   return manifest;
+}
+
+function requireRemoteProjection(
+  d: Deps,
+  issue: number,
+): NonNullable<ReturnType<typeof remoteProjection>> {
+  const current = remoteProjection(d, issue);
+  if (!current) throw new Error('remote authority is required for dispatcher lifecycle');
+
+  return current;
 }
 
 function reuseMatchingClaim(

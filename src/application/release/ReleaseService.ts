@@ -30,13 +30,27 @@ export function deriveReleaseKind(issueTitles: readonly string[]): Exclude<Relea
 
 /** Calculates the next version according to the requested release kind. */
 export function nextVersion(current: string, kind: ReleaseKind): string {
+  const [major, minor, patch] = parseVersionParts(current);
+  switch (kind) {
+    case 'none':
+      return current;
+    case 'major':
+      return incrementMajorVersion(major);
+    case 'minor':
+      return `${major}.${minor + 1}.0`;
+    case 'patch':
+      return `${major}.${minor}.${patch + 1}`;
+  }
+}
+
+function parseVersionParts(current: string): number[] {
   const match = current.match(/^(\d+)\.(\d+)\.(\d+)$/);
   if (!match) throw new Error(`Latest release tag is not SemVer: ${current}`);
-  const [major, minor, patch] = match.slice(1).map(Number);
-  if (kind === 'none') return current;
-  if (kind === 'major') return major === 0 ? '1.0.0' : `${major + 1}.0.0`;
-  if (kind === 'minor') return `${major}.${minor + 1}.0`;
-  return `${major}.${minor}.${patch + 1}`;
+  return match.slice(1).map(Number);
+}
+
+function incrementMajorVersion(major: number): string {
+  return major === 0 ? '1.0.0' : `${major + 1}.0.0`;
 }
 
 /** Rejects an existing GitHub publication that points to another target. */

@@ -35,11 +35,10 @@ export const runStatusCommand = Object.freeze({
 
   loadWorkflow(parsed: ReadOnlyCommand, root: string, io: RuntimeIo): WorkflowState {
     const path = join(root, '.sloop', 'state.json');
-    if (parsed.command !== 'status' || !io.canRead(path)) return { workflow: {} };
+    if (!shouldLoadWorkflow(parsed, path, io)) return { workflow: {} };
     try {
       const state: unknown = JSON.parse(io.readFile(path));
-      if (!state || typeof state !== 'object' || Array.isArray(state))
-        throw new Error('state must be a JSON object');
+      if (!isWorkflowRecord(state)) throw new Error('state must be a JSON object');
       return { workflow: state as Record<string, unknown> };
     } catch {
       return {
@@ -55,3 +54,11 @@ export const runStatusCommand = Object.freeze({
 });
 
 type WorkflowState = Readonly<{ workflow: Record<string, unknown>; failure?: Diagnostic }>;
+
+function shouldLoadWorkflow(parsed: ReadOnlyCommand, path: string, io: RuntimeIo): boolean {
+  return parsed.command === 'status' && io.canRead(path);
+}
+
+function isWorkflowRecord(state: unknown): state is Record<string, unknown> {
+  return Boolean(state) && typeof state === 'object' && !Array.isArray(state);
+}

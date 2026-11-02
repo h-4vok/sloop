@@ -2,7 +2,8 @@ import { resolve } from 'node:path';
 import type { WorkspaceFacts } from '../WorkspaceFacts.js';
 import type { WorkspaceOptions } from '../WorkspaceOptions.js';
 import { discoverGitWorktrees } from './discoverGitWorktrees.js';
-import { generatedSerenaPaths, matchesRecoveryOwnership } from './validateWorkspaceOwnership.js';
+import { matchesRecoveryOwnership } from './validateWorkspaceOwnership.js';
+import { generatedSerenaPaths } from './serenaMetadata.js';
 import { isInside, readWorkspaceState, runGit, writeWorkspaceState } from './workspaceState.js';
 import type { GitWorktree, RegisteredWorkspace } from './workspaceState.js';
 
@@ -32,8 +33,7 @@ function recoverRegisteredWorkspace(
   const live = discoverGitWorktrees(root).find(
     (worktree) => resolve(worktree.path) === resolve(entry.executionRoot),
   );
-  if (!live || !matchesRegisteredWorktree(live, entry) || !isInside(parent, entry.executionRoot))
-    return undefined;
+  if (!isRegisteredWorktreeUsable(live, parent, entry)) return undefined;
   if (generatedSerenaPaths(entry) === undefined) return undefined;
   if (!hasAncestorCommits(root, [entry.baseSha, entry.headSha], live.head)) return undefined;
   const refreshed = { ...entry, headSha: live.head };
@@ -42,6 +42,16 @@ function recoverRegisteredWorkspace(
     entries.map((candidate) => (candidate === entry ? refreshed : candidate)),
   );
   return refreshed;
+}
+
+function isRegisteredWorktreeUsable(
+  live: GitWorktree | undefined,
+  parent: string,
+  entry: RegisteredWorkspace,
+): live is GitWorktree {
+  return Boolean(
+    live && matchesRegisteredWorktree(live, entry) && isInside(parent, entry.executionRoot),
+  );
 }
 
 function matchesRemoteWorktree(
@@ -87,14 +97,25 @@ export function recoverWorkerWorkspace(options: WorkspaceOptions): WorkspaceFact
   const file = options.stateFile ?? resolve(root, '.sloop/state.json');
   const entries = readWorkspaceState(file);
   const entry = entries.find((candidate) => matchesRecoveryOwnership(candidate, options, root));
-  if (entry) {
-    if (entry.headSha && entry.executionRoot && entry.branch) {
-      const live = discoverGitWorktrees(root).find(
-        (worktree) => resolve(worktree.path) === resolve(entry.executionRoot),
-      );
-      if (live?.head === entry.headSha && live.branch === entry.branch) return entry;
-    }
-    return recoverRegisteredWorkspace(root, parent, file, entries, entry);
-  }
+  if (entry) return recoverExistingWorkspace(root, parent, file, entries, entry);
   return recoverRemoteWorkspace(options, root, parent);
+}
+
+function recoverExistingWorkspace(
+  root: string,
+  parent: string,
+  file: string,
+  entries: RegisteredWorkspace[],
+  entry: RegisteredWorkspace,
+): WorkspaceFacts | undefined {
+  if (isCurrentRegistration(root, entry)) return entry;
+  return recoverRegisteredWorkspace(root, parent, file, entries, entry);
+}
+
+function isCurrentRegistration(root: string, entry: RegisteredWorkspace): boolean {
+  if (!entry.headSha || !entry.executionRoot || !entry.branch) return false;
+  const live = discoverGitWorktrees(root).find(
+    (worktree) => resolve(worktree.path) === resolve(entry.executionRoot),
+  );
+  return live?.head === entry.headSha && live.branch === entry.branch;
 }

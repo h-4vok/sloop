@@ -60,20 +60,31 @@ async function dispatchSelectedIssue(
 
 function handleIssueFailure(d: Deps, issue: Issue, error: unknown): 4 {
   if (error instanceof CliFailure) throw error;
-  const message = error instanceof Error ? error.message : String(error);
+  const message = describeIssueFailure(error);
   console.error(`[sloop] issue #${issue.number} bloqueada: ${message}`);
   const current = d.load();
-  const shouldPreserveRecovery =
-    isWorkerStatus(current.status) ||
-    current.status === 'worker_recovery_pending' ||
-    hasPersistedRecoveryContext(current);
-  status(d, issue.number, shouldPreserveRecovery ? 'worker_recovery_pending' : 'blocked', {
+  status(d, issue.number, issueFailureStatus(current), {
     lastError: message,
 
     pr: current.pr,
   });
 
   return 4;
+}
+
+function describeIssueFailure(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function issueFailureStatus(
+  state: ReturnType<Deps['load']>,
+): 'worker_recovery_pending' | 'blocked' {
+  const shouldPreserveRecovery =
+    isWorkerStatus(state.status) ||
+    state.status === 'worker_recovery_pending' ||
+    hasPersistedRecoveryContext(state);
+
+  return shouldPreserveRecovery ? 'worker_recovery_pending' : 'blocked';
 }
 
 function findExistingRecoveryIssue(

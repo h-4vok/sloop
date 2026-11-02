@@ -1,12 +1,27 @@
 export function createArbiterFixtures() {
-  const issue = {
+  return {
+    issue: createArbiterIssue(),
+
+    pr: createArbiterPullRequest(),
+
+    config: createArbiterConfig(),
+
+    context: createArbiterContext(),
+  };
+}
+
+function createArbiterIssue() {
+  return {
     number: 41,
 
     title: 'Normalize surrounding whitespace in display names',
 
     body: 'Acceptance: normalize("  Ada  ") returns "Ada"; normalize("Ada") returns "Ada". Preserve internal spaces. Scope: string inputs only. No GitHub repository exists for this fictional issue.',
   };
-  const pr = {
+}
+
+function createArbiterPullRequest() {
+  return {
     number: 73,
 
     state: 'OPEN',
@@ -29,7 +44,10 @@ export function createArbiterFixtures() {
 
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   };
-  const config = {
+}
+
+function createArbiterConfig() {
+  return {
     baseBranch: 'main',
 
     workerCommand: { command: 'mock-worker', args: [] },
@@ -69,7 +87,10 @@ export function createArbiterFixtures() {
 
     checkTimeoutMs: 1000,
   };
-  const context = {
+}
+
+function createArbiterContext() {
+  return {
     state: {},
 
     workers: 0,
@@ -82,5 +103,4 @@ export function createArbiterFixtures() {
 
     boundary: 'TEST_BOUNDARY: first Arbiter ruling consumed',
   };
-  return { issue, pr, config, context };
 }

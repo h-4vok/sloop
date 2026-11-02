@@ -29,13 +29,22 @@ export function parseWizardValueResult(
   field: FieldMetadata,
   raw: string,
 ): Result<unknown, ConfigValidationError> {
-  if (field.type !== 'list' && field.type !== 'argv') return parseConfigValueResult(field, raw);
-  if (field.type === 'list')
-    return field.parser(
-      raw.split(',').map((item) => item.trim()),
-      `$.${field.path}`,
-    );
+  if (field.type === 'list') return parseListValue(field, raw);
+  if (field.type === 'argv') return parseArgumentVector(field, raw);
+  return parseConfigValueResult(field, raw);
+}
 
+function parseListValue(field: FieldMetadata, raw: string): Result<unknown, ConfigValidationError> {
+  return field.parser(
+    raw.split(',').map((item) => item.trim()),
+    `$.${field.path}`,
+  );
+}
+
+function parseArgumentVector(
+  field: FieldMetadata,
+  raw: string,
+): Result<unknown, ConfigValidationError> {
   let parsedArgv: unknown;
   try {
     parsedArgv = JSON.parse(raw);

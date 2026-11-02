@@ -86,20 +86,9 @@ export const checkGitHubIdentity = Object.freeze({
   },
 
   validateGitHubPermission(viewerPermission: string | undefined, allLabels: boolean): Diagnostic[] {
-    const acceptedPermissions = allLabels
-      ? ['WRITE', 'MAINTAIN', 'ADMIN']
-      : ['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN'];
-    if (acceptedPermissions.includes(viewerPermission ?? '')) return [];
+    if (hasRequiredPermission(viewerPermission, allLabels)) return [];
 
-    return [
-      createDiagnostic(
-        'permissions',
-        allLabels
-          ? 'Repository write permission is unavailable.'
-          : 'Repository read permission is unavailable.',
-        `Request repository ${allLabels ? 'write' : 'read'} access.`,
-      ),
-    ];
+    return [createPermissionDiagnostic(allLabels)];
   },
 
   githubRepository(
@@ -111,3 +100,19 @@ export const checkGitHubIdentity = Object.freeze({
     return { ok: true, value: `${match[1]}/${match[2]}` };
   },
 });
+
+function hasRequiredPermission(viewerPermission: string | undefined, allLabels: boolean): boolean {
+  const acceptedPermissions = allLabels
+    ? ['WRITE', 'MAINTAIN', 'ADMIN']
+    : ['READ', 'TRIAGE', 'WRITE', 'MAINTAIN', 'ADMIN'];
+  return acceptedPermissions.includes(viewerPermission ?? '');
+}
+
+function createPermissionDiagnostic(allLabels: boolean): Diagnostic {
+  const access = allLabels ? 'write' : 'read';
+  return createDiagnostic(
+    'permissions',
+    `Repository ${access} permission is unavailable.`,
+    `Request repository ${access} access.`,
+  );
+}

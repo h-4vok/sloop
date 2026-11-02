@@ -14,33 +14,7 @@ export function createPullRequestReader(client: GitHubCommandClient) {
         '--json',
         'number,state,baseRefName,baseRefOid,headRefName,headRefOid,body,mergeStateStatus,mergeable,reviews,comments,statusCheckRollup',
       ]);
-      return {
-        number: raw.number,
-        state: raw.state,
-        baseRefOid: raw.baseRefOid,
-        baseRefName: raw.baseRefName,
-        headRefName: raw.headRefName,
-        headRefOid: raw.headRefOid,
-        body: raw.body ?? '',
-        mergeStateStatus: raw.mergeStateStatus ?? raw.merge_state_status,
-        mergeable: raw.mergeable,
-        reviews: (raw.reviews ?? []).map((review: any) => ({
-          body: review.body,
-          state: review.state,
-          submittedAt: review.submittedAt ?? review.submitted_at,
-          commitId: review.commit?.oid ?? review.commitId ?? review.commit_id,
-        })),
-        comments: (raw.comments ?? []).map((comment: any) => ({
-          body: comment.body,
-          createdAt: comment.createdAt ?? comment.created_at,
-        })),
-        statusCheckRollup: (raw.statusCheckRollup ?? []).map((check: any) => ({
-          name: check.name ?? check.context ?? check.workflowName ?? '',
-          status: check.status ?? check.state,
-          conclusion: check.conclusion ?? check.state,
-          detailsUrl: check.detailsUrl ?? check.details_url,
-        })),
-      };
+      return normalizePullRequest(raw);
     },
 
     readBody(pullRequestNumber: number): string {
@@ -55,4 +29,50 @@ export function createPullRequestReader(client: GitHubCommandClient) {
       );
     },
   };
+}
+
+function normalizePullRequest(raw: any): PullRequest {
+  return {
+    number: raw.number,
+    state: raw.state,
+    baseRefOid: raw.baseRefOid,
+    baseRefName: raw.baseRefName,
+    headRefName: raw.headRefName,
+    headRefOid: raw.headRefOid,
+    body: firstDefined(raw.body, ''),
+    mergeStateStatus: firstDefined(raw.mergeStateStatus, raw.merge_state_status),
+    mergeable: raw.mergeable,
+    reviews: (raw.reviews ?? []).map(normalizeReview),
+    comments: (raw.comments ?? []).map(normalizeComment),
+    statusCheckRollup: (raw.statusCheckRollup ?? []).map(normalizeStatusCheck),
+  };
+}
+
+function normalizeReview(review: any) {
+  return {
+    body: review.body,
+    state: review.state,
+    submittedAt: firstDefined(review.submittedAt, review.submitted_at),
+    commitId: firstDefined(review.commit?.oid, review.commitId, review.commit_id),
+  };
+}
+
+function normalizeComment(comment: any) {
+  return { body: comment.body, createdAt: firstDefined(comment.createdAt, comment.created_at) };
+}
+
+function normalizeStatusCheck(check: any) {
+  return {
+    name: firstDefined(check.name, check.context, check.workflowName, ''),
+    status: firstDefined(check.status, check.state),
+    conclusion: firstDefined(check.conclusion, check.state),
+    detailsUrl: firstDefined(check.detailsUrl, check.details_url),
+  };
+}
+
+function firstDefined<T>(...values: (T | null | undefined)[]): T | undefined {
+  for (const value of values) {
+    if (value !== null && value !== undefined) return value;
+  }
+  return undefined;
 }

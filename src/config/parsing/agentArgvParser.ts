@@ -15,7 +15,7 @@ export function validateEnvironmentArgument(
   path: string,
 ): ParserResult<undefined> {
   if (executable !== 'env' || index === 0) return valid(undefined);
-  if (argument.startsWith('-S') || argument.startsWith('--split-string'))
+  if (isEnvironmentSplitStringOption(argument))
     return invalid(
       path,
       'env split-string options are forbidden; provide each argument as a separate argv item',
@@ -28,6 +28,10 @@ export function validateEnvironmentArgument(
   return valid(undefined);
 }
 
+function isEnvironmentSplitStringOption(argument: string): boolean {
+  return argument.startsWith('-S') || argument.startsWith('--split-string');
+}
+
 export function gitConfigForArgument(
   executable: string,
   argv: readonly string[],
@@ -35,9 +39,15 @@ export function gitConfigForArgument(
 ): string | undefined {
   if (executable !== 'git' || index === 0) return undefined;
   const argument = argv[index]!;
-  const previousArgument = argv[index - 1];
-  if (index > 1 && (previousArgument === '-c' || previousArgument === '--config-env'))
-    return argument;
+  if (isSeparateGitConfigValue(index, argv[index - 1])) return argument;
+  return inlineGitConfigValue(argument);
+}
+
+function isSeparateGitConfigValue(index: number, previousArgument: string | undefined): boolean {
+  return index > 1 && (previousArgument === '-c' || previousArgument === '--config-env');
+}
+
+function inlineGitConfigValue(argument: string): string | undefined {
   if (argument.startsWith('-c')) return argument.slice(2);
   if (argument.startsWith('--config-env=')) return argument.slice('--config-env='.length);
   return undefined;
@@ -50,18 +60,8 @@ export function validateArgument(
   path: string,
 ): ParserResult<undefined> {
   const argument = argv[index]!;
-  if (argument.includes('\0') || /(?:&&|\|\||[|;<>`]|\$\()/.test(argument))
-    return invalid(path, 'shell operators are forbidden; provide an argv array without a shell');
-  if (shellExecutable(argument))
-    return invalid(path, 'shell interpreters are forbidden; invoke the executable directly');
-  if (
-    index > 0 &&
-    executableIndirectionOptions[executable]!.some((pattern) => pattern.test(argument))
-  )
-    return invalid(
-      path,
-      'executable indirection is forbidden by this direct-process command profile',
-    );
+  const syntaxResult = validateArgumentSyntax(executable, argument, index, path);
+  if (!syntaxResult.ok) return syntaxResult;
   const environmentResult = validateEnvironmentArgument(executable, argument, index, path);
   if (!environmentResult.ok) return environmentResult;
   const gitConfig = gitConfigForArgument(executable, argv, index);
@@ -73,10 +73,46 @@ export function validateArgument(
   return valid(undefined);
 }
 
+function validateArgumentSyntax(
+  executable: string,
+  argument: string,
+  index: number,
+  path: string,
+): ParserResult<undefined> {
+  if (containsShellOperators(argument))
+    return invalid(path, 'shell operators are forbidden; provide an argv array without a shell');
+  if (shellExecutable(argument))
+    return invalid(path, 'shell interpreters are forbidden; invoke the executable directly');
+  if (isExecutableIndirection(executable, argument, index))
+    return invalid(
+      path,
+      'executable indirection is forbidden by this direct-process command profile',
+    );
+  return valid(undefined);
+}
+
+function containsShellOperators(argument: string): boolean {
+  const shellOperators = ['&&', '||', '|', ';', '<', '>', '`', '$('];
+  return argument.includes('\0') || shellOperators.some((operator) => argument.includes(operator));
+}
+
+function isExecutableIndirection(executable: string, argument: string, index: number): boolean {
+  if (index === 0) return false;
+  return executableIndirectionOptions[executable]!.some((pattern) => pattern.test(argument));
+}
+
 export const argvParser = (value: unknown, path: string): ParserResult<readonly string[]> => {
   const parsedArguments = listParser(value, path);
   if (!parsedArguments.ok) return parsedArguments;
   const argv = parsedArguments.value;
+  const executableResult = validateExecutable(argv, path);
+  if (!executableResult.ok) return executableResult;
+  const argumentResult = validateArguments(executableResult.value, argv, path);
+  if (!argumentResult.ok) return argumentResult;
+  return valid(argv);
+};
+
+function validateExecutable(argv: readonly string[], path: string): ParserResult<string> {
   if (argv.length === 0) return invalid(path, 'argv must contain an executable');
   const executable = executableBasename(argv[0]!);
   if (shellExecutable(argv[0]!))
@@ -91,9 +127,17 @@ export const argvParser = (value: unknown, path: string): ParserResult<readonly 
         ...allowedExecutables,
       ].join(', ')}`,
     );
+  return valid(executable);
+}
+
+function validateArguments(
+  executable: string,
+  argv: readonly string[],
+  path: string,
+): ParserResult<undefined> {
   for (const [index] of argv.entries()) {
     const argumentResult = validateArgument(executable, argv, index, `${path}[${index}]`);
     if (!argumentResult.ok) return argumentResult;
   }
-  return valid(argv);
-};
+  return valid(undefined);
+}

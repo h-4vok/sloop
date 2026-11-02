@@ -43,10 +43,8 @@ function prepareIssueRecovery(
 ): number {
   const state: State = readState(options.stateFile);
   const pullRequestNumber = requestedPullRequest ?? state.pr;
-  if (!Number.isInteger(issue) || issue < 1)
-    throw new Error('--prepare-recovery requires an issue number');
-  if (!pullRequestNumber || !Number.isInteger(pullRequestNumber))
-    throw new Error('--prepare-recovery requires --pr or an existing state.pr');
+  assertRecoveryIssue(issue);
+  assertRecoveryPullRequest(pullRequestNumber);
 
   const pullRequest = options.loadPullRequest(pullRequestNumber);
   const recoveryState = prepareRecovery(
@@ -62,60 +60,67 @@ function prepareIssueRecovery(
   return pullRequestNumber;
 }
 
+function assertRecoveryIssue(issue: number): void {
+  if (!Number.isInteger(issue) || issue < 1)
+    throw new Error('--prepare-recovery requires an issue number');
+}
+
+function assertRecoveryPullRequest(pullRequest: number | undefined): asserts pullRequest is number {
+  if (!pullRequest || !Number.isInteger(pullRequest))
+    throw new Error('--prepare-recovery requires --pr or an existing state.pr');
+}
+
 /** Creates dispatcher-control ports backed by the local state file and GitHub adapter. */
 export const dispatcherControlsFactory = Object.freeze({
   create(options: DispatcherControlOptions): DispatcherControls {
     return {
       root: options.root,
-
-      load: () => readState(options.stateFile),
-
-      save: (state) => writeState(state, options.stateFile),
-
-      loadConfig: () => options.config,
-
-      status: (verbose) => {
-        const currentState = readState(options.stateFile);
-
-        return verbose
-          ? currentState
-          : {
-              issue: currentState.issue,
-
-              pr: currentState.pr,
-
-              status: currentState.status,
-
-              lastError: currentState.lastError,
-            };
-      },
-
-      list: () => options.listEligibleIssues(),
-
-      recoverLock: () => recoverStaleLock(options.root, defaultProcessAlive),
-
-      reset: () =>
-        writeState(
-          resetRunState(readState(options.stateFile), defaultProcessAlive),
-          options.stateFile,
-        ),
-
-      resolveReviewCap: (args, config) =>
-        resolveReviewCap(
-          args,
-          config,
-          options.stateFile,
-          options.root,
-          options.repository,
-          {},
-          options.remoteAuthority,
-        ),
-
-      linkIssue: (issue) =>
-        linkIssueToActiveRun(issue, options.stateFile, options.root, options.repository),
-
-      prepareRecovery: (issue, pullRequest, config) =>
-        prepareIssueRecovery(options, issue, pullRequest, config),
+      ...createWorkspaceStateControls(options),
+      ...createReviewControls(options),
     };
   },
 });
+
+function createWorkspaceStateControls(options: DispatcherControlOptions) {
+  return {
+    load: () => readState(options.stateFile),
+    save: (state: State) => writeState(state, options.stateFile),
+    loadConfig: () => options.config,
+    status: (verbose: boolean) => {
+      const currentState = readState(options.stateFile);
+      if (verbose) return currentState;
+      return {
+        issue: currentState.issue,
+        pr: currentState.pr,
+        status: currentState.status,
+        lastError: currentState.lastError,
+      };
+    },
+    list: () => options.listEligibleIssues(),
+    recoverLock: () => recoverStaleLock(options.root, defaultProcessAlive),
+    reset: () =>
+      writeState(
+        resetRunState(readState(options.stateFile), defaultProcessAlive),
+        options.stateFile,
+      ),
+  };
+}
+
+function createReviewControls(options: DispatcherControlOptions) {
+  return {
+    resolveReviewCap: (args: Parameters<typeof resolveReviewCap>[0], config: Config) =>
+      resolveReviewCap(
+        args,
+        config,
+        options.stateFile,
+        options.root,
+        options.repository,
+        {},
+        options.remoteAuthority,
+      ),
+    linkIssue: (issue: number) =>
+      linkIssueToActiveRun(issue, options.stateFile, options.root, options.repository),
+    prepareRecovery: (issue: number, pullRequest: number | undefined, config: Config) =>
+      prepareIssueRecovery(options, issue, pullRequest, config),
+  };
+}

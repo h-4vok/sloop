@@ -93,7 +93,15 @@ export function formatClarificationComment(item: ArbiterEvent): string {
   const target = typeof item.payload.target === 'string' ? item.payload.target : undefined;
   const instructions =
     typeof item.payload.instructions === 'string' ? item.payload.instructions : undefined;
-  return `[Sloop Arbiter Clarification] session=${item.sessionId} event=${item.id}\n\n${question}${target ? `\n\nTarget: ${target}` : ''}${instructions ? `\n\n${instructions}` : ''}\n\nReply in normal language with the requested clarification.`;
+  return `[Sloop Arbiter Clarification] session=${item.sessionId} event=${item.id}\n\n${question}${formatTarget(target)}${formatInstructions(instructions)}\n\nReply in normal language with the requested clarification.`;
+}
+
+function formatTarget(target: string | undefined): string {
+  return target ? `\n\nTarget: ${target}` : '';
+}
+
+function formatInstructions(instructions: string | undefined): string {
+  return instructions ? `\n\n${instructions}` : '';
 }
 
 /** Check that a persisted review still belongs to the current source and round. */

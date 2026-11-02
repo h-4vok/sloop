@@ -5,6 +5,15 @@ import { createMockAgentRun } from './createMockAgentRun.mjs';
 
 export function createMockDispatcherDependencies(fixture) {
   return {
+    ...createCoreStateDependencies(fixture),
+    ...createPullRequestDependencies(fixture),
+    ...createLeaseDependencies(),
+    ...createBranchDependencies(),
+  };
+}
+
+function createCoreStateDependencies(fixture) {
+  return {
     root: fixture.root,
     load: () => fixture.state,
     save: (next) => {
@@ -38,27 +47,45 @@ export function createMockDispatcherDependencies(fixture) {
       return number;
     },
     eligible: () => fixture.issues,
+  };
+}
+
+function createPullRequestDependencies(fixture) {
+  return {
     comment: (issue, body) => fixture.comments.push([issue, body]),
     run: createMockAgentRun(fixture),
-    pullRequest: () => {
-      fixture.pr.statusCheckRollup =
-        fixture.checkSequences[Math.min(fixture.checkIndex++, fixture.checkSequences.length - 1)];
-      return structuredClone(fixture.pr);
-    },
-    updatePullRequestBody: async (number, body) => {
-      assert.equal(number, fixture.pr.number);
-      fixture.pr.body = body;
-      fixture.prBodyUpdates.push({ number, body });
-    },
+    pullRequest: () => readMockPullRequest(fixture),
+    updatePullRequestBody: (number, body) => updateMockPullRequestBody(fixture, number, body),
     pullRequestBody: () => fixture.pr.body,
-    prComment: (number, body) => {
-      assert.equal(number, fixture.pr.number);
-      fixture.pr.comments.push({ body });
-    },
-    createIssue: (title, body) => {
-      fixture.createdIssues.push({ title, body });
-      return 99;
-    },
+    prComment: (number, body) => addMockPullRequestComment(fixture, number, body),
+    createIssue: (title, body) => createMockIssue(fixture, title, body),
+  };
+}
+
+function readMockPullRequest(fixture) {
+  fixture.pr.statusCheckRollup =
+    fixture.checkSequences[Math.min(fixture.checkIndex++, fixture.checkSequences.length - 1)];
+  return structuredClone(fixture.pr);
+}
+
+async function updateMockPullRequestBody(fixture, number, body) {
+  assert.equal(number, fixture.pr.number);
+  fixture.pr.body = body;
+  fixture.prBodyUpdates.push({ number, body });
+}
+
+function addMockPullRequestComment(fixture, number, body) {
+  assert.equal(number, fixture.pr.number);
+  fixture.pr.comments.push({ body });
+}
+
+function createMockIssue(fixture, title, body) {
+  fixture.createdIssues.push({ title, body });
+  return 99;
+}
+
+function createLeaseDependencies() {
+  return {
     now: () => Date.now(),
     pid: () => process.pid,
     processAlive: (pid) => pid > 0 && pid !== -1,
@@ -76,6 +103,11 @@ export function createMockDispatcherDependencies(fixture) {
     finishReclaim: () => {},
     abandonReclaim: () => {},
     release: () => {},
+  };
+}
+
+function createBranchDependencies() {
+  return {
     prepareWorkerBranch: (issue) => ({
       branch: workerBranchName(issue),
       mainBaseSha: 'main-sha-1',

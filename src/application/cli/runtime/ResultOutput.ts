@@ -2,6 +2,7 @@ import { createProductionRuntimeIo } from '../../../infrastructure/host/createPr
 import type { RuntimeIo } from '../RuntimeIo.js';
 import { EXIT, type ExitCode } from '../ExitCode.js';
 import type { Diagnostic, ResultEnvelope, ResultStatus } from '../RuntimeResult.js';
+import { createHumanOutput } from './resultOutputFormatting.js';
 
 /** Formats command results consistently for human and JSON output. */
 export const resultOutput = Object.freeze({
@@ -72,19 +73,8 @@ export const resultOutput = Object.freeze({
       return code;
     }
 
-    const lines = [value.summary];
-    for (const item of value.diagnostics) {
-      lines.push(`[${item.check}] ${item.message} Remediation: ${item.remediation}`);
-    }
-
-    const nextAction = this.readNextAction(value.result);
-    if (nextAction?.command) {
-      lines.push(
-        `Next: ${nextAction.command} (${nextAction.description ?? 'inspect the recorded state'}; ${nextAction.mutates ? 'mutates state' : 'read-only'})`,
-      );
-    }
-
-    (code === EXIT.ok ? io.stdout : io.stderr)(lines.join('\n'));
+    const output = createHumanOutput(value);
+    (code === EXIT.ok ? io.stdout : io.stderr)(output);
 
     return code;
   },

@@ -2,6 +2,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import type { Logger } from '../../core/Logger.js';
 import { configFileStore, configPaths, type ConfigFileStore } from '../../config.js';
 import type { ConfigReconcilerWithPreflight, WizardIO } from './configCommandTypes.js';
+import type { WizardSession } from './wizard/WizardSession.js';
 import {
   chooseAgentConfigurationStep,
   collectWizardField,
@@ -39,11 +40,7 @@ async function executeConfigWizard(
   if (!sessionResult.ok) return failWizard(sessionResult.error, logger);
   const session = sessionResult.value;
   try {
-    for (const path of configPaths(scope)) {
-      if (path.startsWith('agents.')) await chooseAgentConfigurationStep.run(session, path);
-      else await collectWizardField.run(session, path);
-    }
-
+    await collectWizardFields(session, scope);
     return await confirmConfigChangesStep.run(session);
   } catch (error) {
     return failWizard(String(error instanceof Error ? error.message : error), logger);
@@ -54,3 +51,10 @@ async function executeConfigWizard(
 
 /** Exposes the interactive configuration wizard service. */
 export const runConfigWizard = Object.freeze({ run: executeConfigWizard });
+
+async function collectWizardFields(session: WizardSession, scope?: string): Promise<void> {
+  for (const path of configPaths(scope)) {
+    if (path.startsWith('agents.')) await chooseAgentConfigurationStep.run(session, path);
+    else await collectWizardField.run(session, path);
+  }
+}

@@ -32,46 +32,7 @@ test('runCli preserves the public blocked exit and JSON stream contract', async 
   process.exitCode = undefined;
 
   try {
-    await runCli(['status', '--json'], process.version, {
-      runtime: {
-        emitNodeVersionFailure: assert.fail,
-
-        emitUsageFailure: assert.fail,
-
-        parseCliCommand: () => ({
-          kind: 'read-only',
-
-          command: { command: 'status', json: true, verbose: false },
-        }),
-
-        runDispatcherPreflight: assert.fail,
-
-        runReadOnlyCommand: (_command, io) => {
-          io.stdout(
-            JSON.stringify({
-              command: 'status',
-
-              status: 'blocked',
-
-              phase: 'workflow',
-
-              summary: 'Workflow is blocked.',
-
-              result: null,
-
-              diagnostics: [],
-
-              references: { issues: [31], pullRequests: [54] },
-            }),
-          );
-          return 4;
-        },
-      },
-
-      dispatcher: { runDispatcherCli: assert.fail },
-
-      adapters: { productionDependencies: assert.fail },
-    });
+    await runCli(['status', '--json'], process.version, createBlockedStatusModules());
     assert.equal(process.exitCode, 4);
   } finally {
     process.exitCode = undefined;
@@ -126,3 +87,33 @@ test('the executable CLI wrapper forwards arguments and reports rejected startup
     vi.resetModules();
   }
 });
+
+function createBlockedStatusModules() {
+  return {
+    runtime: {
+      emitNodeVersionFailure: assert.fail,
+      emitUsageFailure: assert.fail,
+      parseCliCommand: () => ({
+        kind: 'read-only',
+        command: { command: 'status', json: true, verbose: false },
+      }),
+      runDispatcherPreflight: assert.fail,
+      runReadOnlyCommand: (_command, io) => {
+        io.stdout(
+          JSON.stringify({
+            command: 'status',
+            status: 'blocked',
+            phase: 'workflow',
+            summary: 'Workflow is blocked.',
+            result: null,
+            diagnostics: [],
+            references: { issues: [31], pullRequests: [54] },
+          }),
+        );
+        return 4;
+      },
+    },
+    dispatcher: { runDispatcherCli: assert.fail },
+    adapters: { productionDependencies: assert.fail },
+  };
+}

@@ -91,6 +91,11 @@ test('runner handles durable write races and every result-read error family', as
       (error) => error.code === 'missing-result' || error.code === 'malformed',
     );
   }
+});
+
+test('runner treats invalid retry budgets as missing results', async () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-agent-retries-'));
+
   await assert.rejects(
     new ArbitraryCommandRunner('fake', [], { cwd: root, retries: -1 }).run('none', context),
     (error) => error.code === 'missing-result',

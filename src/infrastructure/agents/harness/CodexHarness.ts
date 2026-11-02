@@ -7,9 +7,9 @@ import type {
   HarnessResult,
   HarnessTurn,
 } from './HarnessContext.js';
-import { ResumeAmbiguousError } from './ResumeAmbiguousError.js';
 import { ResumeRejectedError } from './ResumeRejectedError.js';
 import { terminateProcessTree } from '../terminateProcessTree.js';
+import { readCodexResult } from './codexResultParser.js';
 
 /** Owns Codex CLI invocation and its JSON event protocol. */
 export class CodexHarness implements Harness {
@@ -34,46 +34,91 @@ export class CodexHarness implements Harness {
   ): Promise<HarnessResult> {
     return new Promise((resolve, reject) => {
       const invocation = codexCliInvocation(buildCodexArgs(this.options, command, prompt));
-      const child = (this.options.spawn ?? spawn)(invocation.command, invocation.args, {
-        cwd: this.options.cwd,
-        shell: false,
-        stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-      });
-      if (!child.stdout || !child.stderr || (invocation.stdin !== undefined && !child.stdin)) {
+      const child = spawnCodexProcess(this.options, invocation);
+      if (!hasCodexProcessStreams(child, invocation.stdin)) {
         terminateProcessTree(child);
         reject(new Error('Codex process streams were not created'));
         return;
       }
-      if (invocation.stdin !== undefined) child.stdin?.end(invocation.stdin);
-      let stdout = '';
-      let stderr = '';
-      let started = false;
-      const timer = setTimeout(() => terminateProcessTree(child), this.options.timeoutMs);
-      child.stdout.on('data', (chunk) => {
-        const text = String(chunk);
-        started = true;
-        stdout += text;
-        this.options.log?.('stdout', text);
-      });
-      child.stderr.on('data', (chunk) => {
-        const text = String(chunk);
-        stderr += text;
-        this.options.log?.('stderr', text);
-      });
-      child.on('error', (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        try {
-          resolve(readCodexResult(stdout, context.issue, code, started, stderr));
-        } catch (error) {
-          reject(error);
-        }
-      });
+      startCodexProcess(child, invocation.stdin, this.options, context.issue, resolve, reject);
     });
   }
+}
+
+function spawnCodexProcess(
+  options: CodexHarnessOptions,
+  invocation: ReturnType<typeof codexCliInvocation>,
+) {
+  const run = options.spawn ?? spawn;
+  const stdin = invocation.stdin === undefined ? 'ignore' : 'pipe';
+  return run(invocation.command, invocation.args, {
+    cwd: options.cwd,
+    shell: false,
+    stdio: [stdin, 'pipe', 'pipe'],
+  });
+}
+
+function hasCodexProcessStreams(
+  child: ReturnType<typeof spawn>,
+  stdin: string | undefined,
+): boolean {
+  if (!child.stdout || !child.stderr) return false;
+  return stdin === undefined || Boolean(child.stdin);
+}
+
+function startCodexProcess(
+  child: ReturnType<typeof spawn>,
+  stdin: string | undefined,
+  options: CodexHarnessOptions,
+  issue: number,
+  resolve: (result: HarnessResult) => void,
+  reject: (error: unknown) => void,
+): void {
+  if (stdin !== undefined) child.stdin?.end(stdin);
+  const output = { stdout: '', stderr: '', started: false };
+  const timer = setTimeout(() => terminateProcessTree(child), options.timeoutMs);
+  observeCodexOutput(child, options, output);
+  observeCodexCompletion(child, output, issue, timer, resolve, reject);
+}
+
+function observeCodexOutput(
+  child: ReturnType<typeof spawn>,
+  options: CodexHarnessOptions,
+  output: { stdout: string; stderr: string; started: boolean },
+): void {
+  child.stdout?.on('data', (chunk) => {
+    const text = String(chunk);
+    output.started = true;
+    output.stdout += text;
+    options.log?.('stdout', text);
+  });
+  child.stderr?.on('data', (chunk) => {
+    const text = String(chunk);
+    output.stderr += text;
+    options.log?.('stderr', text);
+  });
+}
+
+function observeCodexCompletion(
+  child: ReturnType<typeof spawn>,
+  output: { stdout: string; stderr: string; started: boolean },
+  issue: number,
+  timer: ReturnType<typeof setTimeout>,
+  resolve: (result: HarnessResult) => void,
+  reject: (error: unknown) => void,
+): void {
+  child.on('error', (error) => {
+    clearTimeout(timer);
+    reject(error);
+  });
+  child.on('close', (code) => {
+    clearTimeout(timer);
+    try {
+      resolve(readCodexResult(output.stdout, issue, code, output.started, output.stderr));
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function buildCodexArgs(options: CodexHarnessOptions, command: string[], prompt: string): string[] {
@@ -89,47 +134,4 @@ function buildCodexArgs(options: CodexHarnessOptions, command: string[], prompt:
     `model_reasoning_effort=${options.reasoningEffort}`,
     prompt,
   ];
-}
-
-function readCodexResult(
-  stdout: string,
-  issue: number,
-  code: number | null,
-  started: boolean,
-  stderr: string,
-): HarnessResult {
-  let session: string | undefined;
-  const messages: string[] = [];
-  for (const line of stdout.split(/\r?\n/)) readCodexEvent(line, (id) => (session = id), messages);
-  if (code !== 0)
-    throw started
-      ? new ResumeAmbiguousError(stderr || 'Codex failed after starting the turn')
-      : new ResumeRejectedError(stderr || 'Codex rejected the session');
-  if (!session) throw new Error(`Codex completed without a valid session ID for issue #${issue}`);
-
-  return { accepted: true, session, ...(messages.length ? { output: messages.join('\n') } : {}) };
-}
-
-function readCodexEvent(
-  line: string,
-  setSession: (session: string) => void,
-  messages: string[],
-): void {
-  try {
-    const value = JSON.parse(line) as Record<string, unknown>;
-    if (value.type === 'thread.started' && typeof value.thread_id === 'string')
-      setSession(value.thread_id);
-    else if (typeof value.session_id === 'string') setSession(value.session_id);
-    const item = value.item;
-    if (
-      value.type === 'item.completed' &&
-      typeof item === 'object' &&
-      item !== null &&
-      (item as Record<string, unknown>).type === 'agent_message' &&
-      typeof (item as Record<string, unknown>).text === 'string'
-    )
-      messages.push((item as Record<string, string>).text);
-  } catch {
-    // Codex may emit non-JSON diagnostic lines alongside protocol events.
-  }
 }

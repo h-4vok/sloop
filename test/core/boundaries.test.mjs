@@ -40,58 +40,50 @@ function createMockFollowUpIssueHarness(hasFollowUpIssue) {
   return { calls, dependencies, key };
 }
 
+const requiredMethodsByBoundary = {
+  Workspace: ['load', 'save'],
+  CliControl: [
+    'loadConfig',
+    'status',
+    'list',
+    'recoverLock',
+    'reset',
+    'resolveReviewCap',
+    'linkIssue',
+    'prepareRecovery',
+  ],
+  GitProvider: ['prepareWorkerBranch', 'checkoutWorkerBranch'],
+  GitHubProvider: [
+    'eligible',
+    'comment',
+    'pullRequest',
+    'updatePullRequestBody',
+    'pullRequestBody',
+    'prComment',
+  ],
+  AgentRunner: ['run'],
+  HealthGate: ['pid', 'processAlive'],
+  LockStore: [
+    'tryAcquire',
+    'readOwner',
+    'tryBeginReclaim',
+    'readReclaimOwner',
+    'reclaimAgeMs',
+    'finishReclaim',
+    'abandonReclaim',
+    'release',
+  ],
+  Scheduler: ['now', 'sleep'],
+  RunEventSink: ['onReclaim'],
+};
+
 test('production assembly supplies every typed external-concern boundary', () => {
   const dependencies = productionDependencies(
     process.cwd(),
     loadConfigText(canonicalConfigYaml()),
     'h-4vok/sloop',
   );
-  const methods = {
-    Workspace: ['load', 'save'],
-
-    CliControl: [
-      'loadConfig',
-      'status',
-      'list',
-      'recoverLock',
-      'reset',
-      'resolveReviewCap',
-      'linkIssue',
-      'prepareRecovery',
-    ],
-
-    GitProvider: ['prepareWorkerBranch', 'checkoutWorkerBranch'],
-
-    GitHubProvider: [
-      'eligible',
-      'comment',
-      'pullRequest',
-      'updatePullRequestBody',
-      'pullRequestBody',
-      'prComment',
-    ],
-
-    AgentRunner: ['run'],
-
-    HealthGate: ['pid', 'processAlive'],
-
-    LockStore: [
-      'tryAcquire',
-      'readOwner',
-      'tryBeginReclaim',
-      'readReclaimOwner',
-      'reclaimAgeMs',
-      'finishReclaim',
-      'abandonReclaim',
-      'release',
-    ],
-
-    Scheduler: ['now', 'sleep'],
-
-    RunEventSink: ['onReclaim'],
-  };
-
-  for (const [boundary, members] of Object.entries(methods))
+  for (const [boundary, members] of Object.entries(requiredMethodsByBoundary))
     for (const member of members)
       assert.equal(typeof dependencies[member], 'function', `${boundary}.${member} is required`);
 });

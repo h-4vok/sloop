@@ -23,88 +23,80 @@ import {
 } from '../../dispatcher/dispatcher-test-support.mjs';
 
 test('review-cap abandonment resumes safely after partial side effects', () => {
+  const fixture = createAbandonmentFixture();
+
+  resolveReviewCap(fixture.options, {}, fixture.statePath, fixture.root, undefined, fixture.host);
+
+  assert.equal(readState(fixture.statePath).status, 'abandoned');
+  assertAbandonmentSideEffects(fixture.calls);
+  resumeCompletedAbandonment(fixture);
+});
+
+function createAbandonmentFixture() {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-abandon-host-'));
   const statePath = join(root, 'state.json');
   const state = {
     issue: 1,
-
     pr: 7,
-
     status: 'review_cap_pending',
-
     reviewRound: 2,
-
     reviewCap: {
       capRound: 2,
-
       outstandingFindingIds: ['Q1'],
-
       additionalRounds: 0,
-
       waivedFindingIds: [],
     },
   };
   writeState(state, statePath);
-  const fake = createMockGitHubHost((args) => {
+  const host = createMockGitHubHost((args) => {
     if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({ comments: [] });
     if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({ number: 7, comments: [] });
     return '';
   });
-  const abandon = {
-    steer: 'stop safely',
-
-    abandon: true,
-
-    waiveAllOutstanding: false,
-
-    waivedFindingIds: [],
-
-    additionalRounds: 0,
+  return {
+    root,
+    statePath,
+    state,
+    host: host.host,
+    calls: host.calls,
+    options: {
+      steer: 'stop safely',
+      abandon: true,
+      waiveAllOutstanding: false,
+      waivedFindingIds: [],
+      additionalRounds: 0,
+    },
   };
+}
 
-  resolveReviewCap(abandon, {}, statePath, root, undefined, fake.host);
+function assertAbandonmentSideEffects(calls) {
+  const commands = calls.map(({ args }) => args.slice(0, 2).join(' '));
+  assert.ok(commands.includes('pr close'));
+  assert.ok(commands.includes('issue edit'));
+  assert.ok(commands.includes('issue close'));
+}
 
-  assert.equal(readState(statePath).status, 'abandoned');
-  assert.equal(
-    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'pr close'),
-    true,
-  );
-  assert.equal(
-    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'issue edit'),
-    true,
-  );
-  assert.equal(
-    fake.calls.some(({ args }) => args.slice(0, 2).join(' ') === 'issue close'),
-    true,
-  );
-
+function resumeCompletedAbandonment(fixture) {
   writeState(
     {
-      ...state,
-
+      ...fixture.state,
       status: 'abandon_pending',
-
       abandonment: {
         steer: 'stop safely',
-
         commentPublished: true,
-
         prClosed: true,
-
         labelled: true,
-
         issueClosed: true,
       },
     },
-    statePath,
+    fixture.statePath,
   );
   const resumed = createMockGitHubHost(() => {
     throw new Error('completed actions must not repeat');
   });
-  resolveReviewCap(abandon, {}, statePath, root, undefined, resumed.host);
-  assert.equal(readState(statePath).status, 'abandoned');
-});
-
+  resolveReviewCap(fixture.options, {}, fixture.statePath, fixture.root, undefined, resumed.host);
+  assert.equal(readState(fixture.statePath).status, 'abandoned');
+}
 test('Windows batch commands use cmd.exe without Node shell mode', () => {
   assert.deepEqual(
     childProcessInvocation(

@@ -7,74 +7,63 @@ import {
 } from '../support/dispatcher-test-support.mjs';
 
 test('no-work done state clears all prior run context', async () => {
-  const dispatcherHarness = createMockDispatcherHarness([], {
-    initialState: {
-      issue: 9,
+  const dispatcherHarness = createNoWorkHarness();
 
-      status: 'blocked',
-
-      pr: 14,
-
-      branch: 'codex/issue-9',
-
-      headSha: 'old-head',
-
-      mainBaseSha: 'old-main',
-
-      reviewRound: 4,
-
-      lastCiFeedback: 'old CI',
-
-      lastQaFeedback: 'old QA',
-
-      lastStaffFeedback: 'old Staff',
-
-      taskContext: 'old context',
-
-      workerRunId: 'old-run',
-
-      workerPid: 123,
-
-      workerStartedAt: 1,
-
-      workerHeartbeatAt: 1,
-
-      workerRecoveryCount: 2,
-
-      lastError: 'old error',
-
-      completedIssues: [8],
-
-      mainGreen: true,
-    },
-  });
-  dispatcherHarness.setState({
-    completedIssues: [8],
-
-    mainGreen: true,
-
-    status: undefined,
-
-    issue: undefined,
-
-    pr: undefined,
-
-    branch: undefined,
-  });
   await dispatch(dispatcherHarness.cfg, dispatcherHarness.dependencies);
 
-  assert.deepEqual(dispatcherHarness.state(), {
-    completedIssues: [8],
-
-    mainGreen: true,
-
-    status: 'done',
-
-    drainStatus: 'done',
-
-    updatedAt: dispatcherHarness.state().updatedAt,
-  });
+  assert.deepEqual(
+    dispatcherHarness.state(),
+    expectedDoneState(dispatcherHarness.state().updatedAt),
+  );
 });
+
+function createNoWorkHarness() {
+  const dispatcherHarness = createMockDispatcherHarness([], { initialState: priorRunState() });
+  dispatcherHarness.setState({
+    completedIssues: [8],
+    mainGreen: true,
+    status: undefined,
+    issue: undefined,
+    pr: undefined,
+    branch: undefined,
+  });
+
+  return dispatcherHarness;
+}
+
+function priorRunState() {
+  return {
+    issue: 9,
+    status: 'blocked',
+    pr: 14,
+    branch: 'codex/issue-9',
+    headSha: 'old-head',
+    mainBaseSha: 'old-main',
+    reviewRound: 4,
+    lastCiFeedback: 'old CI',
+    lastQaFeedback: 'old QA',
+    lastStaffFeedback: 'old Staff',
+    taskContext: 'old context',
+    workerRunId: 'old-run',
+    workerPid: 123,
+    workerStartedAt: 1,
+    workerHeartbeatAt: 1,
+    workerRecoveryCount: 2,
+    lastError: 'old error',
+    completedIssues: [8],
+    mainGreen: true,
+  };
+}
+
+function expectedDoneState(updatedAt) {
+  return {
+    completedIssues: [8],
+    mainGreen: true,
+    status: 'done',
+    drainStatus: 'done',
+    updatedAt,
+  };
+}
 
 test('resetRunState clears stale run context and preserves completed issues', () => {
   const state = resetRunState(
