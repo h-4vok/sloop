@@ -3,7 +3,7 @@ import type { RemoteAuthority } from '../../../core/boundaries.js';
 import type { RemoteSnapshot, RunManifest } from '../../../remote-state.js';
 import { validateRunManifest } from '../../../remote-state.js';
 import type { ReviewCapResumeContext } from '../types/ReviewCapResumeContext.js';
-import { HitlResumeDirectiveService } from './HitlResumeDirectiveService.js';
+import { HitlResumeDirectiveService } from './hitl/HitlResumeDirectiveService.js';
 const { activeRunForHitl } = HitlResumeDirectiveService;
 
 function reconcileReviewCapResume(

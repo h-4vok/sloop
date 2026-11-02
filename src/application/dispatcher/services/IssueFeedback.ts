@@ -1,5 +1,5 @@
 import type { Config, Deps, Issue, IssueProgress } from '../types/index.js';
-import { HumanReviewGuideService } from './HumanReviewGuideService.js';
+import { HumanReviewGuideService } from './hitl/HumanReviewGuideService.js';
 const { latestWorkerComment, humanReviewGuide } = HumanReviewGuideService;
 
 function createIssueProgress(d: Deps): IssueProgress {

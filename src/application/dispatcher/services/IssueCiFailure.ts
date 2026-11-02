@@ -3,7 +3,7 @@ import { ReviewBudget } from './ReviewBudget.js';
 const { effectiveMaxRounds } = ReviewBudget;
 import { ReviewCapPause } from './ReviewCapPause.js';
 const { pauseForReviewCap } = ReviewCapPause;
-import { WorkerExecution } from './WorkerExecution.js';
+import { WorkerExecution } from './worker/WorkerExecution.js';
 const { runWorker } = WorkerExecution;
 
 async function handleCiFailure(

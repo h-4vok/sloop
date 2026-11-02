@@ -1,6 +1,6 @@
 /** Coordinates Arbiter intervention for dispatcher workflows. */
 import type { Config, Deps, Issue, PullRequest } from '../types/index.js';
-import { ArbiterPreparation } from './ArbiterPreparation.js';
+import { ArbiterPreparation } from './review/ArbiterPreparation.js';
 const { prepareArbiter } = ArbiterPreparation;
 import { ArbiterAgent } from './ArbiterAgent.js';
 const { invokeArbiterAgent } = ArbiterAgent;

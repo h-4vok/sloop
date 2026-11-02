@@ -8,7 +8,7 @@ import { RemoteRunState } from './recovery/RemoteRunState.js';
 const { remoteProjection } = RemoteRunState;
 import { DispatchRemoteRecovery } from './recovery/DispatchRemoteRecovery.js';
 const { prepareRemoteRecovery } = DispatchRemoteRecovery;
-import { DispatchWorkspace } from './DispatchWorkspace.js';
+import { DispatchWorkspace } from './worker/DispatchWorkspace.js';
 const { prepareWorkerWorkspace } = DispatchWorkspace;
 import { IssueWorkflow } from './IssueWorkflow.js';
 const { processIssue } = IssueWorkflow;
