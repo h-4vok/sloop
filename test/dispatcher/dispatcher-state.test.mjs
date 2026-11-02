@@ -167,7 +167,7 @@ test('status recommends safe recovery only for valid pending Worker context', as
   }
 });
 
-test('status rejects unsupported flag combinations', () => {
+test('status rejects unsupported flag combinations', { timeout: 10_000 }, () => {
   const dispatcherHarness = createMockDispatcherHarness();
 
   for (const args of [
