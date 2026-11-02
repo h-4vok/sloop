@@ -76,18 +76,29 @@ function updateConfigTextResult(
 
 function canonicalConfigYaml(): string {
   const document = new Document();
-  const value: Record<string, unknown> = {};
-  for (const metadata of configRegistry)
-    setPath(
-      value,
-      metadata.path,
-      metadata.type === 'duration' ? formatDuration(metadata.default as number) : metadata.default,
-    );
-  document.contents = document.createNode(value);
+  document.contents = document.createNode(canonicalConfigValues());
+  addConfigFieldComments(document);
+  return serializeCanonicalConfig(document);
+}
+
+function canonicalConfigValues(): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const metadata of configRegistry) {
+    const value =
+      metadata.type === 'duration' ? formatDuration(metadata.default as number) : metadata.default;
+    setPath(values, metadata.path, value);
+  }
+  return values;
+}
+
+function addConfigFieldComments(document: Document): void {
   for (const metadata of configRegistry) {
     const node = document.getIn(metadata.path.split('.'), true);
     if (node && typeof node === 'object') (node as Node).commentBefore = ` ${metadata.explanation}`;
   }
+}
+
+function serializeCanonicalConfig(document: Document): string {
   return document
     .toString({ lineWidth: 0 })
     .replace(

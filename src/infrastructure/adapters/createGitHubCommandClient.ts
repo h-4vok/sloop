@@ -3,7 +3,8 @@ import { ExternalServiceError } from '../../core/ExternalServiceError.js';
 import type { AdapterExec } from './AdapterExec.js';
 import type { AdapterExecOptions } from './AdapterExecOptions.js';
 
-const nativeAdapterExec: AdapterExec = execFileSync;
+const nativeAdapterExec: AdapterExec = (file, args, options) =>
+  execFileSync(file, [...args], options);
 
 /** Creates a repository-scoped GitHub CLI client for production adapters. */
 export const gitHubCommandClientFactory = Object.freeze({

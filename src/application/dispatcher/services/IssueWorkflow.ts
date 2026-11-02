@@ -1,7 +1,7 @@
 import type { Config, Deps, Issue, IssueProgress, IssueRoundResult } from '../types/index.js';
 import { ReviewBudget } from './ReviewBudget.js';
 const { effectiveMaxRounds } = ReviewBudget;
-import { WorkerExecution } from './WorkerExecution.js';
+import { WorkerExecution } from './worker/WorkerExecution.js';
 const { runWorker } = WorkerExecution;
 import { IssueFeedback } from './IssueFeedback.js';
 const { createIssueProgress, shouldRunWorker, restoreCompletedWorkerEvidence } = IssueFeedback;
@@ -18,10 +18,7 @@ async function runInitialWorker(
 ): Promise<IssueProgress> {
   const restored = await restoreCompletedWorkerEvidence(cfg, d, issue, progress);
   const current = d.load();
-  const shouldRunWorker =
-    (!restored && shouldRunWorkerFromState(d)) ||
-    current.status === 'ci_failed' ||
-    current.status === 'qa_changes_requested';
+  const shouldRunWorker = shouldResumeWorker(restored, current.status, d);
   if (!shouldRunWorker) return { ...progress, pr: current.pr };
 
   const pr = await runWorker(
@@ -39,6 +36,14 @@ async function runInitialWorker(
 
 function shouldRunWorkerFromState(d: Deps): boolean {
   return shouldRunWorker(d);
+}
+
+function shouldResumeWorker(restored: boolean, status: string | undefined, d: Deps): boolean {
+  return (!restored && shouldRunWorkerFromState(d)) || hasFailedReview(status);
+}
+
+function hasFailedReview(status: string | undefined): boolean {
+  return status === 'ci_failed' || status === 'qa_changes_requested';
 }
 
 async function processIssue(cfg: Config, d: Deps, issue: Issue): Promise<void> {

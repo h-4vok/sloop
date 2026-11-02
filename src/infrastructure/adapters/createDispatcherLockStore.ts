@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LockOwner, LockStore } from '../../core/boundaries.js';
+import type { LockOwner } from '../../core/LockOwner.js';
+import type { LockStore } from '../../core/LockStore.js';
 import { dispatcherLockPath } from '../../dispatcher.js';
 
 function writeLockOwner(file: string, owner: LockOwner): void {
@@ -52,14 +53,16 @@ export const dispatcherLockStoreFactory = Object.freeze({
 
       abandonReclaim: () => rmSync(reclaimDirectory, { recursive: true, force: true }),
 
-      release: (token) => {
-        try {
-          const owner = JSON.parse(readFileSync(ownerFile, 'utf8')) as LockOwner;
-          if (owner.token === token) rmSync(lockDirectory, { recursive: true, force: true });
-        } catch {
-          /* The lock may have been reclaimed before release. */
-        }
-      },
+      release: (token) => releaseOwnedLock(lockDirectory, ownerFile, token),
     };
   },
 });
+
+function releaseOwnedLock(lockDirectory: string, ownerFile: string, token: string): void {
+  try {
+    const owner = JSON.parse(readFileSync(ownerFile, 'utf8')) as LockOwner;
+    if (owner.token === token) rmSync(lockDirectory, { recursive: true, force: true });
+  } catch {
+    /* The lock may have been reclaimed before release. */
+  }
+}

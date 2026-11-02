@@ -8,7 +8,25 @@ export function codexCliInvocation(
   // Resolve the user's global command through PowerShell. Keep dynamic values
   // as base64-encoded UTF-8 lines on stdin so prompts and arguments are never
   // interpreted as shell code or converted by PowerShell's JSON date parser.
-  const script = [
+  const script = createCodexPowerShellScript();
+
+  return {
+    command: 'powershell.exe',
+
+    args: [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      Buffer.from(script, 'utf16le').toString('base64'),
+    ],
+
+    stdin: `${args.length}\n${args.map((arg) => Buffer.from(arg, 'utf8').toString('base64')).join('\n')}\n`,
+  };
+}
+
+function createCodexPowerShellScript() {
+  return [
     'function Quote-WindowsArgument([string]$value) {',
     '  $builder = New-Object System.Text.StringBuilder',
     '  [void]$builder.Append([char]34)',
@@ -54,18 +72,4 @@ export function codexCliInvocation(
     '  exit 127',
     '}',
   ].join('\n');
-
-  return {
-    command: 'powershell.exe',
-
-    args: [
-      '-NoLogo',
-      '-NoProfile',
-      '-NonInteractive',
-      '-EncodedCommand',
-      Buffer.from(script, 'utf16le').toString('base64'),
-    ],
-
-    stdin: `${args.length}\n${args.map((arg) => Buffer.from(arg, 'utf8').toString('base64')).join('\n')}\n`,
-  };
 }

@@ -3,6 +3,13 @@ import { extname, isAbsolute } from 'node:path';
 
 type ExecutableLocator = (commandName: string) => readonly string[];
 
+/** Immutable command invocation returned to infrastructure callers. */
+type ProcessInvocation = Readonly<{
+  command: string;
+  args: readonly string[];
+  windowsVerbatimArguments?: boolean;
+}>;
+
 const locateExecutable: ExecutableLocator = (commandName) =>
   execFileSync('where.exe', [commandName], {
     encoding: 'utf8',
@@ -20,54 +27,70 @@ function resolveExecutable(
   locate: ExecutableLocator = locateExecutable,
 ): string {
   if (platform !== 'win32') return commandName;
-  if (isAbsolute(commandName)) return commandName;
-  if (extname(commandName)) return commandName;
+  if (isAlreadyResolvedExecutable(commandName)) return commandName;
   try {
-    const paths = locate(commandName);
-    return (
-      paths.find((path) => /\.cmd$/i.test(path)) ??
-      paths.find((path) => /\.exe$/i.test(path)) ??
-      paths[0] ??
-      commandName
-    );
+    return selectWindowsExecutable(locate(commandName), commandName);
   } catch {
     return commandName;
   }
 }
 
+function isAlreadyResolvedExecutable(commandName: string): boolean {
+  return isAbsolute(commandName) || Boolean(extname(commandName));
+}
+
+function selectWindowsExecutable(paths: readonly string[], commandName: string): string {
+  return (
+    paths.find((path) => /\.cmd$/i.test(path)) ??
+    paths.find((path) => /\.exe$/i.test(path)) ??
+    paths[0] ??
+    commandName
+  );
+}
+
 function childProcessInvocation(
   executable: string,
-  args: string[],
+  args: readonly string[],
   platform = process.platform,
   commandProcessor = process.env.ComSpec,
-): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
-  if (platform === 'win32' && /\.(cmd|bat)$/i.test(executable)) {
-    // cmd.exe must parse batch files, so never pass arbitrary argv entries to
-    // its command parser. The dispatcher only needs fixed CLI flags for batch
-    // shims; reject syntax that could change the command before spawning it.
-    const unsafe = /["%&|<>()^!\r\n]/;
-    if (unsafe.test(executable) || args.some((arg) => unsafe.test(arg)))
-      throw new Error('Windows batch command contains unsafe cmd.exe syntax');
-    return {
-      command: commandProcessor || 'cmd.exe',
+): ProcessInvocation {
+  if (!isWindowsBatchCommand(executable, platform)) return { command: executable, args: [...args] };
+  assertSafeBatchCommand(executable, args);
+  return windowsBatchInvocation(executable, args, commandProcessor);
+}
 
-      args: [
-        '/d',
-        '/s',
-        '/v:off',
-        '/c',
-        `""${executable}" ${args.map((arg) => `"${arg}"`).join(' ')}"`,
-      ],
+function isWindowsBatchCommand(executable: string, platform: string): boolean {
+  return platform === 'win32' && /\.(cmd|bat)$/i.test(executable);
+}
 
-      windowsVerbatimArguments: true,
-    };
-  }
-  return { command: executable, args };
+function assertSafeBatchCommand(executable: string, args: readonly string[]): void {
+  // cmd.exe must parse batch files, so reject syntax that can alter the command.
+  const unsafe = /["%&|<>()^!\r\n]/;
+  if (unsafe.test(executable) || args.some((argument) => unsafe.test(argument)))
+    throw new Error('Windows batch command contains unsafe cmd.exe syntax');
+}
+
+function windowsBatchInvocation(
+  executable: string,
+  args: readonly string[],
+  commandProcessor: string | undefined,
+): ProcessInvocation {
+  return {
+    command: commandProcessor || 'cmd.exe',
+    args: [
+      '/d',
+      '/s',
+      '/v:off',
+      '/c',
+      `""${executable}" ${args.map((arg) => `"${arg}"`).join(' ')}"`,
+    ],
+    windowsVerbatimArguments: true,
+  };
 }
 
 type SyncCommandExecutor = (
   command: string,
-  args: string[],
+  args: readonly string[],
   options: {
     cwd: string;
     encoding: 'utf8';
@@ -78,9 +101,9 @@ type SyncCommandExecutor = (
 
 function runSyncCommand(
   executable: string,
-  args: string[],
+  args: readonly string[],
   execute: SyncCommandExecutor = (command, commandArgs, options) =>
-    execFileSync(command, commandArgs, options) as string,
+    execFileSync(command, [...commandArgs], options) as string,
   platform = process.platform,
   commandProcessor = process.env.ComSpec,
   cwd = process.cwd(),

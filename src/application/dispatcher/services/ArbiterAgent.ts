@@ -1,8 +1,8 @@
 import type { ArbiterRunContext } from '../types/ArbiterRunContext.js';
-import type { AgentEnvelope } from '../../../agent-runner.js';
+import type { AgentEnvelope } from '../../../infrastructure/agents/AgentEnvelope.js';
 import { readFileSync, rmSync } from 'node:fs';
-import { validateAgentEnvelope } from '../../../agent-runner.js';
-import { ArbiterOutput } from './ArbiterOutput.js';
+import { validateAgentEnvelope } from '../../../infrastructure/agents/validateAgentEnvelope.js';
+import { ArbiterOutput } from './review/ArbiterOutput.js';
 const { createStructuredArbiterOutput } = ArbiterOutput;
 import { AgentInvocation } from './AgentInvocation.js';
 const { runRoleLogged } = AgentInvocation;
