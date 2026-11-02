@@ -182,6 +182,45 @@ test('production adapter methods preserve failures from the GitHub command bound
   assert.throws(() => failing.remote.claim(81, 'key', 'lease'), /raw failure/);
   assert.throws(() => failing.remote.publish(81, createTestRunManifest()), /raw failure/);
 });
+
+test('eligible issue adapters select priority issues and list their public fields', () => {
+  const issueResponses = [
+    {
+      number: 7,
+
+      title: 'Normal issue',
+
+      body: 'normal',
+
+      labels: [{ name: 'eligible' }],
+    },
+    {
+      number: 8,
+
+      title: 'Priority issue',
+
+      body: 'priority',
+
+      labels: [{ name: 'eligible' }, { name: 'Priority: P0' }],
+    },
+  ];
+  const adapterDependencies = createAdapterDependenciesWithMockGitHubCommand(() =>
+    JSON.stringify(issueResponses),
+  );
+
+  const eligibleIssues = adapterDependencies.eligible();
+  const listedIssues = adapterDependencies.list();
+
+  assert.deepEqual(
+    eligibleIssues.map(({ number }) => number),
+    [8, 7],
+  );
+  assert.deepEqual(listedIssues, [
+    { number: 8, title: 'Priority issue' },
+
+    { number: 7, title: 'Normal issue' },
+  ]);
+});
 test('adapter local callback surface preserves dispatcher contracts without GitHub access', async () => {
   const adapterDependencies = createAdapterDependenciesWithMockGitHubCommand(() => undefined);
 
