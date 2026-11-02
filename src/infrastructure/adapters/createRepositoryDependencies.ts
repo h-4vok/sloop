@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import type { RunEventLogger } from '../../core/boundaries.js';
+import type { RunEventLogger } from '../../core/RunEventLogger.js';
 import { RunLogger, runDirectory } from '../../run-log.js';
 import type { SloopConfig } from '../../config.js';
 import { workspaceAdapter } from '../workspace/index.js';

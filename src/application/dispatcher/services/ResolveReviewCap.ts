@@ -1,5 +1,6 @@
 import type { Config, DispatcherHost } from '../types/index.js';
-import type { RemoteAuthority, ReviewCapOptions } from '../../../core/boundaries.js';
+import type { RemoteAuthority } from '../types/RemoteAuthority.js';
+import type { ReviewCapOptions } from '../types/ReviewCapOptions.js';
 import { DispatcherRuntime } from './DispatcherRuntime.js';
 const { defaultRoot, runStateStore, defaultProcessAlive } = DispatcherRuntime;
 const { readState, stateFile } = runStateStore;

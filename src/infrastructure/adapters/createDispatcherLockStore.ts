@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LockOwner, LockStore } from '../../core/boundaries.js';
+import type { LockOwner } from '../../core/LockOwner.js';
+import type { LockStore } from '../../core/LockStore.js';
 import { dispatcherLockPath } from '../../dispatcher.js';
 
 function writeLockOwner(file: string, owner: LockOwner): void {

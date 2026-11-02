@@ -1,4 +1,4 @@
-import type { RunEventLogger } from '../../core/boundaries.js';
+import type { RunEventLogger } from '../../core/RunEventLogger.js';
 import type { Deps, Spec } from '../../dispatcher.js';
 import { defaultProcessAlive } from '../../dispatcher.js';
 import { checkoutWorkerBranch, prepareWorkerBranch, runCommand } from '../../dispatcher.js';

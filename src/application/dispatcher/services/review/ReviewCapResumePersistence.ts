@@ -1,5 +1,5 @@
 import type { DispatcherHost, State } from '../../types/index.js';
-import type { RemoteAuthority } from '../../../../core/boundaries.js';
+import type { RemoteAuthority } from '../../types/RemoteAuthority.js';
 import type { RunManifest } from '../../../../remote-state.js';
 import { DispatcherRuntime } from '../DispatcherRuntime.js';
 const { runStateStore } = DispatcherRuntime;

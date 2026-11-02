@@ -1,5 +1,5 @@
 import type { State } from '../types/index.js';
-import type { RemoteAuthority } from '../../../core/boundaries.js';
+import type { RemoteAuthority } from '../types/RemoteAuthority.js';
 import type { RemoteSnapshot, RunManifest } from '../../../remote-state.js';
 import { validateRunManifest } from '../../../remote-state.js';
 import type { ReviewCapResumeContext } from '../types/ReviewCapResumeContext.js';

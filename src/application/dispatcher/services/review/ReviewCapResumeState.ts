@@ -1,5 +1,6 @@
 import type { Config, DispatcherHost, State } from '../../types/index.js';
-import type { RemoteAuthority, ReviewCapOptions } from '../../../../core/boundaries.js';
+import type { RemoteAuthority } from '../../types/RemoteAuthority.js';
+import type { ReviewCapOptions } from '../../types/ReviewCapOptions.js';
 import type { ReviewCapResumeContext } from '../../types/ReviewCapResumeContext.js';
 import { PullRequestReader } from '../PullRequestReader.js';
 const { pullRequest } = PullRequestReader;
