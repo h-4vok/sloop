@@ -1,6 +1,10 @@
 /** Coordinates run state policy operations for dispatcher workflows. */
-import type { Status, State, Config, Deps } from '../../../application/dispatcher/types/index.js';
-import { join } from 'node:path';
+import type {
+  Status,
+  State,
+  Config,
+  Deps,
+} from '../../../../application/dispatcher/types/index.js';
 import { StateDiagnostics } from './StateDiagnostics.js';
 const { normalizedError } = StateDiagnostics;
 
@@ -13,16 +17,6 @@ const skills = {
 
   qa: 'sloop-qa',
 } as const;
-
-function defaultProcessAlive(pid: number): boolean {
-  if (!pid || pid < 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function isWorkerStatus(status: Status | undefined): boolean {
   return status === 'worker_running' || status === 'in_progress';
@@ -71,6 +65,31 @@ function skillFor(status: Status | undefined): string {
   return skills.claim;
 }
 
+function claimNewIssue(d: Deps, issue: number): void {
+  const current = d.load();
+  d.save({
+    completedIssues: current.completedIssues ?? [],
+
+    mainGreen: current.mainGreen,
+
+    issue,
+
+    status: 'claimed',
+
+    reviewRound: 1,
+
+    drainStatus: 'running',
+
+    updatedAt: d.now(),
+  });
+  d.runLogger?.write('transition', { issue, from: current.status, to: 'claimed' });
+  d.reportStatus?.(`[sloop] issue #${issue}: claimed`);
+  d.comment(
+    issue,
+    `Sloop engineering v2: estado claimed. Skill activa: ${skillFor('claimed')}. QA precede la decisión humana; no se hace merge automático.`,
+  );
+}
+
 function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}): void {
   let current = d.load();
   const diagnostic =
@@ -81,7 +100,7 @@ function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}
   const errors = diagnostic === undefined ? {} : normalizedError(next, diagnostic, current);
   d.save({ ...current, issue, status: next, updatedAt: d.now(), ...extra, ...errors });
   d.runLogger?.write('transition', { issue, from: current.status, to: next, state: extra });
-  console.error(`[sloop] issue #${issue}: ${next}`);
+  d.reportStatus?.(`[sloop] issue #${issue}: ${next}`);
   d.comment(
     issue,
     `Sloop engineering v2: estado ${next}. Skill activa: ${skillFor(next)}. QA precede la decisión humana; no se hace merge automático.`,
@@ -89,8 +108,6 @@ function status(d: Deps, issue: number, next: Status, extra: Partial<State> = {}
 }
 
 export const RunStatePolicy = {
-  defaultProcessAlive,
-
   isWorkerStatus,
 
   isActiveStatus,
@@ -102,6 +119,8 @@ export const RunStatePolicy = {
   recoveryEligibilityError,
 
   skillFor,
+
+  claimNewIssue,
 
   status,
 

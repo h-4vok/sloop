@@ -6,7 +6,7 @@ import type {
   PullRequest,
 } from '../../../application/dispatcher/types/index.js';
 import { join } from 'node:path';
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { PullRequestReader } from './PullRequestReader.js';
 const { pullRequest } = PullRequestReader;

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { RunEventLogger } from '../../core/boundaries.js';
+import { RunLogger, runDirectory } from '../../run-log.js';
 import type { SloopConfig } from '../../config.js';
 import { workspaceAdapter } from '../workspace/index.js';
 import type { ProductionAdapterOptions } from './ProductionAdapterOptions.js';
@@ -57,6 +58,9 @@ export function createRepositoryDependencies(
     setRunLogger: (logger: RunEventLogger | undefined) => {
       runLogger = logger;
     },
+    createRunLogger: (issue: number, runId: string) =>
+      new RunLogger(runDirectory(root, issue, runId)),
+    reportStatus: (message: string) => console.error(message),
     workspace,
     client,
     stateFile,

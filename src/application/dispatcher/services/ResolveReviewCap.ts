@@ -1,9 +1,8 @@
 import type { Config, DispatcherHost } from '../types/index.js';
 import type { RemoteAuthority, ReviewCapOptions } from '../../../core/boundaries.js';
-import { RunStateStore } from './RunStateStore.js';
-const { readState, stateFile } = RunStateStore;
 import { DispatcherRuntime } from './DispatcherRuntime.js';
-const { defaultRoot } = DispatcherRuntime;
+const { defaultRoot, runStateStore, defaultProcessAlive } = DispatcherRuntime;
+const { readState, stateFile } = runStateStore;
 import { ReviewCapAbandonment } from './ReviewCapAbandonment.js';
 const { abandonReviewCap } = ReviewCapAbandonment;
 import { ReviewCapResume } from './ReviewCapResume.js';
@@ -39,7 +38,7 @@ function resolveReviewCap(
     abandonReviewCap(stored, options.steer.trim(), statePath, cwd, repository, host);
     return;
   }
-  const context = reconcileReviewCapResume(stored, remote);
+  const context = reconcileReviewCapResume(stored, remote, defaultProcessAlive);
   const next = buildReviewCapState(options, cfg, context, cwd, repository, host);
   persistReviewCapDecision(next, context, options, statePath, cwd, repository, host, remote);
 }

@@ -1,6 +1,6 @@
 import type { Config, Deps, Issue } from '../types/index.js';
 import { CliFailure } from '../types/CliFailure.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const {
   isActiveStatus,
   isWorkerStatus,

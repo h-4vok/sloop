@@ -4,7 +4,7 @@ import { DispatcherRuntime } from './DispatcherRuntime.js';
 const { defaultRoot } = DispatcherRuntime;
 import { GitHubCli } from './GitHubCli.js';
 const { ghJson } = GitHubCli;
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 
 function pullRequest(

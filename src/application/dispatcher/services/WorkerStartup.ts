@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Config, Deps, Issue } from '../types/index.js';
 import { RunLogger, runDirectory } from '../../../run-log.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
+import { RunStatePolicy } from './state/RunStatePolicy.js';
 const { status } = RunStatePolicy;
 import { AgentRoles } from './AgentRoles.js';
 const { roleCommand, appendWorkerRoundContext, rolePrompt, roleUpdate } = AgentRoles;

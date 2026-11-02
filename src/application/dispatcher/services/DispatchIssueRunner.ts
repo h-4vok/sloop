@@ -4,9 +4,9 @@ import type { RunManifest } from '../../../remote-state.js';
 import { RunLogger, applyRunRetention, runDirectory } from '../../../run-log.js';
 import { allowlistedPublication } from '../../../publication.js';
 import { withEphemeralMutexAsync } from '../../../mutex.js';
-import { RemoteRunState } from './RemoteRunState.js';
+import { RemoteRunState } from './recovery/RemoteRunState.js';
 const { remoteProjection } = RemoteRunState;
-import { DispatchRemoteRecovery } from './DispatchRemoteRecovery.js';
+import { DispatchRemoteRecovery } from './recovery/DispatchRemoteRecovery.js';
 const { prepareRemoteRecovery } = DispatchRemoteRecovery;
 import { DispatchWorkspace } from './DispatchWorkspace.js';
 const { prepareWorkerWorkspace } = DispatchWorkspace;
@@ -68,7 +68,9 @@ async function runIssueUnderMutex(
   initiallyRecovering: boolean,
 ): Promise<void> {
   await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
-    const remote = await prepareRemoteRecovery(cfg, d, issue, initiallyRecovering);
+    const remoteResult = await prepareRemoteRecovery(cfg, d, issue, initiallyRecovering);
+    if (!remoteResult.ok) throw remoteResult.error;
+    const remote = remoteResult.value;
     const runId = d.load().workerRunId ?? randomUUID();
     createIssueRunLogger(d, issue, runId, remote.recovery);
     const claimed = await prepareWorkerWorkspace(

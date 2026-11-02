@@ -1,12 +1,7 @@
 /** Coordinates remote run state operations for dispatcher workflows. */
-import type { Deps, Config, PullRequest } from '../../../application/dispatcher/types/index.js';
-import { artifactKey, projectRemoteState } from '../../../remote-state.js';
-import type { RunManifest, WorkflowProjection } from '../../../remote-state.js';
-import { RunStatePolicy } from './RunStatePolicy.js';
-const { status } = RunStatePolicy;
-import { PullRequestReader } from './PullRequestReader.js';
-const { pullRequest } = PullRequestReader;
-
+import type { Deps, Config } from '../../../../application/dispatcher/types/index.js';
+import { artifactKey, projectRemoteState } from '../../../../remote-state.js';
+import type { RunManifest, WorkflowProjection } from '../../../../remote-state.js';
 function remoteOwner(d: Deps, issue: number): string {
   return `${d.pid()}:${issue}`;
 }
@@ -107,39 +102,6 @@ function hydrateFromRemote(d: Deps, manifest: RunManifest): void {
   });
 }
 
-async function preparedRecoveryPullRequest(
-  d: Deps,
-  cfg: Config,
-  issue: number,
-  manifest: RunManifest,
-): Promise<PullRequest | undefined> {
-  const state = d.load();
-  if (!state.preparedRecovery || state.issue !== issue || !state.pr) return undefined;
-  const preparedPr = state.pr;
-  const fail = (reason: string): never => {
-    throw new Error(`prepared recovery PR #${preparedPr} failed validation: ${reason}`);
-  };
-  const evidence = await d.pullRequest(preparedPr);
-  if (evidence.number !== preparedPr)
-    return fail('PR identity does not match local recovery state');
-  if (evidence.state?.toUpperCase() !== 'OPEN') return fail('PR is not open');
-  if (evidence.baseRefName !== (cfg.baseBranch ?? 'main'))
-    return fail(`PR base must be ${cfg.baseBranch ?? 'main'}`);
-  if (!state.branch || evidence.headRefName !== state.branch)
-    return fail('PR head branch does not match the persisted recovery branch');
-  if (manifest.branch !== 'pending' && manifest.branch !== state.branch)
-    return fail('remote manifest branch does not match the persisted recovery branch');
-  if (manifest.pr !== undefined && manifest.pr !== preparedPr)
-    return fail('remote manifest PR identity conflicts with local recovery state');
-  if (!evidence.headRefOid) return fail('PR has no recoverable head commit');
-  const closesIssue = new RegExp(
-    `^\\s*(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+#${issue}\\b\\s*$`,
-    'im',
-  ).test(evidence.body ?? '');
-  if (!closesIssue) return fail(`PR body does not associate it with issue #${issue}`);
-  return evidence;
-}
-
 export const RemoteRunState = {
   remoteOwner,
 
@@ -150,6 +112,4 @@ export const RemoteRunState = {
   remoteProjection,
 
   hydrateFromRemote,
-
-  preparedRecoveryPullRequest,
 };

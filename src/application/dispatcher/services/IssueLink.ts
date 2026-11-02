@@ -1,9 +1,8 @@
 /** Coordinates issue link operations for dispatcher workflows. */
 import type { DispatcherHost } from '../../../application/dispatcher/types/index.js';
-import { RunStateStore } from './RunStateStore.js';
-const { stateFile, readState, writeState } = RunStateStore;
 import { DispatcherRuntime } from './DispatcherRuntime.js';
-const { defaultRoot } = DispatcherRuntime;
+const { defaultRoot, runStateStore } = DispatcherRuntime;
+const { stateFile, readState, writeState } = runStateStore;
 import { GitHubCli } from './GitHubCli.js';
 const { gh } = GitHubCli;
 import { PullRequestReader } from './PullRequestReader.js';
@@ -33,7 +32,8 @@ function linkIssueToActiveRun(
     (number) => number !== current.issue,
   );
   const next = { ...current, linkedClosingIssues, updatedAt: Date.now() };
-  writeState(next, statePath);
+  const saveResult = writeState(next, statePath);
+  if (!saveResult.ok) throw saveResult.error;
   const body = pullRequestBody(current.pr, cwd, repository, host);
   const normalized = withIssueClosingReference(body, current.issue, linkedClosingIssues);
   if (normalized !== body.trim())
