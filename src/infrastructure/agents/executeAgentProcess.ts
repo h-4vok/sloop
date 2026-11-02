@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { ProcessExecutor } from './AgentEnvelope.js';
+import { terminateProcessTree } from './terminateProcessTree.js';
 
 /** Spawns an agent process without a shell and captures streams until completion. */
 export const executeAgentProcess: ProcessExecutor = (command, args, options) =>
@@ -14,13 +15,13 @@ export const executeAgentProcess: ProcessExecutor = (command, args, options) =>
       stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     if (!child.stdout || !child.stderr || (options.stdin !== undefined && !child.stdin)) {
-      child.kill();
+      terminateProcessTree(child);
       return reject(new Error('Codex process streams were not created'));
     }
     if (options.stdin !== undefined) child.stdin?.end(options.stdin);
     let stdout = '',
       stderr = '';
-    const timer = setTimeout(() => child.kill(), options.timeoutMs);
+    const timer = setTimeout(() => terminateProcessTree(child), options.timeoutMs);
     child.stdout.on('data', (b) => {
       const s = String(b);
       stdout += s;

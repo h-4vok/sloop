@@ -9,6 +9,7 @@ import type {
 } from './HarnessContext.js';
 import { ResumeAmbiguousError } from './ResumeAmbiguousError.js';
 import { ResumeRejectedError } from './ResumeRejectedError.js';
+import { terminateProcessTree } from '../terminateProcessTree.js';
 
 /** Owns Codex CLI invocation and its JSON event protocol. */
 export class CodexHarness implements Harness {
@@ -39,7 +40,7 @@ export class CodexHarness implements Harness {
         stdio: [invocation.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
       if (!child.stdout || !child.stderr || (invocation.stdin !== undefined && !child.stdin)) {
-        child.kill();
+        terminateProcessTree(child);
         reject(new Error('Codex process streams were not created'));
         return;
       }
@@ -47,7 +48,7 @@ export class CodexHarness implements Harness {
       let stdout = '';
       let stderr = '';
       let started = false;
-      const timer = setTimeout(() => child.kill(), this.options.timeoutMs);
+      const timer = setTimeout(() => terminateProcessTree(child), this.options.timeoutMs);
       child.stdout.on('data', (chunk) => {
         const text = String(chunk);
         started = true;
