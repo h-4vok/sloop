@@ -1,97 +1,124 @@
-export const executableBasename = (argument: string): string =>
-  argument
-    .replace(/\\/g, '/')
-    .split('/')
-    .at(-1)!
-    .toLowerCase()
-    .replace(/\.exe$/, '');
+const numericShellVersionPattern = /^\d/;
+const windowsPathSeparatorPattern = /\\/g;
+const windowsExecutableSuffixPattern = /\.exe$/;
+const ghAliasOrExtensionIndirectionPattern = /^(?:alias|extension)$/i;
 
-export const shellExecutables = new Set([
-  'ash',
-  'bash',
-  'bsh',
-  'cmd',
-  'csh',
-  'dash',
-  'elvish',
-  'es',
-  'fish',
-  'hush',
-  'ion',
-  'ksh',
-  'mksh',
-  'nu',
-  'osh',
-  'powershell',
-  'pdksh',
-  'pwsh',
-  'rc',
-  'sh',
-  'tcsh',
-  'xonsh',
-  'yash',
-  'zsh',
-]);
+// Blocks Git subcommands that can dispatch aliases, shells, or external tools.
+const gitCommandIndirectionPattern = /^(?:alias|difftool|filter-branch|mergetool|shell)$/i;
+const gitExecOptionPattern = /^--exec(?:=|$)/i;
+const npmExecutableIndirectionPattern = /^(?:exec|x|explore)$/i;
+const environmentAssignmentPattern = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const gitPagerConfigPattern = /^pager\..+$/;
 
-export const shellExecutable = (argument: string): boolean => {
-  const basename = executableBasename(argument);
-  if (shellExecutables.has(basename)) return true;
-  return [...shellExecutables].some((shell) => isVersionedShell(basename, shell));
-};
+// This pattern covers Git settings that can start shells or external commands.
+const shellLaunchingGitConfigPattern =
+  /^(?:core\.(?:editor|gitproxy|pager|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/;
 
-function isVersionedShell(basename: string, shell: string): boolean {
-  return basename.startsWith(`${shell}-`) || hasNumericShellVersion(basename, shell);
-}
+// These keys configure commands invoked by Git's difftool and filter mechanisms.
+const externalGitToolConfigPattern =
+  /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/;
 
-function hasNumericShellVersion(basename: string, shell: string): boolean {
-  return basename.startsWith(shell) && /^\d/.test(basename.slice(shell.length));
-}
+// Centralizes the argv security rules used by the configuration parser.
+export const agentArgvSecurity = {
+  executableBasename(argument: string): string {
+    return argument
+      .replace(windowsPathSeparatorPattern, '/')
+      .split('/')
+      .at(-1)!
+      .toLowerCase()
+      .replace(windowsExecutableSuffixPattern, '');
+  },
 
-export const allowedExecutables = new Set(['codex', 'env', 'gh', 'git', 'npm']);
+  shellExecutables: new Set([
+    'ash',
+    'bash',
+    'bsh',
+    'cmd',
+    'csh',
+    'dash',
+    'elvish',
+    'es',
+    'fish',
+    'hush',
+    'ion',
+    'ksh',
+    'mksh',
+    'nu',
+    'osh',
+    'powershell',
+    'pdksh',
+    'pwsh',
+    'rc',
+    'sh',
+    'tcsh',
+    'xonsh',
+    'yash',
+    'zsh',
+  ]),
 
-export const executableIndirectionOptions: Readonly<Record<string, readonly RegExp[]>> =
-  Object.freeze({
+  shellExecutable(argument: string): boolean {
+    const basename = this.executableBasename(argument);
+    if (this.shellExecutables.has(basename)) return true;
+
+    return [...this.shellExecutables].some((shell) => this.isVersionedShell(basename, shell));
+  },
+
+  isVersionedShell(basename: string, shell: string): boolean {
+    return basename.startsWith(`${shell}-`) || this.hasNumericShellVersion(basename, shell);
+  },
+
+  hasNumericShellVersion(basename: string, shell: string): boolean {
+    return (
+      basename.startsWith(shell) && numericShellVersionPattern.test(basename.slice(shell.length))
+    );
+  },
+
+  allowedExecutables: new Set(['codex', 'env', 'gh', 'git', 'npm']),
+
+  executableIndirectionOptions: Object.freeze({
     codex: [],
 
     env: [],
 
-    gh: [/^(?:alias|extension)$/i],
+    gh: [ghAliasOrExtensionIndirectionPattern],
 
-    git: [/^(?:alias|difftool|filter-branch|mergetool|shell)$/i, /^--exec(?:=|$)/i],
+    git: [gitCommandIndirectionPattern, gitExecOptionPattern],
 
-    npm: [/^(?:exec|x|explore)$/i],
-  });
+    npm: [npmExecutableIndirectionPattern],
+  }) as Readonly<Record<string, readonly RegExp[]>>,
 
-export const gitConfigDispatchesShell = (argument: string): boolean => {
-  const separator = argument.indexOf('=');
-  if (separator < 1) return false;
-  const name = argument.slice(0, separator).toLowerCase();
-  const configuredValue = argument.slice(separator + 1).trimStart();
-  return (
-    isShellAlias(name, configuredValue) ||
-    isShellLaunchingProgram(name) ||
-    isPagerProgram(name) ||
-    isExternalToolCommand(name)
-  );
+  gitConfigDispatchesShell(argument: string): boolean {
+    const separator = argument.indexOf('=');
+    if (separator < 1) return false;
+
+    const name = argument.slice(0, separator).toLowerCase();
+    const configuredValue = argument.slice(separator + 1).trimStart();
+
+    return (
+      this.isShellAlias(name, configuredValue) ||
+      this.isShellLaunchingProgram(name) ||
+      this.isPagerProgram(name) ||
+      this.isExternalToolCommand(name)
+    );
+  },
+
+  isShellAlias(name: string, value: string): boolean {
+    return name.startsWith('alias.') && value.startsWith('!');
+  },
+
+  isShellLaunchingProgram(name: string): boolean {
+    return shellLaunchingGitConfigPattern.test(name);
+  },
+
+  isPagerProgram(name: string): boolean {
+    return gitPagerConfigPattern.test(name);
+  },
+
+  isExternalToolCommand(name: string): boolean {
+    return externalGitToolConfigPattern.test(name);
+  },
+
+  environmentAssignment(argument: string): boolean {
+    return environmentAssignmentPattern.test(argument);
+  },
 };
-
-function isShellAlias(name: string, value: string): boolean {
-  return name.startsWith('alias.') && value.startsWith('!');
-}
-
-function isShellLaunchingProgram(name: string): boolean {
-  return /^(?:core\.(?:editor|gitproxy|pager|sshcommand)|sequence\.editor|gpg\.program|diff\.external|credential\.helper)$/.test(
-    name,
-  );
-}
-
-function isPagerProgram(name: string): boolean {
-  return /^pager\..+$/.test(name);
-}
-
-function isExternalToolCommand(name: string): boolean {
-  return /^(?:difftool\.[^.]+\.cmd|filter\.[^.]+\.(?:clean|process|smudge))$/.test(name);
-}
-
-export const environmentAssignment = (argument: string): boolean =>
-  /^[A-Za-z_][A-Za-z0-9_]*=/.test(argument);
