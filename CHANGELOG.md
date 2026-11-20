@@ -1,3 +1,7 @@
+## 1.8.0 - 2026-11-20
+
+- Merged pull request #194.
+
 ## 1.7.0 - 2026-11-02
 
 - Merged pull request #182.
