@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { result, type Result } from './core/Result.js';
 
 const positiveIssueNumberPattern = /^\d+$/;
+const positiveProcessIdPattern = /^[1-9]\d*$/;
 
 function createMutexLease(root: string, owner: string): () => void {
   const activeDirectory = join(root, '.sloop', 'mutex', 'active');
@@ -55,8 +56,8 @@ export const ephemeralMutex = Object.freeze({
       const ownerPid = Number(ownerFields[0]);
       if (
         ownerFields.length !== 2 ||
-        !Number.isInteger(ownerPid) ||
-        ownerPid < 1 ||
+        !positiveProcessIdPattern.test(ownerFields[0]!) ||
+        !Number.isSafeInteger(ownerPid) ||
         !positiveIssueNumberPattern.test(ownerFields[1]!)
       )
         return result.failure('Cannot reset the repository mutex because its owner is invalid.');

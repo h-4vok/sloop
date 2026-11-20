@@ -49,6 +49,7 @@ function isSeparateGitConfigValue(index: number, previousArgument: string | unde
 function inlineGitConfigValue(argument: string): string | undefined {
   if (argument.startsWith('-c')) return argument.slice(2);
   if (argument.startsWith('--config-env=')) return argument.slice('--config-env='.length);
+
   return undefined;
 }
 
@@ -106,6 +107,7 @@ function containsShellOperators(argument: string): boolean {
 
 function isExecutableIndirection(executable: string, argument: string, index: number): boolean {
   if (index === 0) return false;
+
   return agentArgvSecurity.executableIndirectionOptions[executable]!.some((pattern) =>
     pattern.test(argument),
   );

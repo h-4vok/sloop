@@ -101,6 +101,8 @@ test('reset succeeds when no repository mutex exists', () => {
 test.each([
   [undefined, 'unknown'],
   ['not-a-pid:168', 'invalid'],
+  ['1e3:168', 'invalid'],
+  ['0x10:168', 'invalid'],
 ])('reset preserves a mutex with an %s owner record', (owner, ownerStatus) => {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-unverified-mutex-'));
   const activeDirectory = join(root, '.sloop', 'mutex', 'active');
