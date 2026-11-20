@@ -7,6 +7,7 @@ export function commandNameForDispatcher(command: DispatcherCommand): string {
     list: '--list',
     'recover-lock': '--recover-lock',
     reset: '--reset',
+    'reset-mutex': '--reset-mutex',
     'prepare-recovery': '--prepare-recovery',
     'resolve-review-cap': '--resolve-review-cap',
     'link-issue': '--link-issue',

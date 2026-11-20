@@ -12,6 +12,7 @@ import {
 } from '../../dispatcher.js';
 import type { Config, PullRequest, State } from '../../dispatcher.js';
 import { defaultProcessAlive } from '../../dispatcher.js';
+import { ephemeralMutex } from '../../mutex.js';
 
 type DispatcherControlOptions = Readonly<{
   root: string;
@@ -103,6 +104,7 @@ function createWorkspaceStateControls(options: DispatcherControlOptions) {
         resetRunState(readState(options.stateFile), defaultProcessAlive),
         options.stateFile,
       ),
+    resetMutex: () => ephemeralMutex.reset(options.root, defaultProcessAlive),
   };
 }
 

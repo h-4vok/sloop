@@ -7,6 +7,7 @@ export type DispatcherCommand =
   | Readonly<{ kind: 'list' }>
   | Readonly<{ kind: 'recover-lock' }>
   | Readonly<{ kind: 'reset' }>
+  | Readonly<{ kind: 'reset-mutex' }>
   | Readonly<{ kind: 'prepare-recovery'; issue: number; pr?: number }>
   | Readonly<{ kind: 'resolve-review-cap'; options: ReviewCapOptions }>
   | Readonly<{ kind: 'link-issue'; issue: number }>

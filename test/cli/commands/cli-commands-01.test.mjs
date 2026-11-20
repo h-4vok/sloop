@@ -34,6 +34,7 @@ test('help documents the linked CLI contract', () => {
   assert.match(result.stdout, /^Sloop \d+\.\d+\.\d+/m);
   assert.match(result.stdout, /Usage: sloop <command> \[option\]/);
   assert.match(result.stdout, /--prepare-recovery N \[--pr PR\]/);
+  assert.match(result.stdout, /--reset-mutex/);
   assert.match(result.stdout, /--resolve-review-cap --steer TEXT/);
   assert.match(result.stdout, /--additional-rounds N/);
   assert.match(result.stdout, /--waive Q1,Q2/);

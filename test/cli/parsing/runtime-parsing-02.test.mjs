@@ -100,6 +100,7 @@ test('dispatcher parser accepts every supported control command family', () => {
     ['--list'],
     ['--recover-lock'],
     ['--reset'],
+    ['--reset-mutex'],
     ['--list-all-worktrees'],
     ['--clear-all-worktrees'],
     ['--link-issue', '1'],

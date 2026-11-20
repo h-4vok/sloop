@@ -23,7 +23,9 @@ export type DispatcherPreflight = Readonly<{
 /** Owns dispatcher command preflight orchestration and its observable order. */
 export const dispatcherChecks = Object.freeze({
   isLocalCommand(command: DispatcherCommand): boolean {
-    return ['status', 'recover-lock', 'reset', 'prepare-recovery'].includes(command.kind);
+    return ['status', 'recover-lock', 'reset', 'reset-mutex', 'prepare-recovery'].includes(
+      command.kind,
+    );
   },
 
   isGitHubWriteCommand(command: DispatcherCommand): boolean {
