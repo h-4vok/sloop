@@ -8,3 +8,4 @@ coverage/
 sloop.config.json
 .env
 .serena/
+.playwright-mcp/

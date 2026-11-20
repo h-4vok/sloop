@@ -2,10 +2,8 @@
 
 ## 1. Object-Oriented & Structural Design
 
-- **OOP Priority:** Structure code around well-defined components, classes, and objects rather than loose procedural functions.
-- **Classes (`class`):** Use strictly for components requiring multiple instances and internal mutable state management.
-- **Literal Objects / Modules:** Use exported literal objects (`export const ...`) for singletons, services, adapters, or domain orchestrators with a controlled lifecycle.
-- **Loose Functions (Exception):** Isolated functions are permitted exclusively for extremely small, self-contained mathematical helpers or formatters. Everything else must be encapsulated within classes or objects.
+- **Choose a fitting structure:** Use a class when instances need distinct mutable state or lifecycle; use an exported object/module for a singleton service, adapter, or cohesive domain operation; use standalone functions for cohesive stateless behavior. Do not wrap functions in classes or objects without a clear responsibility.
+- **Selection logic:** Prefer an object or dictionary for simple case-to-value selection when it makes the mapping clearer. Keep a `switch` when the cases express distinct control flow or the mapping would be less clear.
 - **Barrel Exports & Structure:** Group related utilities in dedicated folders and expose them cleanly via an `index.ts` file at the root of that folder.
 
 ## 2. SOLID Principles & Single Responsibility (SRP)
@@ -30,7 +28,9 @@
 
 ## 6. Code Layout & Visual Separation
 
-- **Vertical Spacing:** Separate declarations and cohesive blocks that address different concepts or problems with a blank line. Keep statements that belong to the same block together, and use spacing to make changes in responsibility clear.
+- **Vertical Spacing:** Separate declarations and cohesive blocks that address different concepts or problems with a blank line. Keep statements that belong to the same block together, and use spacing to make changes in responsibility clear. Keep an inline `if` with adjacent statements when they form one compact block; put a blank line before and after a multi-line `if` block.
+- **Conditional and return blocks:** Use braces for larger multi-line conditions, especially when their bodies contain multi-line work or returns. Put a blank line between an inline `if` and a following independent statement or return. Keep returns inside their owning conditional together, and separate an independent return from preceding work.
+- **Exported declarations:** Separate independent exported declarations into distinct blocks with a blank line.
 - **Object Literal Member Spacing:** In every multiline object literal, put one blank line between each consecutive property, including methods, function-valued properties, data properties, and spreads. Keep compact single-line object literals inline; do not expand them only to add blank lines.
 - **File Organization:** Keep one primary exported declaration per source file and name the file after that declaration (for example, `createHelp.ts` for `createHelp`, `NodeHost.ts` for `NodeHost`, and `consoleLogger.ts` for `consoleLogger`). Put related files in a dedicated folder and expose them through its `index.ts`; barrel files are the exception. Give reusable contracts and types their own matching files. Keep private helpers beside their owner only when they support the same responsibility.
 - **Purpose Comments:** Add a concise comment immediately before substantial public definitions, such as exported types, interfaces, classes, and the primary object or service in a file. Explain the responsibility or reason the definition exists, especially when it establishes a semantic boundary useful to maintainers and code-analysis tools. Do not comment on self-explanatory constants or narrate obvious code.
@@ -39,7 +39,9 @@
 - **Cyclomatic Complexity:** Keep each function and method below a cyclomatic complexity of 6 while refactoring. Treat 4 as the working target. Apply this incrementally; do not enable a repository-wide lint rule until existing code has been brought within the limit.
 - **Try Block Spacing:** Separate a `try`/`catch`/`finally` construct from the surrounding statements with a blank line above and below. Keep `catch` and `finally` attached to their preceding block.
 - **Preparation and Return:** Put a blank line between preparing a value and returning it when those are separate steps, including when returning from a `catch` block.
-- **User-Facing Text:** Give meaningful user-facing messages a named constant when composing them with variables or when the message would otherwise be embedded in a larger operation. Keep small, self-explanatory fixed labels inline.
+- **User-Facing Text:** Give meaningful user-facing messages a named constant when composing them with variables or when the message would otherwise be embedded in a larger operation. Use a named message factory for interpolation; a zero-argument closure is clearer when the message needs no inputs. Keep small, self-explanatory fixed labels inline.
+- **Regular expressions:** Give regex values descriptive names that communicate their purpose. Add a brief comment when a complex regex performs multiple behaviors that are not clear from its name.
+- **Optional output:** Handle whether a value should be emitted explicitly instead of hiding an object-or-`undefined` choice inside a ternary.
 
 ## 7. Naming Conventions & Domain Language
 
