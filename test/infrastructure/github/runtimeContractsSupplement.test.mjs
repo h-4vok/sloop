@@ -18,8 +18,6 @@ import { createNodeHost } from '../../../src/infrastructure/host/createNodeHost.
 
 import { canonicalConfigYaml, loadConfigText } from '../../../src/config.js';
 
-import { withEphemeralMutex, withEphemeralMutexAsync } from '../../../src/mutex.js';
-
 import { RunLogger, applyRunRetention, runDirectory } from '../../../src/run-log.js';
 
 import {

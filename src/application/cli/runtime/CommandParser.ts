@@ -15,6 +15,7 @@ const helpTargets = new Map<string, readonly string[]>([
   ['doctor', ['doctor', '--help']],
   ['--recover-lock', ['--recover-lock', '--help']],
   ['--reset', ['--reset', '--help']],
+  ['--reset-mutex', ['--reset-mutex', '--help']],
   ['--prepare-recovery', ['--prepare-recovery', '--help']],
   ['--resolve-review-cap', ['--resolve-review-cap', '--help']],
   ['--link-issue', ['--link-issue', '--help']],

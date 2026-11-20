@@ -16,6 +16,7 @@ This skill may be invoked from `C:\src\sloop` or any other directory. The test f
 - From the target location, require repo identity `h-4vok/sloop-test-empty`, root `C:\src\sloop-test-empty`, branch `main`, and clean `git status --short`.
 - Require `sloop.config.yaml` to set both Worker and QA sandboxes to `danger-full-access`.
 - Require no open PR or issue labeled `Sloop E2E`; run `sloop-test-cleanup` first if any remain.
+- Require no `.sloop/mutex` directory; run `sloop-test-cleanup` to remove a stale repository mutex before starting a cycle.
 - Refuse to start if `MANUAL-E2E.md` already exists on `main` or another Sloop run is active.
 - Ensure label `Sloop E2E` exists; preserve its metadata if present.
 

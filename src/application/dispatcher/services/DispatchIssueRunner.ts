@@ -3,7 +3,7 @@ import type { Config, Deps, Issue } from '../types/index.js';
 import type { RunManifest } from '../../../remote-state.js';
 import { RunLogger, applyRunRetention, runDirectory } from '../../../run-log.js';
 import { allowlistedPublication } from '../../../publication.js';
-import { withEphemeralMutexAsync } from '../../../mutex.js';
+import { ephemeralMutex } from '../../../mutex.js';
 import { RemoteRunState } from './recovery/RemoteRunState.js';
 const { remoteProjection } = RemoteRunState;
 import { DispatchRemoteRecovery } from './recovery/DispatchRemoteRecovery.js';
@@ -67,7 +67,7 @@ async function runIssueUnderMutex(
   issue: Issue,
   initiallyRecovering: boolean,
 ): Promise<void> {
-  await withEphemeralMutexAsync(d.root, `${process.pid}:${issue.number}`, async () => {
+  await ephemeralMutex.runAsync(d.root, `${process.pid}:${issue.number}`, async () => {
     const remoteResult = await prepareRemoteRecovery(cfg, d, issue, initiallyRecovering);
     if (!remoteResult.ok) throw remoteResult.error;
     const remote = remoteResult.value;

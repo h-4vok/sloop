@@ -1,4 +1,5 @@
 import type { ReviewCapOptions } from './ReviewCapOptions.js';
+import type { Result } from './Result.js';
 
 /** Platform commands exposed to dispatcher application services. */
 export interface CliControl<Config> {
@@ -11,6 +12,8 @@ export interface CliControl<Config> {
   recoverLock(): string;
 
   reset(): void;
+
+  resetMutex(): Result<string, string>;
 
   resolveReviewCap(options: ReviewCapOptions, config: Config): void;
 
