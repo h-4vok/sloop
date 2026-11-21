@@ -27,18 +27,22 @@ import {
   captureCliOutput,
 } from '../support/cli-support.mjs';
 
-test('help and version cannot mask unsupported or mixed command arguments', () => {
-  for (const args of [
-    ['--help', '--repo', 'owner/other'],
-    ['--version', '--list'],
-    ['--repo', 'owner/other'],
-  ]) {
-    const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
-    assert.equal(result.status, 2, `${args.join(' ')}: ${result.stderr}`);
-    assert.match(result.stderr, /Command usage is invalid/);
-    assert.equal(result.stdout, '');
-  }
-});
+test(
+  'help and version cannot mask unsupported or mixed command arguments',
+  { timeout: 15_000 },
+  () => {
+    for (const args of [
+      ['--help', '--repo', 'owner/other'],
+      ['--version', '--list'],
+      ['--repo', 'owner/other'],
+    ]) {
+      const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+      assert.equal(result.status, 2, `${args.join(' ')}: ${result.stderr}`);
+      assert.match(result.stderr, /Command usage is invalid/);
+      assert.equal(result.stdout, '');
+    }
+  },
+);
 
 test('unknown argv fails before dispatcher loading or preflight', async () => {
   const output = captureCliOutput();
