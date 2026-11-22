@@ -11,9 +11,11 @@ Run exactly one manual smoke cycle in PowerShell. Do not create scripts or autom
 
 This skill may be invoked from `C:\src\sloop` or any other directory. The fixture is always `C:\src\sloop-test-empty`; never use the caller's repository, branch, or dirty status as a fixture precondition. Before any fixture Git, GitHub, or Sloop command, set `$targetRoot = 'C:\src\sloop-test-empty'` and `Push-Location -LiteralPath $targetRoot`. Keep that location for the full cycle and restore the caller's location with `Pop-Location`, including on failure. Do not mutate the caller's checkout.
 
+Before every cycle, from `C:\src\sloop` at the exact PR SHA being tested, run `npm run link:local` and require exit code 0. This rebuilds Sloop and relinks the global CLI to that checkout. Record the tested SHA and command exit code with the cycle evidence. If the command fails or the source SHA does not match the PR head, stop before touching the fixture.
+
 ## Procedure
 
-1. Read and follow `C:\src\sloop\.codex\skills\sloop-test-cleanup\SKILL.md` to clean the fixture before the cycle. Require repo identity `h-4vok/sloop-test-empty`, root `C:\src\sloop-test-empty`, branch `main`, clean status, no `.sloop/mutex`, no open `Sloop E2E` issue/PR, and no active Sloop run. Require Worker and QA sandboxes set to `danger-full-access`. Ensure the `Sloop E2E` label exists without changing its metadata.
+1. After `npm run link:local` succeeds, read and follow `C:\src\sloop\.codex\skills\sloop-test-cleanup\SKILL.md` to clean the fixture before the cycle. Require repo identity `h-4vok/sloop-test-empty`, root `C:\src\sloop-test-empty`, branch `main`, clean status, no `.sloop/mutex`, no open `Sloop E2E` issue/PR, and no active Sloop run. Require Worker and QA sandboxes set to `danger-full-access`. Ensure the `Sloop E2E` label exists without changing its metadata.
 
 2. Refuse to start if `MANUAL-E2E.md` exists on `main`. Create one issue titled `[Sloop E2E] Manual smoke <timestamp>` with `Sloop E2E` and `Automation Ready` labels. Its acceptance criteria require a root `MANUAL-E2E.md` containing exactly one line `sloop-e2e-ok` and no other tracked changes. Do not merge the test PR. Use PowerShell:
 
