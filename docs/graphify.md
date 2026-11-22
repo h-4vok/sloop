@@ -24,7 +24,7 @@ Verify that Git has the local driver:
 git config --get merge.graphify.driver
 ```
 
-The merge-driver registration is local to the clone and must be repeated in each clone or worktree. `.gitattributes` is committed, so Git selects the driver whenever it is configured locally.
+The merge-driver registration must be repeated for each clone. Linked worktrees inherit the repository config by default; if `extensions.worktreeConfig` is enabled, configure the merge driver in each worktree. `.gitattributes` is committed, so Git selects the driver whenever it is configured locally.
 
 ## Refreshing the graph
 
