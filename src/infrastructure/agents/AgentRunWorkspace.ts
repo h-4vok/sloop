@@ -29,7 +29,16 @@ export class AgentRunWorkspace {
 
       return await runAgent(preparedRun);
     } finally {
+      await this.removeWorkspace(directory);
+    }
+  }
+
+  private async removeWorkspace(directory: string): Promise<void> {
+    try {
       await rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    } catch (error) {
+      const message = `Unable to remove temporary agent workspace ${directory}: ${String(error)}`;
+      console.warn(message);
     }
   }
 
