@@ -205,8 +205,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "assets_schemas_arbiter_v1_properties",
-      "community": 84,
-      "community_name": "items",
+      "community": 141,
+      "community_name": "rationale",
       "norm_label": "properties"
     },
     {
@@ -249,8 +249,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "assets_schemas_arbiter_v1_properties_references",
-      "community": 84,
-      "community_name": "items",
+      "community": 141,
+      "community_name": "rationale",
       "norm_label": "references"
     },
     {
@@ -260,8 +260,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "assets_schemas_arbiter_v1_references_type",
-      "community": 84,
-      "community_name": "items",
+      "community": 141,
+      "community_name": "rationale",
       "norm_label": "type"
     },
     {
@@ -271,8 +271,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "assets_schemas_arbiter_v1_references_minitems",
-      "community": 84,
-      "community_name": "items",
+      "community": 141,
+      "community_name": "rationale",
       "norm_label": "minitems"
     },
     {
@@ -2130,8 +2130,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "assets_schemas_sloop_agent_output_v1_properties_guide",
-      "community": 168,
-      "community_name": "guide",
+      "community": 33,
+      "community_name": "properties",
       "norm_label": "guide"
     },
     {
@@ -2141,8 +2141,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "assets_schemas_sloop_agent_output_v1_guide_type",
-      "community": 168,
-      "community_name": "guide",
+      "community": 33,
+      "community_name": "properties",
       "norm_label": "type"
     },
     {
@@ -2152,8 +2152,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "assets_schemas_sloop_agent_output_v1_guide_additionalproperties",
-      "community": 168,
-      "community_name": "guide",
+      "community": 33,
+      "community_name": "properties",
       "norm_label": "additionalproperties"
     },
     {
@@ -4869,8 +4869,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_cli_diagnostic",
-      "community": 81,
-      "community_name": "runHarnessTurn.ts",
+      "community": 23,
+      "community_name": "runtime-support.mjs",
       "norm_label": "diagnostic.ts"
     },
     {
@@ -4990,8 +4990,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_cli_runtimeio",
-      "community": 23,
-      "community_name": "runtime-support.mjs",
+      "community": 29,
+      "community_name": "Result",
       "norm_label": "runtimeio.ts"
     },
     {
@@ -5001,8 +5001,8 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "src_application_cli_runtimeio_runtimeio",
-      "community": 23,
-      "community_name": "runtime-support.mjs",
+      "community": 29,
+      "community_name": "Result",
       "norm_label": "runtimeio"
     },
     {
@@ -6321,8 +6321,8 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_application_cli_runtime_parsing_reviewcapargumentcollection_reviewcapargumentcollection",
-      "community": 25,
-      "community_name": "run-log.ts",
+      "community": 45,
+      "community_name": "CommandParser.ts",
       "norm_label": "reviewcapargumentcollection"
     },
     {
@@ -6464,8 +6464,8 @@
       "source_location": "L137",
       "_origin": "ast",
       "id": "src_application_cli_runtime_parsing_reviewcapargumentvalidation_reviewcapargumentvalidation",
-      "community": 25,
-      "community_name": "run-log.ts",
+      "community": 45,
+      "community_name": "CommandParser.ts",
       "norm_label": "reviewcapargumentvalidation"
     },
     {
@@ -7311,8 +7311,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_cli_runtime_rundispatcherpreflight",
-      "community": 45,
-      "community_name": "CommandParser.ts",
+      "community": 29,
+      "community_name": "Result",
       "norm_label": "rundispatcherpreflight.ts"
     },
     {
@@ -7531,8 +7531,8 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "src_application_config_command_installconfig_installconfig",
-      "community": 43,
-      "community_name": "runDirectConfigCommand.ts",
+      "community": 107,
+      "community_name": "installConfig.ts",
       "norm_label": "installconfig"
     },
     {
@@ -9841,8 +9841,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitlresumedirectiveservice",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hitlresumedirectiveservice.ts"
     },
     {
@@ -10908,8 +10908,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "reviewcapreconciliation.ts"
     },
     {
@@ -10919,8 +10919,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_activereviewcapstate",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "activereviewcapstate"
     },
     {
@@ -10930,8 +10930,8 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_reconcilereviewcapresume",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "reconcilereviewcapresume()"
     },
     {
@@ -10941,8 +10941,8 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_resolveremotemanifest",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "resolveremotemanifest()"
     },
     {
@@ -10952,8 +10952,8 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_requireremotemanifest",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "requireremotemanifest()"
     },
     {
@@ -10963,8 +10963,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_requirereviewcappullrequest",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "requirereviewcappullrequest()"
     },
     {
@@ -10974,8 +10974,8 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_updatereviewcapstate",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "updatereviewcapstate()"
     },
     {
@@ -10985,8 +10985,8 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_requirematchingmanifestpullrequest",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 119,
+      "community_name": "showConfig.ts",
       "norm_label": "requirematchingmanifestpullrequest()"
     },
     {
@@ -10996,8 +10996,8 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapreconciliation_reviewcapreconciliation",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 16,
+      "community_name": "Boundary tests",
       "norm_label": "reviewcapreconciliation"
     },
     {
@@ -11007,8 +11007,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_reviewcapresume",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 16,
+      "community_name": "Boundary tests",
       "norm_label": "reviewcapresume.ts"
     },
     {
@@ -11370,8 +11370,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hitlresumedirectiveservice.ts"
     },
     {
@@ -11381,8 +11381,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_activerunforhitl",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "activerunforhitl()"
     },
     {
@@ -11392,8 +11392,8 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_hasresolvablehitlstatus",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hasresolvablehitlstatus()"
     },
     {
@@ -11403,8 +11403,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_hitlresumecandidate",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hitlresumecandidate"
     },
     {
@@ -11414,8 +11414,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_hitlresumedirective",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hitlresumedirective()"
     },
     {
@@ -11425,8 +11425,8 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_parsehitlresumecomment",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "parsehitlresumecomment()"
     },
     {
@@ -11436,8 +11436,8 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_createhitlresumecandidate",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "createhitlresumecandidate()"
     },
     {
@@ -11447,8 +11447,8 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_comparehitlresumecandidates",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "comparehitlresumecandidates()"
     },
     {
@@ -11458,8 +11458,8 @@
       "source_location": "L101",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_hitlresumecandidateorder",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hitlresumecandidateorder()"
     },
     {
@@ -11469,8 +11469,8 @@
       "source_location": "L105",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_hitlresumedirectiveservice_hitlresumedirectiveservice",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "hitlresumedirectiveservice"
     },
     {
@@ -11733,8 +11733,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_hitl_index",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "index.ts"
     },
     {
@@ -13020,8 +13020,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_review_reviewcapresume",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 16,
+      "community_name": "Boundary tests",
       "norm_label": "reviewcapresume.ts"
     },
     {
@@ -13031,8 +13031,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_review_reviewcapresume_reviewcapresume",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 16,
+      "community_name": "Boundary tests",
       "norm_label": "reviewcapresume"
     },
     {
@@ -13086,8 +13086,8 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_review_reviewcapresumepersistence_reviewcapresumepersistence",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 16,
+      "community_name": "Boundary tests",
       "norm_label": "reviewcapresumepersistence"
     },
     {
@@ -13196,8 +13196,8 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_application_dispatcher_services_review_reviewcapresumestate_reviewcapresumestate",
-      "community": 120,
-      "community_name": "mapGitHubPullRequest.ts",
+      "community": 16,
+      "community_name": "Boundary tests",
       "norm_label": "reviewcapresumestate"
     },
     {
@@ -14340,8 +14340,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_types_activerunreconciliation",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "activerunreconciliation.ts"
     },
     {
@@ -14417,8 +14417,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_types_clicontrol",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": "clicontrol.ts"
     },
     {
@@ -14758,8 +14758,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_application_dispatcher_types_runeventlogger",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "runeventlogger.ts"
     },
     {
@@ -17596,8 +17596,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_core_activerunreconciliation",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "activerunreconciliation.ts"
     },
     {
@@ -17607,8 +17607,8 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "src_core_activerunreconciliation_activerunreconciliation",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "activerunreconciliation"
     },
     {
@@ -17662,8 +17662,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": "clicontrol"
     },
     {
@@ -17673,8 +17673,8 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_loadconfig",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".loadconfig()"
     },
     {
@@ -17684,8 +17684,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_status",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".status()"
     },
     {
@@ -17695,8 +17695,8 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_list",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".list()"
     },
     {
@@ -17706,8 +17706,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_recoverlock",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".recoverlock()"
     },
     {
@@ -17717,8 +17717,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_reset",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".reset()"
     },
     {
@@ -17728,8 +17728,8 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_resetmutex",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".resetmutex()"
     },
     {
@@ -17739,8 +17739,8 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_resolvereviewcap",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".resolvereviewcap()"
     },
     {
@@ -17750,8 +17750,8 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_linkissue",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".linkissue()"
     },
     {
@@ -17761,8 +17761,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_core_clicontrol_clicontrol_preparerecovery",
-      "community": 62,
-      "community_name": "AgentRoles.ts",
+      "community": 78,
+      "community_name": "DispatcherPreflight.ts",
       "norm_label": ".preparerecovery()"
     },
     {
@@ -18278,8 +18278,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_core_runeventlogger",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "runeventlogger.ts"
     },
     {
@@ -18289,8 +18289,8 @@
       "source_location": "L2",
       "_origin": "ast",
       "id": "src_core_runeventlogger_runeventlogger",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "runeventlogger"
     },
     {
@@ -18300,8 +18300,8 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "src_core_runeventlogger_runeventlogger_write",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": ".write()"
     },
     {
@@ -18311,8 +18311,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_core_runeventlogger_runeventlogger_stream",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": ".stream()"
     },
     {
@@ -18729,8 +18729,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_productionadapteroptions",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "productionadapteroptions.ts"
     },
     {
@@ -18740,8 +18740,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_productionadapteroptions_productionadapteroptions",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "productionadapteroptions"
     },
     {
@@ -18751,8 +18751,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createactiverunreconciler",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "createactiverunreconciler.ts"
     },
     {
@@ -18762,8 +18762,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createactiverunreconciler_activerunreconcileroptions",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "activerunreconcileroptions"
     },
     {
@@ -18773,8 +18773,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createactiverunreconciler_activerunreconcilerfactory",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "activerunreconcilerfactory"
     },
     {
@@ -18784,8 +18784,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createagentdependencies",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createagentdependencies.ts"
     },
     {
@@ -18795,8 +18795,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createagentdependencies_createagentdependencies",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createagentdependencies()"
     },
     {
@@ -18806,8 +18806,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createagentdependencies_createagentharness",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createagentharness()"
     },
     {
@@ -18817,8 +18817,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createdispatcherconfig",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createdispatcherconfig.ts"
     },
     {
@@ -18828,8 +18828,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createdispatcherconfig_dispatcherconfigfactory",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "dispatcherconfigfactory"
     },
     {
@@ -18916,8 +18916,8 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createdispatchercontrols_dispatchercontrolsfactory",
-      "community": 78,
-      "community_name": "DispatcherPreflight.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "dispatchercontrolsfactory"
     },
     {
@@ -19037,8 +19037,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_creategithubprovider_githubproviderfactory",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "githubproviderfactory"
     },
     {
@@ -19070,8 +19070,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "createloggedgithubhandler.ts"
     },
     {
@@ -19081,8 +19081,8 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_githubhandler",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "githubhandler"
     },
     {
@@ -19092,8 +19092,8 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_createloggedgithubhandler",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "createloggedgithubhandler()"
     },
     {
@@ -19103,8 +19103,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_invokegithubhandler",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "invokegithubhandler()"
     },
     {
@@ -19114,8 +19114,8 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_loggithubrequest",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "loggithubrequest()"
     },
     {
@@ -19125,8 +19125,8 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_loggithubresponse",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "loggithubresponse()"
     },
     {
@@ -19136,8 +19136,8 @@
       "source_location": "L75",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_reportgithubfailure",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "reportgithubfailure()"
     },
     {
@@ -19147,8 +19147,8 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_wrapgithuberror",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "wrapgithuberror()"
     },
     {
@@ -19158,8 +19158,8 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createloggedgithubhandler_errormessage",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 120,
+      "community_name": "mapGitHubPullRequest.ts",
       "norm_label": "errormessage()"
     },
     {
@@ -19378,8 +19378,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createrepositorydependencies",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createrepositorydependencies.ts"
     },
     {
@@ -19389,8 +19389,8 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createrepositorydependencies_createrepositorydependencies",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createrepositorydependencies()"
     },
     {
@@ -19400,8 +19400,8 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createrepositorydependencies_createrepositoryadapters",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createrepositoryadapters()"
     },
     {
@@ -19411,8 +19411,8 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createrepositorydependencies_createworktreecommands",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "createworktreecommands()"
     },
     {
@@ -19444,8 +19444,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_createworkspaceadapter_workspaceadapterfactory",
-      "community": 68,
-      "community_name": "workflowStatus.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "workspaceadapterfactory"
     },
     {
@@ -19708,8 +19708,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_index",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "index.ts"
     },
     {
@@ -19741,8 +19741,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_productiondependencies",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 62,
+      "community_name": "AgentRoles.ts",
       "norm_label": "productiondependencies.ts"
     },
     {
@@ -19763,8 +19763,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "reconcileactiverun.ts"
     },
     {
@@ -19774,8 +19774,8 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_githubcommandclient",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "githubcommandclient"
     },
     {
@@ -19785,8 +19785,8 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_reconcileroptions",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "reconcileroptions"
     },
     {
@@ -19796,8 +19796,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_pullrequeststate",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "pullrequeststate"
     },
     {
@@ -19807,8 +19807,8 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_activerunsnapshot",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "activerunsnapshot"
     },
     {
@@ -19818,8 +19818,8 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_reconcileactiverun",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "reconcileactiverun()"
     },
     {
@@ -19829,8 +19829,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_readsnapshot",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "readsnapshot()"
     },
     {
@@ -19840,8 +19840,8 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_readpullrequest",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "readpullrequest()"
     },
     {
@@ -19851,8 +19851,8 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_reconcilesnapshot",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "reconcilesnapshot()"
     },
     {
@@ -19862,8 +19862,8 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_reconcilebranch",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "reconcilebranch()"
     },
     {
@@ -19873,8 +19873,8 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_isterminal",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "isterminal()"
     },
     {
@@ -19884,8 +19884,8 @@
       "source_location": "L116",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_verifypullrequestidentity",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "verifypullrequestidentity()"
     },
     {
@@ -19895,8 +19895,8 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_hasmatchingpullrequestidentity",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "hasmatchingpullrequestidentity()"
     },
     {
@@ -19906,8 +19906,8 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "src_infrastructure_adapters_reconcileactiverun_closesissue",
-      "community": 37,
-      "community_name": "createGitHubCommandClient.ts",
+      "community": 70,
+      "community_name": "SessionStore",
       "norm_label": "closesissue()"
     },
     {
@@ -23756,8 +23756,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "collectremotestategates.ts"
     },
     {
@@ -23767,8 +23767,8 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_collectremotestategates",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "collectremotestategates()"
     },
     {
@@ -23778,8 +23778,8 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_checkgates",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "checkgates()"
     },
     {
@@ -23789,8 +23789,8 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_reviewgates",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "reviewgates()"
     },
     {
@@ -23800,8 +23800,8 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_countunresolved",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "countunresolved()"
     },
     {
@@ -23811,8 +23811,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_blockedlabels",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "blockedlabels()"
     },
     {
@@ -23822,8 +23822,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_branchgates",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "branchgates()"
     },
     {
@@ -23833,8 +23833,8 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_shagates",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "shagates()"
     },
     {
@@ -23844,8 +23844,8 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "src_remote_state_collectremotestategates_hasshamismatch",
-      "community": 139,
-      "community_name": "githubProvider-2.test.mjs",
+      "community": 54,
+      "community_name": "projectRemoteState.ts",
       "norm_label": "hasshamismatch()"
     },
     {
@@ -23954,8 +23954,8 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "src_remote_state_projectremotestate_createleasestate",
-      "community": 54,
-      "community_name": "projectRemoteState.ts",
+      "community": 30,
+      "community_name": "index.ts",
       "norm_label": "createleasestate()"
     },
     {
@@ -25032,20 +25032,20 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_config_commands_parseconfigcommand_test",
-      "community": 26,
-      "community_name": "dispatcherChecks.ts",
+      "community": 32,
+      "community_name": "config-test-helpers.mjs",
       "norm_label": "parseconfigcommand.test.mjs"
     },
     {
-      "label": "getCliCommand()",
+      "label": "successfulCommandCases",
       "file_type": "code",
       "source_file": "test/config/commands/parseConfigCommand.test.mjs",
       "source_location": "L3",
       "_origin": "ast",
-      "id": "test_config_commands_parseconfigcommand_test_getclicommand",
-      "community": 26,
-      "community_name": "dispatcherChecks.ts",
-      "norm_label": "getclicommand()"
+      "id": "test_config_commands_parseconfigcommand_test_successfulcommandcases",
+      "community": 32,
+      "community_name": "config-test-helpers.mjs",
+      "norm_label": "successfulcommandcases"
     },
     {
       "label": "reconciliation.test.mjs",
@@ -25648,8 +25648,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "test_dispatcher_dispatcher_hitl_resume_directive_test",
-      "community": 70,
-      "community_name": "SessionStore",
+      "community": 87,
+      "community_name": "PreparedRecoveryPullRequest.ts",
       "norm_label": "dispatcher-hitl-resume-directive.test.mjs"
     },
     {
@@ -45214,17 +45214,6 @@
       "source_location": "L1",
       "weight": 1.0,
       "source": "test_config_commands_parseconfigcommand_test",
-      "target": "src_application_cli_runtime_parseclicommand_parseclicommand",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "test/config/commands/parseConfigCommand.test.mjs",
-      "source_location": "L4",
-      "weight": 1.0,
-      "source": "test_config_commands_parseconfigcommand_test_getclicommand",
       "target": "src_application_cli_runtime_parseclicommand_parseclicommand",
       "confidence_score": 1.0
     },
@@ -104980,7 +104969,7 @@
       "source_location": "L3",
       "weight": 1.0,
       "source": "test_config_commands_parseconfigcommand_test",
-      "target": "test_config_commands_parseconfigcommand_test_getclicommand",
+      "target": "test_config_commands_parseconfigcommand_test_successfulcommandcases",
       "confidence_score": 1.0
     },
     {
@@ -114268,5 +114257,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "465cd0845f214604431ad5364a4ed6e62a9d945a"
+  "built_at_commit": "a271512a5e7b36e7680e83bcc7e94f1d824da50a"
 }
