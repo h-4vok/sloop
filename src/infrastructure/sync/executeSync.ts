@@ -109,19 +109,23 @@ function syncSkills(root: string, config: SloopConfig, output: (message: string)
 
 function removeObsoleteSkill(destination: string): void {
   const obsoleteSkillDirectory = join(destination, 'sloop-test-empty-e2e');
-  let obsoleteSkillDirectoryStats;
+  const managedSkillDirectories = [dirname(destination), destination, obsoleteSkillDirectory];
 
-  try {
-    obsoleteSkillDirectoryStats = lstatSync(obsoleteSkillDirectory);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return;
-    throw error;
-  }
-
-  if (obsoleteSkillDirectoryStats.isSymbolicLink() || !obsoleteSkillDirectoryStats.isDirectory())
+  if (managedSkillDirectories.some((directoryPath) => !isSafeManagedDirectory(directoryPath)))
     return;
 
   rmSync(join(obsoleteSkillDirectory, 'SKILL.md'), { force: true });
+}
+
+function isSafeManagedDirectory(directoryPath: string): boolean {
+  try {
+    const directoryStats = lstatSync(directoryPath);
+
+    return directoryStats.isDirectory() && !directoryStats.isSymbolicLink();
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 /** Installs canonical GitHub labels and the distributed Sloop skills. */

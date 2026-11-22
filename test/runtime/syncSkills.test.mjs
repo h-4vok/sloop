@@ -59,6 +59,28 @@ test('sync preserves obsolete skill files behind a linked directory', () => {
   assert.equal(readFileSync(externalSkillFile, 'utf8'), externalSkillContents);
 });
 
+test('sync preserves obsolete skill files behind a linked ancestor', () => {
+  const { root, runner, config } = createSyncFixture();
+  const externalRoot = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-external-codex-'));
+  const externalCodexDirectory = join(externalRoot, '.codex');
+  const externalSkillDirectory = join(externalCodexDirectory, 'skills', 'sloop-test-empty-e2e');
+  const linkedCodexDirectory = join(root, '.codex');
+  const externalSkillFile = join(externalSkillDirectory, 'SKILL.md');
+  const externalSkillContents = 'shared ancestor skill file';
+  mkdirSync(externalSkillDirectory, { recursive: true });
+  writeFileSync(externalSkillFile, externalSkillContents);
+  symlinkSync(
+    externalCodexDirectory,
+    linkedCodexDirectory,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+
+  syncPrerequisites(root, config, { runner });
+
+  assert.equal(lstatSync(linkedCodexDirectory).isSymbolicLink(), true);
+  assert.equal(readFileSync(externalSkillFile, 'utf8'), externalSkillContents);
+});
+
 test('sync replaces an official skill and preserves unrelated skills', () => {
   const { root, runner, config } = createSyncFixture();
   mkdirSync(join(root, '.codex', 'skills', 'sloop-worker'), { recursive: true });
