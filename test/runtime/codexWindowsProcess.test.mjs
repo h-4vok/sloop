@@ -7,6 +7,31 @@ import { delimiter, join } from 'node:path';
 import { test } from 'vitest';
 import { codexCliInvocation } from '../../src/codex-cli.js';
 
+function spawnCodexCli(invocation, fixtureDir) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(invocation.command, invocation.args, {
+      cwd: fixtureDir,
+
+      env: {
+        ...process.env,
+
+        PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}`,
+      },
+
+      shell: false,
+
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
+    child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.stdin.end(invocation.stdin);
+  });
+}
+
 test(
   'Windows bridge preserves empty and special arguments at the global CLI process boundary',
   { skip: process.platform !== 'win32', timeout: 30_000 },
@@ -33,28 +58,7 @@ test(
     const childScript = 'process.stdout.write(JSON.stringify(process.argv.slice(1)))';
     const cliArgs = ['-e', childScript, ...expectedArgs];
     const invocation = codexCliInvocation(cliArgs);
-    const result = await new Promise((resolve, reject) => {
-      const child = spawn(invocation.command, invocation.args, {
-        cwd: fixtureDir,
-
-        env: {
-          ...process.env,
-
-          PATH: `${fixtureDir}${delimiter}${process.env.PATH ?? ''}`,
-        },
-
-        shell: false,
-
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      let stdout = '';
-      let stderr = '';
-      child.stdout.setEncoding('utf8').on('data', (chunk) => (stdout += chunk));
-      child.stderr.setEncoding('utf8').on('data', (chunk) => (stderr += chunk));
-      child.on('error', reject);
-      child.on('close', (code) => resolve({ code, stdout, stderr }));
-      child.stdin.end(invocation.stdin);
-    });
+    const result = await spawnCodexCli(invocation, fixtureDir);
 
     assert.equal(result.code, 0, result.stderr);
     const outputLine = result.stdout.split(/\r?\n/).find((line) => line.startsWith('["'));

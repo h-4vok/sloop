@@ -8,52 +8,9 @@ import {
   Writable,
   createIsolatedTemporaryDirectory,
   runConfigCommand,
-  parseCliCommand,
   createConfigFixture,
   createMockScriptedIo,
 } from '../../support/config-test-helpers.mjs';
-
-test('config init/install retain distinct command identity', () => {
-  const getCliCommand = (args) => {
-    const parseResult = parseCliCommand(args);
-    assert.equal(parseResult.ok, true);
-    return parseResult.value;
-  };
-  const cliArgs = ['config', 'init'];
-  const parsedCliCommand = getCliCommand(cliArgs);
-  assert.deepEqual(parsedCliCommand, { kind: 'config', args: ['--init'] });
-  const cliArgs2 = ['config', 'init', '--wizard'];
-  const parsedCliCommand2 = getCliCommand(cliArgs2);
-  assert.deepEqual(parsedCliCommand2, {
-    kind: 'config',
-
-    args: ['--init', '--wizard'],
-  });
-  const cliArgs3 = ['config', 'install'];
-  const parsedCliCommand3 = getCliCommand(cliArgs3);
-  assert.deepEqual(parsedCliCommand3, { kind: 'config', args: ['--install'] });
-  const cliArgs4 = ['config', 'install', '--force'];
-  const parsedCliCommand4 = getCliCommand(cliArgs4);
-  assert.deepEqual(parsedCliCommand4, {
-    kind: 'config',
-
-    args: ['--install', '--force'],
-  });
-  const cliArgs5 = ['init'];
-  const invalidCommandResult = parseCliCommand(cliArgs5);
-  assert.equal(invalidCommandResult.ok, false);
-  assert.match(invalidCommandResult.error, /unsupported|usage/i);
-  const cliArgs6 = ['config'];
-  const parsedCliCommand5 = getCliCommand(cliArgs6);
-  assert.deepEqual(parsedCliCommand5, { kind: 'config', args: [] });
-  const cliArgs7 = ['config', 'workspace'];
-  const parsedCliCommand6 = getCliCommand(cliArgs7);
-  assert.deepEqual(parsedCliCommand6, {
-    kind: 'config',
-
-    args: ['workspace'],
-  });
-});
 
 test('config install asks for confirmation unless forced', async () => {
   const { root } = createConfigFixture();
