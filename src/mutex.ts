@@ -11,13 +11,26 @@ function createMutexLease(root: string, owner: string): () => void {
   try {
     mkdirSync(join(root, '.sloop', 'mutex'), { recursive: true });
     mkdirSync(activeDirectory);
-    writeFileSync(join(activeDirectory, 'owner'), owner, { mode: 0o600 });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     throw new Error('another sloop process holds the local mutex');
   }
 
-  return () => rmSync(activeDirectory, { recursive: true, force: true });
+  const release = () => rmSync(activeDirectory, { recursive: true, force: true });
+
+  try {
+    writeFileSync(join(activeDirectory, 'owner'), owner, { mode: 0o600 });
+  } catch (error) {
+    try {
+      release();
+    } catch {
+      // Preserve the owner write error when rollback also fails.
+    }
+
+    throw error;
+  }
+
+  return release;
 }
 
 function isValidMutexOwner(ownerFields: readonly string[], ownerPid: number): boolean {
