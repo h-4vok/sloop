@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { SloopConfig } from '../../config.js';
 import type { SyncOptions, SyncRunner } from './checkSyncPrerequisites.js';
@@ -20,7 +20,6 @@ const bundledSkills = [
   'sloop-qa',
   'sloop-test-cleanup',
   'sloop-e2e-prepare',
-  'sloop-test-empty-e2e',
 ] as const;
 
 const defaultRunner: SyncRunner = (file, args, cwd) =>
@@ -97,6 +96,8 @@ function labelAlreadyExists(
 function syncSkills(root: string, config: SloopConfig, output: (message: string) => void): void {
   const destination = getSkillDestination(root, config);
   mkdirSync(destination, { recursive: true });
+  rmSync(join(destination, 'sloop-test-empty-e2e', 'SKILL.md'), { force: true });
+
   for (const name of bundledSkills) {
     const source = getSkillAsset(name);
     const target = join(destination, name, 'SKILL.md');

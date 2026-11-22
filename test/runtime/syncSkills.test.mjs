@@ -19,9 +19,21 @@ test('sync installs each distributed Sloop skill', () => {
     'sloop-qa',
     'sloop-test-cleanup',
     'sloop-e2e-prepare',
-    'sloop-test-empty-e2e',
   ])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
+});
+
+test('sync removes the obsolete multi-cycle skill and preserves other skill files', () => {
+  const { root, runner, config } = createSyncFixture();
+  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-test-empty-e2e');
+  mkdirSync(obsoleteSkill, { recursive: true });
+  writeFileSync(join(obsoleteSkill, 'SKILL.md'), 'obsolete multi-cycle skill');
+  writeFileSync(join(obsoleteSkill, 'notes.md'), 'keep unrelated content');
+
+  syncPrerequisites(root, config, { runner });
+
+  assert.equal(existsSync(join(obsoleteSkill, 'SKILL.md')), false);
+  assert.equal(readFileSync(join(obsoleteSkill, 'notes.md'), 'utf8'), 'keep unrelated content');
 });
 
 test('sync replaces an official skill and preserves unrelated skills', () => {
