@@ -20,6 +20,28 @@ function createMutexLease(root: string, owner: string): () => void {
   return () => rmSync(activeDirectory, { recursive: true, force: true });
 }
 
+function isValidMutexOwner(ownerFields: readonly string[], ownerPid: number): boolean {
+  return (
+    ownerFields.length === 2 &&
+    positiveProcessIdPattern.test(ownerFields[0]!) &&
+    Number.isSafeInteger(ownerPid) &&
+    positiveIssueNumberPattern.test(ownerFields[1]!)
+  );
+}
+
+function readMutexOwnerPid(activeDirectory: string): Result<number, string> {
+  const ownerPath = join(activeDirectory, 'owner');
+  if (!existsSync(ownerPath))
+    return result.failure('Cannot reset the repository mutex because its owner is unknown.');
+
+  const ownerFields = readFileSync(ownerPath, 'utf8').trim().split(':');
+  const ownerPid = Number(ownerFields[0]);
+  if (!isValidMutexOwner(ownerFields, ownerPid))
+    return result.failure('Cannot reset the repository mutex because its owner is invalid.');
+
+  return result.success(ownerPid);
+}
+
 // Owns the repository-local process-exclusion lease and its explicit reset.
 export const ephemeralMutex = Object.freeze({
   run<T>(root: string, owner: string, action: () => T): T {
@@ -47,21 +69,12 @@ export const ephemeralMutex = Object.freeze({
     if (!existsSync(mutexDirectory)) return result.success('No repository mutex found.');
 
     const activeDirectory = join(mutexDirectory, 'active');
+
     if (existsSync(activeDirectory)) {
-      const ownerPath = join(activeDirectory, 'owner');
-      if (!existsSync(ownerPath))
-        return result.failure('Cannot reset the repository mutex because its owner is unknown.');
+      const ownerPidResult = readMutexOwnerPid(activeDirectory);
+      if (!ownerPidResult.ok) return ownerPidResult;
 
-      const ownerFields = readFileSync(ownerPath, 'utf8').trim().split(':');
-      const ownerPid = Number(ownerFields[0]);
-      if (
-        ownerFields.length !== 2 ||
-        !positiveProcessIdPattern.test(ownerFields[0]!) ||
-        !Number.isSafeInteger(ownerPid) ||
-        !positiveIssueNumberPattern.test(ownerFields[1]!)
-      )
-        return result.failure('Cannot reset the repository mutex because its owner is invalid.');
-
+      const ownerPid = ownerPidResult.value;
       if (processAlive(ownerPid))
         return result.failure(
           `Cannot reset the repository mutex while Sloop process ${ownerPid} is active.`,
