@@ -123,9 +123,14 @@ function isSafeManagedDirectory(directoryPath: string): boolean {
 
     return directoryStats.isDirectory() && !directoryStats.isSymbolicLink();
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
-    throw error;
+    if (!isMissingDirectoryError(error)) throw error;
+
+    return false;
   }
+}
+
+function isMissingDirectoryError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 /** Installs canonical GitHub labels and the distributed Sloop skills. */
