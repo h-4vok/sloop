@@ -19,7 +19,7 @@ const bundledSkills = [
   'sloop-worker',
   'sloop-qa',
   'sloop-test-cleanup',
-  'sloop-e2e-prepare',
+  'sloop-test-empty-e2e',
 ] as const;
 
 const defaultRunner: SyncRunner = (file, args, cwd) =>
@@ -108,7 +108,7 @@ function syncSkills(root: string, config: SloopConfig, output: (message: string)
 }
 
 function removeObsoleteSkill(destination: string): void {
-  const obsoleteSkillDirectory = join(destination, 'sloop-test-empty-e2e');
+  const obsoleteSkillDirectory = join(destination, 'sloop-e2e-prepare');
   const managedSkillDirectories = [dirname(destination), destination, obsoleteSkillDirectory];
 
   if (managedSkillDirectories.some((directoryPath) => !isSafeManagedDirectory(directoryPath)))

@@ -2900,8 +2900,8 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "assets_schemas_worker_v1_properties_expected",
-      "community": 93,
-      "community_name": "properties",
+      "community": 86,
+      "community_name": "type",
       "norm_label": "expected"
     },
     {
@@ -2911,8 +2911,8 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "assets_schemas_worker_v1_expected_type",
-      "community": 93,
-      "community_name": "properties",
+      "community": 86,
+      "community_name": "type",
       "norm_label": "type"
     },
     {
@@ -2922,8 +2922,8 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "assets_schemas_worker_v1_expected_minitems",
-      "community": 93,
-      "community_name": "properties",
+      "community": 86,
+      "community_name": "type",
       "norm_label": "minitems"
     },
     {
@@ -2977,8 +2977,8 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "assets_schemas_worker_v1_properties_limitations",
-      "community": 86,
-      "community_name": "type",
+      "community": 93,
+      "community_name": "properties",
       "norm_label": "limitations"
     },
     {
@@ -2988,8 +2988,8 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "assets_schemas_worker_v1_limitations_type",
-      "community": 86,
-      "community_name": "type",
+      "community": 93,
+      "community_name": "properties",
       "norm_label": "type"
     },
     {
@@ -2999,8 +2999,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "assets_schemas_worker_v1_limitations_minitems",
-      "community": 86,
-      "community_name": "type",
+      "community": 93,
+      "community_name": "properties",
       "norm_label": "minitems"
     },
     {
@@ -30033,50 +30033,6 @@
     {
       "label": "SKILL.md",
       "file_type": "document",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "codex_skills_sloop_e2e_prepare_skill",
-      "community": 128,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "skill.md"
-    },
-    {
-      "label": "Sloop E2E One-Cycle",
-      "file_type": "document",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L6",
-      "_origin": "ast",
-      "id": "codex_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "community": 128,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "sloop e2e one-cycle"
-    },
-    {
-      "label": "Target repository context",
-      "file_type": "document",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L10",
-      "_origin": "ast",
-      "id": "codex_skills_sloop_e2e_prepare_skill_target_repository_context",
-      "community": 128,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "target repository context"
-    },
-    {
-      "label": "Procedure",
-      "file_type": "document",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L16",
-      "_origin": "ast",
-      "id": "codex_skills_sloop_e2e_prepare_skill_procedure",
-      "community": 128,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "procedure"
-    },
-    {
-      "label": "SKILL.md",
-      "file_type": "document",
       "source_file": ".codex/skills/sloop-qa/SKILL.md",
       "source_location": "L1",
       "_origin": "ast",
@@ -30183,6 +30139,50 @@
       "community": 138,
       "community_name": "Sloop Test Cleanup",
       "norm_label": "cleanup steps"
+    },
+    {
+      "label": "SKILL.md",
+      "file_type": "document",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "codex_skills_sloop_test_empty_e2e_skill",
+      "community": 128,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "skill.md"
+    },
+    {
+      "label": "Sloop Test Empty E2E",
+      "file_type": "document",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L6",
+      "_origin": "ast",
+      "id": "codex_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "community": 128,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "sloop test empty e2e"
+    },
+    {
+      "label": "Target repository context",
+      "file_type": "document",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "codex_skills_sloop_test_empty_e2e_skill_target_repository_context",
+      "community": 128,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "target repository context"
+    },
+    {
+      "label": "Procedure",
+      "file_type": "document",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "codex_skills_sloop_test_empty_e2e_skill_procedure",
+      "community": 128,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "procedure"
     },
     {
       "label": "SKILL.md",
@@ -30638,50 +30638,6 @@
     {
       "label": "SKILL.md",
       "file_type": "document",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "assets_skills_sloop_e2e_prepare_skill",
-      "community": 126,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "skill.md"
-    },
-    {
-      "label": "Sloop E2E One-Cycle",
-      "file_type": "document",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L6",
-      "_origin": "ast",
-      "id": "assets_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "community": 126,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "sloop e2e one-cycle"
-    },
-    {
-      "label": "Target repository context",
-      "file_type": "document",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L10",
-      "_origin": "ast",
-      "id": "assets_skills_sloop_e2e_prepare_skill_target_repository_context",
-      "community": 126,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "target repository context"
-    },
-    {
-      "label": "Procedure",
-      "file_type": "document",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L16",
-      "_origin": "ast",
-      "id": "assets_skills_sloop_e2e_prepare_skill_procedure",
-      "community": 126,
-      "community_name": "Sloop E2E Prepare and Run",
-      "norm_label": "procedure"
-    },
-    {
-      "label": "SKILL.md",
-      "file_type": "document",
       "source_file": "assets/skills/sloop-qa/SKILL.md",
       "source_location": "L1",
       "_origin": "ast",
@@ -30788,6 +30744,50 @@
       "community": 136,
       "community_name": "Sloop Test Cleanup",
       "norm_label": "cleanup steps"
+    },
+    {
+      "label": "SKILL.md",
+      "file_type": "document",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "assets_skills_sloop_test_empty_e2e_skill",
+      "community": 126,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "skill.md"
+    },
+    {
+      "label": "Sloop Test Empty E2E",
+      "file_type": "document",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L6",
+      "_origin": "ast",
+      "id": "assets_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "community": 126,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "sloop test empty e2e"
+    },
+    {
+      "label": "Target repository context",
+      "file_type": "document",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "assets_skills_sloop_test_empty_e2e_skill_target_repository_context",
+      "community": 126,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "target repository context"
+    },
+    {
+      "label": "Procedure",
+      "file_type": "document",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L16",
+      "_origin": "ast",
+      "id": "assets_skills_sloop_test_empty_e2e_skill_procedure",
+      "community": 126,
+      "community_name": "Sloop E2E Prepare and Run",
+      "norm_label": "procedure"
     },
     {
       "label": "SKILL.md",
@@ -113194,36 +113194,6 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L6",
-      "weight": 1.0,
-      "source": "codex_skills_sloop_e2e_prepare_skill",
-      "target": "codex_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L16",
-      "weight": 1.0,
-      "source": "codex_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "target": "codex_skills_sloop_e2e_prepare_skill_procedure",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": ".codex/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L10",
-      "weight": 1.0,
-      "source": "codex_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "target": "codex_skills_sloop_e2e_prepare_skill_target_repository_context",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
       "source_file": ".codex/skills/sloop-qa/SKILL.md",
       "source_location": "L6",
       "weight": 1.0,
@@ -113299,6 +113269,36 @@
       "weight": 1.0,
       "source": "codex_skills_sloop_test_cleanup_skill_sloop_test_cleanup",
       "target": "codex_skills_sloop_test_cleanup_skill_safety_boundary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "codex_skills_sloop_test_empty_e2e_skill",
+      "target": "codex_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "codex_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "target": "codex_skills_sloop_test_empty_e2e_skill_procedure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".codex/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "codex_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "target": "codex_skills_sloop_test_empty_e2e_skill_target_repository_context",
       "confidence_score": 1.0
     },
     {
@@ -113664,36 +113664,6 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L6",
-      "weight": 1.0,
-      "source": "assets_skills_sloop_e2e_prepare_skill",
-      "target": "assets_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L16",
-      "weight": 1.0,
-      "source": "assets_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "target": "assets_skills_sloop_e2e_prepare_skill_procedure",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "assets/skills/sloop-e2e-prepare/SKILL.md",
-      "source_location": "L10",
-      "weight": 1.0,
-      "source": "assets_skills_sloop_e2e_prepare_skill_sloop_e2e_one_cycle",
-      "target": "assets_skills_sloop_e2e_prepare_skill_target_repository_context",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
       "source_file": "assets/skills/sloop-qa/SKILL.md",
       "source_location": "L6",
       "weight": 1.0,
@@ -113769,6 +113739,36 @@
       "weight": 1.0,
       "source": "assets_skills_sloop_test_cleanup_skill_sloop_test_cleanup",
       "target": "assets_skills_sloop_test_cleanup_skill_safety_boundary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L6",
+      "weight": 1.0,
+      "source": "assets_skills_sloop_test_empty_e2e_skill",
+      "target": "assets_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "assets_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "target": "assets_skills_sloop_test_empty_e2e_skill_procedure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "assets/skills/sloop-test-empty-e2e/SKILL.md",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "assets_skills_sloop_test_empty_e2e_skill_sloop_test_empty_e2e",
+      "target": "assets_skills_sloop_test_empty_e2e_skill_target_repository_context",
       "confidence_score": 1.0
     },
     {
@@ -114311,5 +114311,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "a7970fe4519ee7df0c1037596422afe68ce738f8"
+  "built_at_commit": "a539a7f4b97113e714e8f1cb7e26f1c24c9dc20e"
 }

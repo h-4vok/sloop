@@ -25,16 +25,16 @@ test('sync installs each distributed Sloop skill', () => {
     'sloop-worker',
     'sloop-qa',
     'sloop-test-cleanup',
-    'sloop-e2e-prepare',
+    'sloop-test-empty-e2e',
   ])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
 });
 
-test('sync removes the obsolete multi-cycle skill and preserves other skill files', () => {
+test('sync removes the obsolete one-cycle skill and preserves other skill files', () => {
   const { root, runner, config } = createSyncFixture();
-  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-test-empty-e2e');
+  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-e2e-prepare');
   mkdirSync(obsoleteSkill, { recursive: true });
-  writeFileSync(join(obsoleteSkill, 'SKILL.md'), 'obsolete multi-cycle skill');
+  writeFileSync(join(obsoleteSkill, 'SKILL.md'), 'obsolete one-cycle skill');
   writeFileSync(join(obsoleteSkill, 'notes.md'), 'keep unrelated content');
 
   syncPrerequisites(root, config, { runner });
@@ -46,7 +46,7 @@ test('sync removes the obsolete multi-cycle skill and preserves other skill file
 test('sync preserves obsolete skill files behind a linked directory', () => {
   const { root, runner, config } = createSyncFixture();
   const externalSkills = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-external-skills-'));
-  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-test-empty-e2e');
+  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-e2e-prepare');
   const externalSkillFile = join(externalSkills, 'SKILL.md');
   const externalSkillContents = 'shared skill file';
   mkdirSync(join(root, '.codex', 'skills'), { recursive: true });
@@ -63,7 +63,7 @@ test('sync preserves obsolete skill files behind a linked ancestor', () => {
   const { root, runner, config } = createSyncFixture();
   const externalRoot = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-external-codex-'));
   const externalCodexDirectory = join(externalRoot, '.codex');
-  const externalSkillDirectory = join(externalCodexDirectory, 'skills', 'sloop-test-empty-e2e');
+  const externalSkillDirectory = join(externalCodexDirectory, 'skills', 'sloop-e2e-prepare');
   const linkedCodexDirectory = join(root, '.codex');
   const externalSkillFile = join(externalSkillDirectory, 'SKILL.md');
   const externalSkillContents = 'shared ancestor skill file';

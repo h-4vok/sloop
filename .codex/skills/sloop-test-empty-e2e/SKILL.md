@@ -1,9 +1,9 @@
 ---
-name: sloop-e2e-prepare
-description: Run one manual Sloop E2E cycle in h-4vok/sloop-test-empty, verify Worker and QA evidence, and clean the fixture after success.
+name: sloop-test-empty-e2e
+description: Run one manual Sloop E2E cycle in h-4vok/sloop-test-empty, verify Worker and QA evidence, and clean the fixture before and after success.
 ---
 
-# Sloop E2E One-Cycle
+# Sloop Test Empty E2E
 
 Run exactly one manual smoke cycle in PowerShell. Do not create scripts or automate the loop. Orchestration decides whether to invoke this skill again.
 
