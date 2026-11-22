@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,16 +12,33 @@ export type PreparedAgentRun = Readonly<{
   persistedPath?: string;
 }>;
 
-/** Creates isolated input, schema, and environment state for an agent run. */
+/** Owns the isolated input, schema, and output files for an agent run. */
 export class AgentRunWorkspace {
   constructor(private readonly options: RunnerOptions) {}
 
-  async prepare(
+  async runInWorkspace<Result>(
+    input: string,
+    context: RunContext,
+    persistedPath: string | undefined,
+    runAgent: (preparedRun: PreparedAgentRun) => Promise<Result>,
+  ): Promise<Result> {
+    const directory = await mkdtemp(join(tmpdir(), 'sloop-agent-'));
+
+    try {
+      const preparedRun = await this.prepareWorkspace(directory, input, context, persistedPath);
+
+      return await runAgent(preparedRun);
+    } finally {
+      await rm(directory, { recursive: true, force: true, maxRetries: 3 });
+    }
+  }
+
+  private async prepareWorkspace(
+    directory: string,
     input: string,
     context: RunContext,
     persistedPath: string | undefined,
   ): Promise<PreparedAgentRun> {
-    const directory = await mkdtemp(join(tmpdir(), 'sloop-agent-'));
     const inputPath = join(directory, 'input.json');
     const outputPath = join(directory, 'output.json');
     const schemaPath = join(directory, 'schema.json');
