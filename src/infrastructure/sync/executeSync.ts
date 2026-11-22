@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { SloopConfig } from '../../config.js';
 import type { SyncOptions, SyncRunner } from './checkSyncPrerequisites.js';
@@ -96,7 +96,7 @@ function labelAlreadyExists(
 function syncSkills(root: string, config: SloopConfig, output: (message: string) => void): void {
   const destination = getSkillDestination(root, config);
   mkdirSync(destination, { recursive: true });
-  rmSync(join(destination, 'sloop-test-empty-e2e', 'SKILL.md'), { force: true });
+  removeObsoleteSkill(destination);
 
   for (const name of bundledSkills) {
     const source = getSkillAsset(name);
@@ -105,6 +105,23 @@ function syncSkills(root: string, config: SloopConfig, output: (message: string)
     writeFileSync(target, readFileSync(source));
     output(`Skill '${name}' installed at ${target}.`);
   }
+}
+
+function removeObsoleteSkill(destination: string): void {
+  const obsoleteSkillDirectory = join(destination, 'sloop-test-empty-e2e');
+  let obsoleteSkillDirectoryStats;
+
+  try {
+    obsoleteSkillDirectoryStats = lstatSync(obsoleteSkillDirectory);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return;
+    throw error;
+  }
+
+  if (obsoleteSkillDirectoryStats.isSymbolicLink() || !obsoleteSkillDirectoryStats.isDirectory())
+    return;
+
+  rmSync(join(obsoleteSkillDirectory, 'SKILL.md'), { force: true });
 }
 
 /** Installs canonical GitHub labels and the distributed Sloop skills. */
