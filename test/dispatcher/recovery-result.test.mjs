@@ -17,7 +17,9 @@ test('stale lock recovery returns a live-owner failure without removing the lock
   let removedLock = false;
   const mockLockIO = {
     exists: () => true,
+
     read: () => JSON.stringify({ pid: 42 }),
+
     removeDirectory: () => {
       removedLock = true;
     },
@@ -40,7 +42,9 @@ test('stale lock recovery converts non-Error boundary failures', () => {
     exists: () => {
       throw rawFailure;
     },
+
     read: () => '',
+
     removeDirectory: () => {},
   };
 

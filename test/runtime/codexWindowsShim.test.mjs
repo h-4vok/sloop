@@ -73,12 +73,17 @@ async function runCodexShimInvocation(fixtureDir, invocation, additionalEnvironm
   return new Promise((resolve, reject) => {
     const child = spawn(invocation.command, invocation.args, {
       cwd: fixtureDir,
+
       env: {
         ...process.env,
+
         PATH: [fixtureDir, systemPath].join(delimiter),
+
         ...additionalEnvironment,
       },
+
       shell: false,
+
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';

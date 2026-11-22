@@ -11,61 +11,81 @@ const issueListArgs = ['issues', 'list', '--json'];
 const invalidPreflightCases = [
   {
     name: 'unavailable gh',
+
     overrides: { 'gh --version': { stdout: '', stderr: '', status: 1 } },
+
     check: 'gh',
   },
   {
     name: 'malformed repository identity',
+
     overrides: {
       'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
         stdout: '{',
+
         stderr: '',
+
         status: 0,
       },
     },
+
     check: 'repository-identity',
   },
   {
     name: 'read-only repository permission',
+
     overrides: {
       'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
         stdout: '{"viewerPermission":"READ"}',
+
         stderr: '',
+
         status: 0,
       },
     },
+
     check: 'repository-identity',
   },
   {
     name: 'missing repository permission',
+
     overrides: {
       'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
         stdout: '{"nameWithOwner":"o/r","viewerPermission":"NONE"}',
+
         stderr: '',
+
         status: 0,
       },
     },
+
     check: 'permissions',
   },
   {
     name: 'malformed labels',
+
     overrides: {
       'gh label list --repo o/r --limit 1000 --json name': { stdout: '{', stderr: '', status: 0 },
     },
+
     check: 'labels',
   },
   {
     name: 'missing labels',
+
     overrides: {
       'gh label list --repo o/r --limit 1000 --json name': { stdout: '[]', stderr: '', status: 0 },
     },
+
     check: 'labels',
   },
   {
     name: 'unavailable labels',
+
     overrides: {
       'gh label list --repo o/r --limit 1000 --json name': { stdout: '', stderr: '', status: 1 },
     },
+
     check: 'permissions',
   },
 ];
@@ -87,7 +107,9 @@ test.each([
     'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
         stdout,
+
         stderr: '',
+
         status: 0,
       },
   });

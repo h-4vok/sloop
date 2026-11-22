@@ -42,6 +42,7 @@ function createMockFollowUpIssueHarness(hasFollowUpIssue) {
 
 const requiredMethodsByBoundary = {
   Workspace: ['load', 'save'],
+
   CliControl: [
     'loadConfig',
     'status',
@@ -52,7 +53,9 @@ const requiredMethodsByBoundary = {
     'linkIssue',
     'prepareRecovery',
   ],
+
   GitProvider: ['prepareWorkerBranch', 'checkoutWorkerBranch'],
+
   GitHubProvider: [
     'eligible',
     'comment',
@@ -61,8 +64,11 @@ const requiredMethodsByBoundary = {
     'pullRequestBody',
     'prComment',
   ],
+
   AgentRunner: ['run'],
+
   HealthGate: ['pid', 'processAlive'],
+
   LockStore: [
     'tryAcquire',
     'readOwner',
@@ -73,7 +79,9 @@ const requiredMethodsByBoundary = {
     'abandonReclaim',
     'release',
   ],
+
   Scheduler: ['now', 'sleep'],
+
   RunEventSink: ['onReclaim'],
 };
 

@@ -69,9 +69,13 @@ test('production adapters expose deterministic local, GitHub, and lock contracts
       'pr view summary',
       JSON.stringify({
         number: 9,
+
         body: 'PR body',
+
         reviews: [{ commit: { oid: 'abcdef1' }, submitted_at: 'now' }],
+
         comments: [{ body: 'comment', created_at: 'then' }],
+
         statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'url' }],
       }),
     ],

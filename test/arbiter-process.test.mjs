@@ -8,12 +8,19 @@ import { runLoggedProcess } from '../src/arbiter.js';
 function createProcessOptions() {
   return {
     logDirectory: createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-arbiter-log-')),
+
     sessionId: 's',
+
     issue: 1,
+
     role: 'worker',
+
     round: 1,
+
     command: process.execPath,
+
     args: [],
+
     timeoutMs: 5000,
   };
 }
@@ -23,9 +30,13 @@ test('logged process captures streams, lines, and redacted output', async () => 
   const errors = [];
   const options = {
     ...createProcessOptions(),
+
     args: ['-e', "process.stdout.write('hello SECRET\\nlast'); process.stderr.write('oops')"],
+
     redactions: ['SECRET'],
+
     onStdoutLine: (line) => lines.push(line),
+
     onStderr: (text) => errors.push(text),
   };
 
@@ -41,7 +52,9 @@ test('logged process captures streams, lines, and redacted output', async () => 
 test('logged process forwards input to the child process', async () => {
   const options = {
     ...createProcessOptions(),
+
     args: ['-e', "process.stdin.on('data', (data) => process.stdout.write(data))"],
+
     input: 'input',
   };
 
@@ -53,6 +66,7 @@ test('logged process forwards input to the child process', async () => {
 test('logged process completes when output includes a trailing newline', async () => {
   const options = {
     ...createProcessOptions(),
+
     args: ['-e', "process.stdout.write('line\\n')"],
   };
 
@@ -73,6 +87,7 @@ test('logged process handles empty chunk splitting and reduction fallback', asyn
     };
     await runLoggedProcess({
       ...options,
+
       args: ['-e', "process.stdout.write('force-empty-split')"],
     });
 
@@ -89,7 +104,9 @@ test('logged process handles empty chunk splitting and reduction fallback', asyn
 test('logged process marks a child that exceeds its timeout', async () => {
   const options = {
     ...createProcessOptions(),
+
     args: ['-e', 'setTimeout(() => {}, 1000)'],
+
     timeoutMs: 10,
   };
 
@@ -101,6 +118,7 @@ test('logged process marks a child that exceeds its timeout', async () => {
 test('logged process rejects when the executable cannot launch', async () => {
   const options = {
     ...createProcessOptions(),
+
     command: 'definitely-not-a-real-command-xyz',
   };
 

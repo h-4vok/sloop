@@ -51,30 +51,48 @@ function createRuntimeResponses(overrides) {
   ];
   return {
     'git rev-parse --show-toplevel': { stdout: '/repo\n', stderr: '', status: 0 },
+
     'git --version': { stdout: 'git version 2.50', stderr: '', status: 0 },
+
     'git remote get-url origin': { stdout: 'https://github.com/o/r.git', stderr: '', status: 0 },
+
     'git rev-parse --verify origin/main^{commit}': { stdout: 'abc', stderr: '', status: 0 },
+
     'git status --porcelain': { stdout: '', stderr: '', status: 0 },
+
     'git symbolic-ref --short HEAD': { stdout: 'codex/issue-31', stderr: '', status: 0 },
+
     'gh --version': { stdout: 'gh version 2', stderr: '', status: 0 },
+
     'gh auth status': { stdout: '', stderr: '', status: 0 },
+
     'gh repo view https://github.com/o/r.git --json nameWithOwner,viewerPermission': {
       stdout: '{"nameWithOwner":"o/r","viewerPermission":"WRITE"}',
+
       stderr: '',
+
       status: 0,
     },
+
     'gh label list --repo o/r --limit 1000 --json name': {
       stdout: JSON.stringify(labelNames.map((name) => ({ name }))),
+
       stderr: '',
+
       status: 0,
     },
+
     'gh issue list --state open --label Automation Ready --repo o/r --json number,title,url,labels':
       {
         stdout: '[{"number":31,"title":"Discovery"}]',
+
         stderr: '',
+
         status: 0,
       },
+
     'codex --version': { stdout: 'codex 1', stderr: '', status: 0 },
+
     ...overrides,
   };
 }
@@ -82,18 +100,26 @@ function createRuntimeResponses(overrides) {
 function createRuntimeIo({ calls, stdout, stderr, readableFiles, overrides, responses }) {
   return {
     cwd: '/repo/nested',
+
     platform: 'linux',
+
     nodeVersion: 'v22.1.0',
+
     homeDirectory: homedir(),
+
     run(file, args, cwd) {
       calls.push({ file, args: [...args], cwd });
       return (
         responses[`${file} ${args.join(' ')}`] ?? { stdout: '', stderr: 'unexpected', status: 1 }
       );
     },
+
     readFile: (file) => overrides.localConfig ?? config,
+
     canRead: (file) => readableFiles.has(file),
+
     stdout: (value) => stdout.push(value),
+
     stderr: (value) => stderr.push(value),
   };
 }

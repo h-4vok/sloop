@@ -36,8 +36,11 @@ const workerEnvelope = {
 
   payload: {
     summary: 'Ready for review',
+
     findingResolutions: [],
+
     verification: ['Checks passed'],
+
     guide: workerGuide,
   },
 };

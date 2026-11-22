@@ -5,20 +5,31 @@ const context = { run: 'r', issue: 7, pr: 8, round: 1, sha: 'abcdef1', cursor: '
 const decisions = [
   {
     findingId: 'Q1',
+
     owner: 'qa',
+
     action: 'uphold',
+
     rationale: 'Trim names.',
+
     direction: 'Trim the input.',
+
     verification: 'Check surrounding whitespace.',
+
     followUp: null,
   },
 ];
 const guide = {
   summary: 'summary',
+
   steps: ['step'],
+
   expected: ['expected'],
+
   isolation: 'isolated',
+
   limitations: ['none'],
+
   checklist: ['checked'],
 };
 
@@ -54,20 +65,32 @@ function createRoleEnvelopeFixtures() {
   return {
     worker: {
       schema: 'sloop.agent-output/v1',
+
       context: { ...context, pr: undefined },
+
       producer: 'worker',
+
       status: 'ready',
+
       payload: { summary: 's', findingResolutions: [], verification: ['v'], guide },
     },
+
     reviewer: {
       schema: 'sloop.agent-output/v1',
+
       context,
+
       producer: 'qa',
+
       status: 'accepted',
+
       payload: {
         summary: 's',
+
         evidence: ['e'],
+
         newFindings: [{ id: 'Q1', summary: 's', severity: 'low' }],
+
         dispositions: [{ id: 'Q1', status: 'fixed', summary: 's' }],
       },
     },

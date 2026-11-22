@@ -92,28 +92,41 @@ function createBlockedStatusModules() {
   return {
     runtime: {
       emitNodeVersionFailure: assert.fail,
+
       emitUsageFailure: assert.fail,
+
       parseCliCommand: () => ({
         kind: 'read-only',
+
         command: { command: 'status', json: true, verbose: false },
       }),
+
       runDispatcherPreflight: assert.fail,
+
       runReadOnlyCommand: (_command, io) => {
         io.stdout(
           JSON.stringify({
             command: 'status',
+
             status: 'blocked',
+
             phase: 'workflow',
+
             summary: 'Workflow is blocked.',
+
             result: null,
+
             diagnostics: [],
+
             references: { issues: [31], pullRequests: [54] },
           }),
         );
         return 4;
       },
     },
+
     dispatcher: { runDispatcherCli: assert.fail },
+
     adapters: { productionDependencies: assert.fail },
   };
 }

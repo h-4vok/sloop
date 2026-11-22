@@ -17,13 +17,20 @@ function createUnhealthyReviewCapFixture() {
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -32,9 +39,13 @@ function createUnhealthyReviewCapFixture() {
   const fake = createReviewCapGitHubHost({
     pullRequest: {
       number: 7,
+
       mergeable: 'CONFLICTING',
+
       mergeStateStatus: 'DIRTY',
+
       comments: [],
+
       statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'FAILURE' }],
     },
   });
@@ -45,9 +56,13 @@ test('review-cap waiver requires a clean PR with green checks', () => {
   const fixture = createUnhealthyReviewCapFixture();
   const request = {
     steer: 'waive after review',
+
     abandon: false,
+
     waiveAllOutstanding: false,
+
     waivedFindingIds: ['Q1'],
+
     additionalRounds: 0,
   };
 

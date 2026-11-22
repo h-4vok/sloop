@@ -27,16 +27,24 @@ for (const action of ['uphold', 'overrule', 'defer', 'escalate']) {
 function createArbiterContractDecision(action) {
   return {
     findingId: 'Q1',
+
     owner: 'qa',
+
     action,
+
     rationale: 'El requisito exige recortar los espacios.',
+
     direction: action === 'uphold' ? 'Trim the input.' : null,
+
     verification: action === 'uphold' ? 'Check surrounding and internal spaces.' : null,
+
     followUp:
       action === 'defer'
         ? {
             title: 'Trim names',
+
             acceptance: 'Surrounding spaces are removed.',
+
             context: 'Issue #41 / Q1',
           }
         : null,

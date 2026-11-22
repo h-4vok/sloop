@@ -2,11 +2,16 @@ export function createMockGitHubHost(respond) {
   const calls = [];
   return {
     calls,
+
     host: {
       platform: 'linux',
+
       pid: () => 123,
+
       now: () => 1_700_000_000_000,
+
       resolveExecutable: () => 'gh',
+
       runSyncCommand: (_command, args, _input, _platform, _comSpec, cwd) => {
         calls.push({ args, cwd });
         return respond(args, cwd);
@@ -30,15 +35,25 @@ function mockGitHubCommandKey(args) {
 
 export const baseConfig = {
   baseBranch: 'main',
+
   workerCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
+
   staffReviewCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
+
   qaCommand: { command: 'codex', args: ['exec', '--sandbox', 'read-only'] },
+
   requiredPrChecks: ['pr-checks'],
+
   checkPollIntervalMs: 0,
+
   checkTimeoutMs: 1000,
+
   evidencePollIntervalMs: 0,
+
   evidenceTimeoutMs: 1000,
+
   workerLeaseMs: 100,
+
   maxReviewRounds: 5,
 };
 

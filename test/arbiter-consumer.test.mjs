@@ -27,6 +27,7 @@ test('arbiter consumes only valid matching lines', () => {
   for (const invalid of invalidItems) {
     const isolatedContext = {
       ...fixture.context,
+
       journal: new JsonlJournal(createTemporaryFile()),
     };
     assert.equal(consumeArbiterLine(isolatedContext, JSON.stringify(invalid)), false);
@@ -43,21 +44,32 @@ function createArbiterConsumerFixture() {
   let saved;
   const context = {
     session,
+
     journal,
+
     save: (value) => {
       saved = value;
     },
+
     project: (value) => seen.push(value),
   };
   const item = {
     id: 'x',
+
     sessionId: 's3',
+
     issue: 3,
+
     role: 'arbiter',
+
     type: 'worker_ready',
+
     sha: 'abc',
+
     round: 1,
+
     emittedAt: new Date().toISOString(),
+
     payload: {},
   };
   return { context, item, seen, saved: () => saved };

@@ -29,6 +29,7 @@ export function createRepository() {
   execFileSync('git', ['add', 'readme.md'], { cwd: root });
   execFileSync('git', ['commit', '-m', 'test: seed integration repo'], {
     cwd: root,
+
     stdio: 'ignore',
   });
   return root;

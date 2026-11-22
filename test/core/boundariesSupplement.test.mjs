@@ -83,15 +83,25 @@ test('remote snapshot keeps --repo off gh api GraphQL calls', () => {
 function createRunManifest() {
   return {
     protocol: 1,
+
     runId: 'run-1',
+
     issue: 33,
+
     pr: 77,
+
     branch: 'codex/issue-33',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'config-1',
+
     phase: 'review',
+
     reviewRound: 1,
+
     contextCursor: 'cursor-1',
+
     artifacts: [],
   };
 }

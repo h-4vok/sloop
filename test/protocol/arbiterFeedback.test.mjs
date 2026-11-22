@@ -57,11 +57,13 @@ test('feedback collection filters processed and internal comments while classify
   // Arrange
   const observations = {
     processedIds: ['old-review'],
+
     reviews: [
       { id: 'old-review', body: 'Already handled' },
       { id: 'approval', state: 'APPROVED', body: 'Looks good' },
       { id: 'concern', body: 'Please fix the label' },
     ],
+
     comments: [
       { id: 'internal', body: '[Staff Review] internal note' },
       { id: 'human-comment', body: 'One concern remains' },

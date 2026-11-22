@@ -52,6 +52,7 @@ function publishWorkerEvidence(fixture, round) {
     : '';
   fixture.pr.comments.push({
     body: `[Worker] round=${round} status=ready_for_review pr=${fixture.pr.number} base=main commit=${fixture.pr.headRefOid}${verification}`,
+
     createdAt: `${fixture.workerCount}`,
   });
 }
@@ -70,8 +71,11 @@ function publishQaEvidence(fixture, round, verdict) {
     body:
       fixture.qaBodies?.[fixture.qaCount - 1] ??
       `[QA/SDET Review] round=${round} verdict=${verdict} commit=${fixture.pr.headRefOid}`,
+
     commitId: fixture.pr.headRefOid,
+
     submittedAt: `${fixture.qaCount}`,
+
     createdAt: `${fixture.qaCount}`,
   });
 }
@@ -88,7 +92,9 @@ function publishStaffEvidence(fixture, round, verdict) {
     body:
       fixture.staffBodies?.[fixture.staffCount - 1] ??
       `[Staff Review] round=${round} verdict=${verdict} commit=${fixture.pr.headRefOid}`,
+
     commitId: fixture.pr.headRefOid,
+
     submittedAt: `${fixture.staffCount}`,
   });
 }
@@ -98,12 +104,18 @@ function runMockArbiter(spec, fixture) {
   const decision = createArbiterDecision(fixture);
   return JSON.stringify({
     schema: 'sloop.agent-output/v1',
+
     context: createArbiterContext(record),
+
     producer: 'arbiter',
+
     status: decision.action,
+
     payload: {
       rationale: 'Conflict analysis against the contract justifies this decision.',
+
       references: ['QA feedback'],
+
       decisions: [decision],
     },
   });
@@ -112,10 +124,15 @@ function runMockArbiter(spec, fixture) {
 function createArbiterContext(record) {
   return {
     run: record.state.workerRunId ?? `arbiter-${record.round}`,
+
     issue: record.issue.number,
+
     pr: record.pr.number,
+
     round: record.round,
+
     sha: record.pr.headRefOid ?? 'unknown',
+
     cursor: `arbiter-${record.round}`,
   };
 }
@@ -124,12 +141,18 @@ function createArbiterDecision(fixture) {
   const action = fixture.overrides.arbiterAction ?? 'uphold';
   return {
     findingId: fixture.overrides.arbiterFindingId ?? 'Q1',
+
     owner: 'qa',
+
     action,
+
     rationale:
       'Conflict between the review arguments; analysis against contract, product and UX justifies this decision.',
+
     direction: 'Apply the requested correction.',
+
     verification: 'Run the repository gate and repeat QA.',
+
     ...(action === 'defer' ? { followUp: deferredArbiterFollowUp() } : {}),
   };
 }
@@ -137,7 +160,9 @@ function createArbiterDecision(fixture) {
 function deferredArbiterFollowUp() {
   return {
     title: 'Deferred Arbiter follow-up',
+
     acceptance: 'The deferred finding is implemented and verified.',
+
     context: 'Relevant review context and source evidence.',
   };
 }

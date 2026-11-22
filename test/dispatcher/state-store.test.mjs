@@ -7,9 +7,13 @@ test('run state store returns an expected failure when rename attempts are exhau
   const operations = [];
   const mockFileIO = {
     exists: () => false,
+
     read: () => '',
+
     makeDirectory: (directory) => operations.push(['mkdir', directory]),
+
     write: (file) => operations.push(['write', file]),
+
     rename: () => {
       operations.push(['rename']);
       throw new Error('state file is busy');
@@ -34,9 +38,13 @@ test('run state store returns an expected failure when rename attempts are exhau
 test('run state reset rejects a live worker through Result without touching files', () => {
   const mockFileIO = {
     exists: () => false,
+
     read: () => '',
+
     makeDirectory: () => assert.fail('reset must not write files'),
+
     write: () => assert.fail('reset must not write files'),
+
     rename: () => assert.fail('reset must not write files'),
   };
   const stateStore = RunStateStore.createRunStateStore(
@@ -59,13 +67,18 @@ test('state transition preserves save, event, console, and comment order', () =>
   let currentState = { issue: 12, status: 'claimed' };
   const dependencies = {
     load: () => currentState,
+
     save: (nextState) => {
       currentState = nextState;
       events.push('save');
     },
+
     now: () => 99,
+
     runLogger: { write: () => events.push('event') },
+
     comment: () => events.push('comment'),
+
     reportStatus: () => events.push('console'),
   };
   RunStatePolicy.status(dependencies, 12, 'worker_running');
@@ -80,13 +93,18 @@ test('claim transition records the new owner before emitting its event', () => {
   let currentState = { status: 'done', completedIssues: [3] };
   const dependencies = {
     load: () => currentState,
+
     save: (nextState) => {
       currentState = nextState;
       events.push('save');
     },
+
     now: () => 101,
+
     runLogger: { write: () => events.push('event') },
+
     comment: () => events.push('comment'),
+
     reportStatus: () => events.push('console'),
   };
   RunStatePolicy.claimNewIssue(dependencies, 18);

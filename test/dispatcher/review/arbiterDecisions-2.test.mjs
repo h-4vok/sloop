@@ -37,15 +37,20 @@ async function runArbiterContractScenario() {
 function createArbiterContractHarness() {
   return createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     qaVerdicts: ['changes_requested', 'passed'],
+
     qaBodies: [
       '[QA/SDET Review] round=1 verdict=changes_requested commit=abc1\n- [Q1] fail - contract finding',
       '[QA/SDET Review] round=2 verdict=passed commit=abc2',
     ],
+
     config: {
       maxReviewRounds: 1,
+
       arbiterReviewRounds: 1,
+
       arbiterCommand: {
         command: 'codex',
+
         args: [
           'exec',
           '--sandbox',

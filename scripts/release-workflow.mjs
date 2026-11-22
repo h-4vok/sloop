@@ -19,7 +19,9 @@ async function main() {
   const command = process.argv[2];
   const api = createGitHubApi({
     token: process.env.GITHUB_TOKEN,
+
     repository: process.env.GITHUB_REPOSITORY ?? '',
+
     apiUrl: process.env.GITHUB_API_URL,
   });
 
@@ -42,10 +44,15 @@ async function calculatePullRequestRelease(api) {
 
   const result = await calculateRelease({
     api,
+
     number,
+
     body: event.pull_request.body,
+
     tags: gitTags(),
+
     readTagMetadata,
+
     packageVersion: JSON.parse(readFileSync('package.json', 'utf8')).version,
   });
   appendFileSync(process.env.GITHUB_OUTPUT, `kind=${result.kind}\nversion=${result.version}\n`);
@@ -57,8 +64,11 @@ async function calculatePullRequestRelease(api) {
 async function publishPullRequestRelease(api) {
   const outcome = await publishRelease({
     api,
+
     version: process.env.VERSION,
+
     pr: Number(process.env.PR_NUMBER),
+
     date: new Date().toISOString().slice(0, 10),
   });
   console.log(`Release v${process.env.VERSION} for PR #${process.env.PR_NUMBER}: ${outcome}.`);

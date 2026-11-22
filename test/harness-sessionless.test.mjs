@@ -7,10 +7,12 @@ test('sessionless harness receives fresh invocations without persisted reference
   const calls = [];
   const harness = {
     capabilities: { sessions: false },
+
     async start(_context, turn) {
       calls.push(turn);
       return { accepted: true };
     },
+
     async resume() {
       throw new Error('unsupported');
     },

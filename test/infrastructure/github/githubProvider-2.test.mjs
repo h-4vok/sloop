@@ -23,8 +23,11 @@ function createPullRequestShapeAdapter(root, mode) {
     if (mode.value === 'empty') return JSON.stringify({});
     return JSON.stringify({
       number: 4,
+
       reviews: [{ commitId: 'id', submittedAt: 'date' }],
+
       comments: [{ body: 'comment', createdAt: 'date' }],
+
       statusCheckRollup: [{ context: 'context', state: 'PENDING' }],
     });
   });
@@ -97,15 +100,25 @@ test('production remote adapter reports GitHub failures with operation context',
 function createFallbackManifest() {
   return {
     protocol: 1,
+
     runId: 'fallback',
+
     issue: 4,
+
     pr: 4,
+
     branch: 'branch',
+
     baseSha: 'sha',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 0,
+
     contextCursor: '',
+
     artifacts: [],
   };
 }

@@ -11,14 +11,23 @@ test('manifest marker preserves wire format and returns parse failures as Result
   // Arrange
   const manifest = {
     protocol: 1,
+
     runId: 'run-41',
+
     issue: 41,
+
     branch: 'worker/41',
+
     baseSha: 'abcdef1234567',
+
     configFingerprint: 'config-hash',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'cursor-1',
+
     artifacts: [],
   };
   const marker = runManifestMarker(manifest);

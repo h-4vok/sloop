@@ -18,8 +18,11 @@ export async function reuseOrCreateRelease(api, tag, tagTarget) {
   verifyReleaseState(
     {
       tagName: tag,
+
       tagTarget,
+
       releaseTagName: existing.tagName,
+
       releaseTarget: existing.targetCommitish,
     },
     tag,

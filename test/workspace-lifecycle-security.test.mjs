@@ -30,11 +30,17 @@ test('stale recovery rejects unknown Serena files and cleanup preserves them', a
   const fixture = createLocalWorkspaceFixture();
   const options = {
     repositoryRoot: fixture.repository,
+
     worktreeRoot: fixture.worktreeRoot,
+
     remote: 'origin',
+
     baseBranch: 'main',
+
     branchPrefix: 'sloop/',
+
     issue: 138,
+
     runId: 'dispatch-12345678',
   };
 
@@ -52,7 +58,9 @@ test('stale recovery rejects unknown Serena files and cleanup preserves them', a
 
   const recovered = workspaceAdapter.recoverWorkspace({
     ...options,
+
     runId: 'worker-87654321',
+
     branch: facts.branch,
   });
 
@@ -72,11 +80,17 @@ test('unregistered cleanup rejects worktrees without verified base ancestry', as
   const fixture = createLocalWorkspaceFixture();
   const options = {
     repositoryRoot: fixture.repository,
+
     worktreeRoot: fixture.worktreeRoot,
+
     remote: 'origin',
+
     baseBranch: 'main',
+
     branchPrefix: 'sloop/',
+
     issue: 138,
+
     runId: 'dispatch-12345678',
   };
   const facts = workspaceAdapter.prepareWorktreeWorkspace(options);

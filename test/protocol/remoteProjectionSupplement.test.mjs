@@ -8,15 +8,25 @@ test('remote state projects artifact keys and lease ownership', () => {
   });
   const projection = projectRemoteState({
     issue: 7,
+
     comments: [{ marker: 'sloop/v1/run/run' }, { marker: 'sloop/v1/artifact/a' }],
+
     manifest,
+
     checks: [{ name: 'green', status: 'COMPLETED', conclusion: 'success' }],
+
     reviews: [{ state: 'APPROVED' }, { state: 'DISMISSED' }],
+
     inlineThreads: [{ resolved: true }],
+
     labels: ['ordinary'],
+
     branch: manifest.branch,
+
     sha: manifest.baseSha,
+
     now: 1,
+
     leaseOwner: 'worker-b',
   });
 
@@ -36,9 +46,13 @@ test('remote state ignores an expired lease owned by the current worker', () => 
   });
   const projection = projectRemoteState({
     issue: 7,
+
     markers: ['sloop/v1/run/run'],
+
     manifest,
+
     now: 1,
+
     leaseOwner: 'worker-a',
   });
   const emptyProjection = projectRemoteState({ issue: 7, comments: [{}] });
@@ -53,7 +67,9 @@ test('remote state recognizes future leases and rejects invalid protocol input',
   });
   const projection = projectRemoteState({
     issue: 7,
+
     markers: ['sloop/v1/run/run'],
+
     manifest,
   });
 
@@ -65,15 +81,25 @@ test('remote state recognizes future leases and rejects invalid protocol input',
 function createSupplementManifest(overrides = {}) {
   return {
     protocol: REMOTE_PROTOCOL,
+
     runId: 'run',
+
     issue: 7,
+
     branch: 'codex/issue-7',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'claimed',
+
     reviewRound: 1,
+
     contextCursor: 'c',
+
     artifacts: ['sloop/v1/artifact/z'],
+
     ...overrides,
   };
 }

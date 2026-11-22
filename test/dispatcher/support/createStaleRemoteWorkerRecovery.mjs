@@ -10,8 +10,11 @@ export const createStaleRemoteWorkerRecovery = () => {
   const manifests = createStaleRemoteWorkerRecoveryManifests();
   const recovery = {
     current: manifests.current,
+
     published: [],
+
     claimCount: 0,
+
     comments: createRecoveryComments(manifests),
   };
   const workspace = configureRecoveryWorkspace(dispatcherHarness);
@@ -19,9 +22,13 @@ export const createStaleRemoteWorkerRecovery = () => {
 
   return {
     dispatcherHarness,
+
     published: recovery.published,
+
     checkedOut: workspace.checkedOut,
+
     prepared: workspace.prepared,
+
     claimCount: () => recovery.claimCount,
   };
 };
@@ -29,15 +36,23 @@ export const createStaleRemoteWorkerRecovery = () => {
 function createRecoveryHarness() {
   return createMockDispatcherHarness([{ number: 1, title: 'one' }], {
     prNumber: 14,
+
     headRefName: 'codex/issue-1',
+
     initialState: {
       issue: 1,
+
       pr: 14,
+
       branch: 'codex/issue-1-40ae',
+
       workerRunId: 'replacement-run',
+
       status: 'worker_recovery_pending',
+
       reviewRound: 1,
     },
+
     qaVerdicts: ['passed'],
   });
 }
@@ -49,14 +64,17 @@ function createRecoveryComments(manifests) {
     { body: runManifestMarker(original), createdAt: '2026-10-20T10:00:00Z' },
     {
       body: '[HITL Review Cap] action=resume issue=#1 pr=#14 round=3 sha=older-sha waived=none additionalRounds=2 steer=Continue the prior request.',
+
       createdAt: '2026-10-20T10:00:30Z',
     },
     {
       body: '[HITL Review Cap] round=4 cap=3 sha=abc0 outstanding=Q1,Q2. Resolve with additional rounds.',
+
       createdAt: '2026-10-20T10:01:00Z',
     },
     {
       body: '[HITL Review Cap] action=resume issue=#1 pr=#14 round=4 sha=abc0 waived=none additionalRounds=4 steer=Fix Q1 and Q2, then request QA.',
+
       createdAt: '2026-10-20T10:02:00Z',
     },
   ];
@@ -65,10 +83,13 @@ function createRecoveryComments(manifests) {
 function createRecoveryRemoteAdapter(recovery, original) {
   return {
     snapshot: () => createRecoverySnapshot(recovery.current, recovery.comments),
+
     reconcile: (_issue, key) => original.artifacts.includes(key),
+
     claim: () => {
       recovery.claimCount += 1;
     },
+
     publish: (_issue, manifest) => {
       recovery.current = manifest;
       recovery.published.push(manifest);
@@ -79,14 +100,23 @@ function createRecoveryRemoteAdapter(recovery, original) {
 function createRecoverySnapshot(current, comments) {
   return {
     issue: 1,
+
     pr: 14,
+
     prState: 'OPEN',
+
     branch: 'codex/issue-1',
+
     sha: 'abc0',
+
     manifest: current,
+
     markers: [`sloop/v1/run/${current.runId}`],
+
     comments,
+
     now: Date.now(),
+
     leaseOwner: 'this-dispatcher',
   };
 }

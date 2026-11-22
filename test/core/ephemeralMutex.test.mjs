@@ -85,6 +85,7 @@ test('reset preserves a repository mutex owned by a live process', () => {
 
   assert.deepEqual(resetResult, {
     ok: false,
+
     error: 'Cannot reset the repository mutex while Sloop process 7004 is active.',
   });
   assert.equal(existsSync(join(activeDirectory, 'owner')), true);
@@ -127,6 +128,7 @@ test.each([
 
   assert.deepEqual(resetResult, {
     ok: false,
+
     error: `Cannot reset the repository mutex because its owner is ${ownerStatus}.`,
   });
   assert.equal(existsSync(activeDirectory), true);

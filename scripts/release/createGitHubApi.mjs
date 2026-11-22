@@ -25,8 +25,11 @@ export function createGitHubApi({
   const request = createApiRequest(apiUrl.replace(/\/$/, ''), token, fetchImpl);
   return {
     closingIssueTitles: createClosingIssueTitles(request, owner, repo),
+
     issueTitle: createIssueTitle(request, owner, repo),
+
     releaseByTag: createReleaseByTag(request, owner, repo),
+
     createRelease: createRelease(request, owner, repo),
   };
 }
@@ -35,12 +38,17 @@ function createApiRequest(base, token, fetchImpl) {
   return async function request(path, { method = 'GET', body, missingIsNull = false } = {}) {
     const response = await fetchImpl(`${base}${path}`, {
       method,
+
       headers: {
         Accept: 'application/vnd.github+json',
+
         Authorization: `Bearer ${token}`,
+
         'Content-Type': 'application/json',
+
         'User-Agent': 'sloop-release',
       },
+
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
 
@@ -60,6 +68,7 @@ function createClosingIssueTitles(request, owner, repo) {
     do {
       const result = await request('/graphql', {
         method: 'POST',
+
         body: { query: closingIssuesQuery, variables: { owner, repo, number, after } },
       });
       const connection = closingIssueConnection(result);
@@ -96,6 +105,7 @@ function createRelease(request, owner, repo) {
   return async function createReleaseForTag(tag) {
     return request(`/repos/${owner}/${repo}/releases`, {
       method: 'POST',
+
       body: { tag_name: tag, name: tag, generate_release_notes: true },
     });
   };

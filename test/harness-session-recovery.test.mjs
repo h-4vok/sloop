@@ -13,9 +13,11 @@ test('restarts with full context after a pre-turn resume rejection', async () =>
   const key = { run: 'r', issue: 1, role: 'qa' };
   const initial = {
     capabilities: { sessions: true },
+
     async start() {
       return { accepted: true, session: 'old' };
     },
+
     async resume() {
       throw new ResumeRejectedError();
     },
@@ -31,10 +33,12 @@ test('restarts with full context after a pre-turn resume rejection', async () =>
   const calls = [];
   const recovering = {
     capabilities: { sessions: true },
+
     async resume() {
       calls.push('resume');
       throw new ResumeRejectedError();
     },
+
     async start(_context, turn) {
       calls.push(turn.prompt);
       return { accepted: true, session: 'new' };
@@ -64,6 +68,7 @@ test('preserves stored sessions when resume outcome is ambiguous', async () => {
   await runHarnessTurn(
     {
       capabilities: { sessions: true },
+
       async start() {
         return { accepted: true, session: 'stored' };
       },
@@ -75,9 +80,11 @@ test('preserves stored sessions when resume outcome is ambiguous', async () => {
   );
   const ambiguous = {
     capabilities: { sessions: true },
+
     async resume() {
       throw new ResumeAmbiguousError();
     },
+
     async start() {
       throw new Error('must not retry');
     },

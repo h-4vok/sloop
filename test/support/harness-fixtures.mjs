@@ -4,11 +4,17 @@ import { CodexHarness } from '../../src/harness.js';
 
 export const context = {
   issue: 114,
+
   role: 'worker',
+
   run: 'run-a',
+
   repository: 'repo context',
+
   issueContext: 'issue context',
+
   progress: 'progress',
+
   qaUpdates: 'qa updates',
 };
 
@@ -29,11 +35,17 @@ export function createMockCodexProcess({ stdout = [], stderr = [], code = 0 } = 
 export function createMockCodexHarness(response, calls, logs = []) {
   return new CodexHarness({
     cwd: 'fixture-repository',
+
     model: 'gpt-5-codex',
+
     sandbox: 'workspace-write',
+
     reasoningEffort: 'high',
+
     timeoutMs: 1000,
+
     log: (source, chunk) => logs.push([source, chunk]),
+
     spawn: (file, args, options) => {
       const child = createMockCodexProcess(response);
       calls.push({ file, args, options, child });
@@ -57,12 +69,14 @@ export function createMemorySessionIO(initialContent) {
     get content() {
       return content;
     },
+
     async read() {
       if (content !== undefined) return content;
       const missingFileError = new Error('file not found');
       missingFileError.code = 'ENOENT';
       throw missingFileError;
     },
+
     async write(_file, value) {
       content = value;
     },

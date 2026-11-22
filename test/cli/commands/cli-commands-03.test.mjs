@@ -112,23 +112,33 @@ function createSuccessfulPreflightModules(calls) {
   return {
     runtime: {
       emitNodeVersionFailure: assert.fail,
+
       emitUsageFailure: assert.fail,
+
       parseCliCommand: () => ({ kind: 'dispatcher', command: { kind: 'list' } }),
+
       runDispatcherPreflight: () => ({
         code: 0,
+
         diagnostics: [],
+
         root: '/repo',
+
         config: { mode: 'test' },
+
         repository: 'owner/repo',
       }),
+
       runReadOnlyCommand: assert.fail,
     },
+
     dispatcher: {
       runDispatcherCli: async (command, dependencies) => {
         calls.push(['dispatcher', command, dependencies]);
         return 0;
       },
     },
+
     adapters: {
       productionDependencies: (root, config, repository) => {
         calls.push(['dependencies', root, config, repository]);
