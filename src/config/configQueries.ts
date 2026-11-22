@@ -64,6 +64,7 @@ function parseConfigValueResult(
 function complexValueFailure(field: FieldMetadata): Result<never, ConfigValidationError> {
   return {
     ok: false,
+
     error: new ConfigValidationError([
       { path: `$.${field.path}`, message: 'complex values require the interactive wizard' },
     ]),

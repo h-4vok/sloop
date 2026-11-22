@@ -19,7 +19,9 @@ export const gitHubProviderFactory = Object.freeze({
 
     return {
       ...createGitHubProviderHandlers.issues(options, loadIssues),
+
       ...createGitHubProviderHandlers.pullRequests(options, pullRequests),
+
       ...createGitHubProviderHandlers.writers(options, writer),
     };
   },

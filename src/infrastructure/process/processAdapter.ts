@@ -77,6 +77,7 @@ function windowsBatchInvocation(
 ): ProcessInvocation {
   return {
     command: commandProcessor || 'cmd.exe',
+
     args: [
       '/d',
       '/s',
@@ -84,6 +85,7 @@ function windowsBatchInvocation(
       '/c',
       `""${executable}" ${args.map((arg) => `"${arg}"`).join(' ')}"`,
     ],
+
     windowsVerbatimArguments: true,
   };
 }

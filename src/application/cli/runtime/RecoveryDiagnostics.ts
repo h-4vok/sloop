@@ -37,7 +37,9 @@ function createRecoveryContext(workflow: Record<string, unknown>): RecoveryConte
 
   return {
     ...(issue ? { issue } : {}),
+
     ...(pullRequest ? { pullRequest } : {}),
+
     command: recoveryCommand(issue, pullRequest),
   };
 }
@@ -56,13 +58,18 @@ function createRecoveryObservation(
   return [
     {
       phase: kind.phase,
+
       ...contextValues,
+
       blocker: kind.blocker,
+
       command,
+
       description:
         command === 'sloop status --verbose'
           ? 'Inspect the recorded state; no repair command is available without complete context.'
           : 'Prepare the recorded recovery for the issue and pull request.',
+
       mutates: command.startsWith('sloop --prepare-recovery'),
     },
   ];
@@ -87,11 +94,17 @@ function createDiagnosticFromRecovery(item: RecoveryObservation): Diagnostic {
   const context = recoveryDiagnosticContext(item);
   return {
     check: `recovery-${item.phase}`,
+
     message: recoveryDiagnosticMessage(item),
+
     remediation: `Next: ${item.command}; ${item.mutates ? 'this mutates local recovery state' : 'read-only'}.`,
+
     phase: item.phase,
+
     ...(context ? { context } : {}),
+
     nextAction: { command: item.command, description: item.description, mutates: item.mutates },
+
     mutates: false,
   };
 }
@@ -107,6 +120,7 @@ function recoveryDiagnosticContext(item: RecoveryObservation) {
   if (!item.issue && !item.pullRequest) return undefined;
   return {
     ...(item.issue ? { issue: item.issue } : {}),
+
     ...(item.pullRequest ? { pullRequest: item.pullRequest } : {}),
   };
 }

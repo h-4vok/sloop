@@ -82,21 +82,30 @@ function inspectBranch(
   if (branchHasDiverged(facts))
     return {
       aligned: false,
+
       diagnostic: `local branch diverges from ${remote}/${branch} (ahead=${facts.ahead}, behind=${facts.behind})`,
+
       localSha: facts.localSha,
+
       remoteSha: facts.remoteSha,
     };
   if (!isBasedOnBaseBranch(root, remote, baseBranch))
     return {
       aligned: false,
+
       diagnostic: `branch is not based on ${remote}/${baseBranch}`,
+
       localSha: facts.localSha,
+
       remoteSha: facts.remoteSha,
     };
   return {
     aligned: true,
+
     diagnostic: 'branch is clean and aligned',
+
     localSha: facts.localSha,
+
     remoteSha: facts.remoteSha,
   };
 }
@@ -135,8 +144,11 @@ export function listOwnedWorkspaces(
     .filter((entry) => entry.repositoryRoot === resolve(repositoryRoot))
     .map((entry) => ({
       path: entry.executionRoot,
+
       branch: entry.branch,
+
       issue: entry.ownership.issue,
+
       pr: entry.pr ?? '—',
     }));
 }

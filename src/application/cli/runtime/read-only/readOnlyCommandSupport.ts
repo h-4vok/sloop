@@ -23,7 +23,9 @@ export const readOnlyCommandSupport = Object.freeze({
     }
     const context = {
       root: repositoryResult.value,
+
       config: configResult.value.config,
+
       ref: configResult.value.ref,
     };
     const failures = this.checkPrerequisites(parsed, context, io);

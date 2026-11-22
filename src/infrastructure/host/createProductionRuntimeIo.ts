@@ -64,7 +64,9 @@ function processFailureResult(error: unknown): ReturnType<RuntimeIo['run']> {
   };
   return {
     stdout: String(failure.stdout ?? ''),
+
     stderr: String(failure.stderr ?? ''),
+
     status: failure.status ?? 1,
   };
 }

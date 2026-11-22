@@ -50,6 +50,7 @@ export function readRemotePullRequest(client: Client, repository: string, number
   const threads = response.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
   return {
     pullRequest,
+
     inlineThreads: threads.map(({ isResolved }) => ({ resolved: isResolved })),
   };
 }

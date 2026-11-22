@@ -64,6 +64,7 @@ function workspaceDependencyDiagnostics(outputConfig: Record<string, unknown>): 
   )
     diagnostics.push({
       path: '$.workspace.path',
+
       message: 'is required when workspace.mode is checkout',
     });
   if (
@@ -72,6 +73,7 @@ function workspaceDependencyDiagnostics(outputConfig: Record<string, unknown>): 
   )
     diagnostics.push({
       path: '$.workspace.worktreeRoot',
+
       message: 'is required when workspace.mode is worktree',
     });
   return diagnostics;

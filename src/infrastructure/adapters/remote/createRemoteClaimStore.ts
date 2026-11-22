@@ -16,6 +16,7 @@ export function createRemoteClaimStore(client: Client) {
       ]);
       return result.comments?.some(({ body }) => body.includes(key)) ?? false;
     },
+
     claim(issue: number, key: string, manifest: RunManifest | string): void {
       const body = createClaimBody(issue, key, manifest);
       client.run(['issue', 'comment', String(issue), '--body', body], { stdio: 'inherit' });
@@ -28,6 +29,7 @@ function createClaimBody(issue: number, key: string, manifest: RunManifest | str
 
   const manifestWithClaim = runManifestMarker({
     ...manifest,
+
     artifacts: [...new Set([...(manifest.artifacts ?? []), key])],
   });
   return `${manifestWithClaim}\nsloop/v1/run/${manifest.runId}\n${key}\nsloop/v1/lease/${issue}/${manifest.lease?.owner ?? key}/${manifest.lease?.expiresAt ?? ''}`;

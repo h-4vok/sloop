@@ -68,9 +68,12 @@ function prepareConfigValueUpdate(
   if (!updateResult.ok) return { ok: false, error: updateResult.error.message };
   return {
     ok: true,
+
     value: {
       current: configValue(configResult.value, path),
+
       next: updateResult.value,
+
       value: valueResult.value,
     },
   };

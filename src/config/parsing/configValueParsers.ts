@@ -72,11 +72,18 @@ export const unrestrictedStringParser = (value: unknown, path: string): ParserRe
 /** Exposes primitive configuration value parsers. */
 export const configValueParsers = Object.freeze({
   stringParser,
+
   booleanParser,
+
   integerParser,
+
   enumParser,
+
   listParser,
+
   durationParser,
+
   pathParser,
+
   unrestrictedStringParser,
 });

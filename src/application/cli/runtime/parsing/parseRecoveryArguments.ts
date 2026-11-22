@@ -12,7 +12,9 @@ export const parseRecoveryArguments = Object.freeze({
     if (this.hasValidRecoveryIssue(args) && (args.length === 2 || this.hasValidPullRequest(args))) {
       output = {
         kind: 'prepare-recovery',
+
         issue: Number(args[1]),
+
         pr: args.length === 4 ? Number(args[3]) : undefined,
       };
     }

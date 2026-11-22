@@ -22,14 +22,23 @@ export function productionDependencies(
   );
   return {
     remoteRequired: true,
+
     ...services.controls,
+
     ...services.githubProvider,
+
     ...services.lockStore,
+
     ...agents,
+
     remote: services.remoteAuthority,
+
     runContext: () => services.workspace.adapter.context!(),
+
     workspaceAdapter: services.workspace.adapter,
+
     listAllWorktrees: services.listAllWorktrees,
+
     clearAllWorktrees: services.clearAllWorktrees,
   };
 }

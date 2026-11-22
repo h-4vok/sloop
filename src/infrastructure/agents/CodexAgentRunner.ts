@@ -31,10 +31,12 @@ export class CodexAgentRunner extends ArbitraryCommandRunner {
     const execute = options.execute ?? executeAgentProcess;
     super('codex', args, {
       ...options,
+
       execute: async (_command, receivedArgs, processOptions) => {
         const invocation = codexCliInvocation(receivedArgs);
         return execute(invocation.command, invocation.args, {
           ...processOptions,
+
           ...(invocation.stdin === undefined ? {} : { stdin: invocation.stdin }),
         });
       },

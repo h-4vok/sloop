@@ -19,10 +19,15 @@ export function restoreSession(
 function createRestoredSession(base: EngineeringSession): EngineeringSession {
   return {
     ...base,
+
     agents: { ...base.agents },
+
     processedEventIds: [...base.processedEventIds],
+
     pendingClarifications: [...(base.pendingClarifications ?? [])],
+
     answeredClarificationIds: [...(base.answeredClarificationIds ?? [])],
+
     classifications: [...(base.classifications ?? [])],
   };
 }
@@ -57,11 +62,16 @@ function addClarification(
   if (session.pendingClarifications.some((value) => value.eventId === item.id)) return;
   session.pendingClarifications.push({
     eventId: item.id,
+
     sessionId: item.sessionId,
+
     question: String(item.payload.question ?? 'Please provide clarification.'),
+
     target: typeof item.payload.target === 'string' ? item.payload.target : undefined,
+
     instructions:
       typeof item.payload.instructions === 'string' ? item.payload.instructions : undefined,
+
     createdAt: item.emittedAt,
   });
   session.status = 'waiting_for_human_clarification';

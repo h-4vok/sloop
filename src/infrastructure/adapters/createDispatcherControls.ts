@@ -76,7 +76,9 @@ export const dispatcherControlsFactory = Object.freeze({
   create(options: DispatcherControlOptions): DispatcherControls {
     return {
       root: options.root,
+
       ...createWorkspaceStateControls(options),
+
       ...createReviewControls(options),
     };
   },
@@ -85,25 +87,35 @@ export const dispatcherControlsFactory = Object.freeze({
 function createWorkspaceStateControls(options: DispatcherControlOptions) {
   return {
     load: () => readState(options.stateFile),
+
     save: (state: State) => writeState(state, options.stateFile),
+
     loadConfig: () => options.config,
+
     status: (verbose: boolean) => {
       const currentState = readState(options.stateFile);
       if (verbose) return currentState;
       return {
         issue: currentState.issue,
+
         pr: currentState.pr,
+
         status: currentState.status,
+
         lastError: currentState.lastError,
       };
     },
+
     list: () => options.listEligibleIssues(),
+
     recoverLock: () => recoverStaleLock(options.root, defaultProcessAlive),
+
     reset: () =>
       writeState(
         resetRunState(readState(options.stateFile), defaultProcessAlive),
         options.stateFile,
       ),
+
     resetMutex: () => ephemeralMutex.reset(options.root, defaultProcessAlive),
   };
 }
@@ -120,8 +132,10 @@ function createReviewControls(options: DispatcherControlOptions) {
         {},
         options.remoteAuthority,
       ),
+
     linkIssue: (issue: number) =>
       linkIssueToActiveRun(issue, options.stateFile, options.root, options.repository),
+
     prepareRecovery: (issue: number, pullRequest: number | undefined, config: Config) =>
       prepareIssueRecovery(options, issue, pullRequest, config),
   };

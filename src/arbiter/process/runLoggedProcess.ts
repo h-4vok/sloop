@@ -40,15 +40,22 @@ export async function runLoggedProcess(spec: ProcessSpec): Promise<LoggedProcess
   return new Promise((resolve, reject) => {
     const child = spawn(launch.command, launch.args, {
       cwd: spec.cwd,
+
       windowsHide: true,
+
       env: spec.env ? { ...process.env, ...spec.env } : process.env,
+
       windowsVerbatimArguments: launch.windowsVerbatimArguments,
     });
     const state = {
       stdout: '',
+
       stderr: '',
+
       pendingLine: '',
+
       timedOut: false,
+
       launchError: undefined as Error | undefined,
     };
     const timer = setTimeout(() => {
@@ -79,11 +86,17 @@ function createLogWriter(spec: ProcessSpec, logFile: string) {
       logFile,
       `${JSON.stringify({
         sessionId: spec.sessionId,
+
         issue: spec.issue,
+
         role: spec.role,
+
         round: spec.round,
+
         stream,
+
         at: new Date().toISOString(),
+
         data: redacted,
       })}\n`,
     );
@@ -138,9 +151,13 @@ function closeProcess(
   else
     resolve({
       stdout: state.stdout,
+
       stderr: state.stderr,
+
       code,
+
       timedOut: state.timedOut,
+
       logFile,
     });
 }

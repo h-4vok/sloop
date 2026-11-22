@@ -53,7 +53,9 @@ function spawnCodexProcess(
   const stdin = invocation.stdin === undefined ? 'ignore' : 'pipe';
   return run(invocation.command, invocation.args, {
     cwd: options.cwd,
+
     shell: false,
+
     stdio: [stdin, 'pipe', 'pipe'],
   });
 }

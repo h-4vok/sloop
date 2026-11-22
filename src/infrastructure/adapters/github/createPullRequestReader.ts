@@ -34,16 +34,27 @@ export function createPullRequestReader(client: GitHubCommandClient) {
 function normalizePullRequest(raw: any): PullRequest {
   return {
     number: raw.number,
+
     state: raw.state,
+
     baseRefOid: raw.baseRefOid,
+
     baseRefName: raw.baseRefName,
+
     headRefName: raw.headRefName,
+
     headRefOid: raw.headRefOid,
+
     body: firstDefined(raw.body, ''),
+
     mergeStateStatus: firstDefined(raw.mergeStateStatus, raw.merge_state_status),
+
     mergeable: raw.mergeable,
+
     reviews: (raw.reviews ?? []).map(normalizeReview),
+
     comments: (raw.comments ?? []).map(normalizeComment),
+
     statusCheckRollup: (raw.statusCheckRollup ?? []).map(normalizeStatusCheck),
   };
 }
@@ -51,8 +62,11 @@ function normalizePullRequest(raw: any): PullRequest {
 function normalizeReview(review: any) {
   return {
     body: review.body,
+
     state: review.state,
+
     submittedAt: firstDefined(review.submittedAt, review.submitted_at),
+
     commitId: firstDefined(review.commit?.oid, review.commitId, review.commit_id),
   };
 }
@@ -64,8 +78,11 @@ function normalizeComment(comment: any) {
 function normalizeStatusCheck(check: any) {
   return {
     name: firstDefined(check.name, check.context, check.workflowName, ''),
+
     status: firstDefined(check.status, check.state),
+
     conclusion: firstDefined(check.conclusion, check.state),
+
     detailsUrl: firstDefined(check.detailsUrl, check.details_url),
   };
 }

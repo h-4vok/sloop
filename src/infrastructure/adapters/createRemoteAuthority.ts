@@ -50,6 +50,7 @@ export const remoteAuthorityFactory = Object.freeze({
         undefined,
         'snapshot',
       ),
+
       reconcile: createRemoteHandler(
         'remote.reconcile',
         logGithub,
@@ -58,6 +59,7 @@ export const remoteAuthorityFactory = Object.freeze({
         (found, [issue, key]) => ({ issue, key, found }),
         'reconciliation',
       ),
+
       claim: createRemoteHandler(
         'remote.claim',
         logGithub,
@@ -66,6 +68,7 @@ export const remoteAuthorityFactory = Object.freeze({
         ([issue, key, manifest]) => ({ issue, key, manifest }),
         (_result, [issue, key]) => ({ issue, key }),
       ),
+
       publish: createRemoteHandler(
         'remote.publish',
         logGithub,

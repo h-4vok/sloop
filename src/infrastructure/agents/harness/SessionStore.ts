@@ -10,6 +10,7 @@ export interface SessionFileIO {
 
 const fileIO: SessionFileIO = {
   read: (file) => readFile(file, 'utf8'),
+
   async write(file, content) {
     await mkdir(dirname(file), { recursive: true });
     const temporary = `${file}.${process.pid}.tmp`;

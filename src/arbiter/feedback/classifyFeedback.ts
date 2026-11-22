@@ -28,9 +28,13 @@ function parseClassification(value: unknown, knownIds: ReadonlySet<string>): Cla
 function createClassification(item: Record<string, unknown>, confidence: number): Classification {
   return {
     sourceId: item.sourceId as string,
+
     intent: item.intent as Classification['intent'],
+
     confidence,
+
     target: optionalText(item.target),
+
     rationale: optionalText(item.rationale),
   };
 }

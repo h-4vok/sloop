@@ -43,6 +43,7 @@ export const runStatusCommand = Object.freeze({
     } catch {
       return {
         workflow: {},
+
         failure: resultOutput.createDiagnostic(
           'state',
           'The local workflow state is invalid JSON.',

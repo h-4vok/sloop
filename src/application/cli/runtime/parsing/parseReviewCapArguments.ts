@@ -14,6 +14,7 @@ export const parseReviewCapArguments = Object.freeze({
 
     return result.success({
       kind: 'resolve-review-cap',
+
       options: options.value,
     } as const satisfies DispatcherCommand);
   },
