@@ -7,14 +7,17 @@ export const parseRecoveryArguments = Object.freeze({
   },
 
   parse(args: readonly string[]): DispatcherCommand | undefined {
-    if (!this.hasValidRecoveryIssue(args)) return undefined;
-    if (args.length !== 2 && !this.hasValidPullRequest(args)) return undefined;
+    let output: DispatcherCommand | undefined = undefined;
 
-    return {
-      kind: 'prepare-recovery',
-      issue: Number(args[1]),
-      pr: args.length === 4 ? Number(args[3]) : undefined,
-    };
+    if (this.hasValidRecoveryIssue(args) && (args.length === 2 || this.hasValidPullRequest(args))) {
+      output = {
+        kind: 'prepare-recovery',
+        issue: Number(args[1]),
+        pr: args.length === 4 ? Number(args[3]) : undefined,
+      };
+    }
+
+    return output;
   },
 
   hasValidRecoveryIssue(args: readonly string[]): boolean {

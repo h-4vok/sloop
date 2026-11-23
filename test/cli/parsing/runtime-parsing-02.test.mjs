@@ -17,6 +17,7 @@ import {
   runReadOnlyCommand,
 } from '../../../src/runtime.js';
 import { canonicalConfigYaml } from '../../../src/config.js';
+import { parseRecoveryArguments } from '../../../src/application/cli/runtime/parsing/parseRecoveryArguments.js';
 
 import {
   config,
@@ -48,6 +49,29 @@ test('dispatcher parser accepts a complete recovery command', () => {
   };
   const parsedDispatcherCommand = parseDispatcherCommand(dispatcherArgs);
   const parsedCommand = parsedDispatcherCommand;
+
+  assert.deepEqual(parsedCommand, expectedCommand);
+});
+
+test('recovery argument parser returns undefined for invalid input', () => {
+  const dispatcherArgs = ['--prepare-recovery', '31', '--pr', 'invalid'];
+
+  const parsedCommand = parseRecoveryArguments.parse(dispatcherArgs);
+
+  assert.equal(parsedCommand, undefined);
+});
+
+test('recovery argument parser returns the command for valid input', () => {
+  const dispatcherArgs = ['--prepare-recovery', '31', '--pr', '54'];
+  const expectedCommand = {
+    kind: 'prepare-recovery',
+
+    issue: 31,
+
+    pr: 54,
+  };
+
+  const parsedCommand = parseRecoveryArguments.parse(dispatcherArgs);
 
   assert.deepEqual(parsedCommand, expectedCommand);
 });
