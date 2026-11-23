@@ -36,8 +36,9 @@ export class ArbitraryCommandRunner implements AgentRunner {
       return persistedResult;
     }
 
-    const preparedRun = await this.workspace.prepare(input, context, persistedPath);
-    return this.runWithRetries(input, context, invocationKey, preparedRun);
+    return this.workspace.runInWorkspace(input, context, persistedPath, (preparedRun) =>
+      this.runWithRetries(input, context, invocationKey, preparedRun),
+    );
   }
 
   private getPersistedPath(invocationKey: string): string | undefined {
