@@ -1,6 +1,13 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canonicalConfigYaml, loadConfigText } from '../../src/config.js';
@@ -19,9 +26,59 @@ test('sync installs each distributed Sloop skill', () => {
     'sloop-qa',
     'sloop-test-cleanup',
     'sloop-e2e-prepare',
-    'sloop-test-empty-e2e',
   ])
     assert.equal(existsSync(join(root, '.codex', 'skills', name, 'SKILL.md')), true);
+});
+
+test('sync removes the obsolete multi-cycle skill and preserves other skill files', () => {
+  const { root, runner, config } = createSyncFixture();
+  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-test-empty-e2e');
+  mkdirSync(obsoleteSkill, { recursive: true });
+  writeFileSync(join(obsoleteSkill, 'SKILL.md'), 'obsolete multi-cycle skill');
+  writeFileSync(join(obsoleteSkill, 'notes.md'), 'keep unrelated content');
+
+  syncPrerequisites(root, config, { runner });
+
+  assert.equal(existsSync(join(obsoleteSkill, 'SKILL.md')), false);
+  assert.equal(readFileSync(join(obsoleteSkill, 'notes.md'), 'utf8'), 'keep unrelated content');
+});
+
+test('sync preserves obsolete skill files behind a linked directory', () => {
+  const { root, runner, config } = createSyncFixture();
+  const externalSkills = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-external-skills-'));
+  const obsoleteSkill = join(root, '.codex', 'skills', 'sloop-test-empty-e2e');
+  const externalSkillFile = join(externalSkills, 'SKILL.md');
+  const externalSkillContents = 'shared skill file';
+  mkdirSync(join(root, '.codex', 'skills'), { recursive: true });
+  writeFileSync(externalSkillFile, externalSkillContents);
+  symlinkSync(externalSkills, obsoleteSkill, process.platform === 'win32' ? 'junction' : 'dir');
+
+  syncPrerequisites(root, config, { runner });
+
+  assert.equal(lstatSync(obsoleteSkill).isSymbolicLink(), true);
+  assert.equal(readFileSync(externalSkillFile, 'utf8'), externalSkillContents);
+});
+
+test('sync preserves obsolete skill files behind a linked ancestor', () => {
+  const { root, runner, config } = createSyncFixture();
+  const externalRoot = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-external-codex-'));
+  const externalCodexDirectory = join(externalRoot, '.codex');
+  const externalSkillDirectory = join(externalCodexDirectory, 'skills', 'sloop-test-empty-e2e');
+  const linkedCodexDirectory = join(root, '.codex');
+  const externalSkillFile = join(externalSkillDirectory, 'SKILL.md');
+  const externalSkillContents = 'shared ancestor skill file';
+  mkdirSync(externalSkillDirectory, { recursive: true });
+  writeFileSync(externalSkillFile, externalSkillContents);
+  symlinkSync(
+    externalCodexDirectory,
+    linkedCodexDirectory,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+
+  syncPrerequisites(root, config, { runner });
+
+  assert.equal(lstatSync(linkedCodexDirectory).isSymbolicLink(), true);
+  assert.equal(readFileSync(externalSkillFile, 'utf8'), externalSkillContents);
 });
 
 test('sync replaces an official skill and preserves unrelated skills', () => {

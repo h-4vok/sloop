@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { SloopConfig } from '../../config.js';
 import type { SyncOptions, SyncRunner } from './checkSyncPrerequisites.js';
@@ -20,7 +20,6 @@ const bundledSkills = [
   'sloop-qa',
   'sloop-test-cleanup',
   'sloop-e2e-prepare',
-  'sloop-test-empty-e2e',
 ] as const;
 
 const defaultRunner: SyncRunner = (file, args, cwd) =>
@@ -97,12 +96,35 @@ function labelAlreadyExists(
 function syncSkills(root: string, config: SloopConfig, output: (message: string) => void): void {
   const destination = getSkillDestination(root, config);
   mkdirSync(destination, { recursive: true });
+  removeObsoleteSkill(destination);
+
   for (const name of bundledSkills) {
     const source = getSkillAsset(name);
     const target = join(destination, name, 'SKILL.md');
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, readFileSync(source));
     output(`Skill '${name}' installed at ${target}.`);
+  }
+}
+
+function removeObsoleteSkill(destination: string): void {
+  const obsoleteSkillDirectory = join(destination, 'sloop-test-empty-e2e');
+  const managedSkillDirectories = [dirname(destination), destination, obsoleteSkillDirectory];
+
+  if (managedSkillDirectories.some((directoryPath) => !isSafeManagedDirectory(directoryPath)))
+    return;
+
+  rmSync(join(obsoleteSkillDirectory, 'SKILL.md'), { force: true });
+}
+
+function isSafeManagedDirectory(directoryPath: string): boolean {
+  try {
+    const directoryStats = lstatSync(directoryPath);
+
+    return directoryStats.isDirectory() && !directoryStats.isSymbolicLink();
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
   }
 }
 

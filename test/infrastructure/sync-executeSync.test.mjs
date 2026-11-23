@@ -37,5 +37,5 @@ test('executeSync uses execFileSync by default for GitHub label commands', () =>
     ],
     { cwd: root, encoding: 'utf8' },
   );
-  expect(outputMessages).toContain('Synchronized 6 labels and 6 Sloop skills.');
+  expect(outputMessages).toContain('Synchronized 6 labels and 5 Sloop skills.');
 });

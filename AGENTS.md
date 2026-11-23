@@ -21,9 +21,10 @@ The canonical source for the distributed Sloop skills is `assets/skills/`:
 - `assets/skills/product-lead/SKILL.md`
 - `assets/skills/sloop-e2e-prepare/SKILL.md`
 - `assets/skills/sloop-test-cleanup/SKILL.md`
-- `assets/skills/sloop-test-empty-e2e/SKILL.md`
 
 Treat `.codex/skills/` as a deployed working copy; do not edit those files directly. When changing a Sloop skill, edit the matching file under `assets/skills/`, then run `sloop config install` from the Sloop repository to deploy the change to `.codex/skills/`. Verify the deployed result before committing.
+
+The E2E skills provide one cleanup operation and one cycle. Orchestration chooses how many cycles to run; there is no multi-cycle wrapper skill.
 
 ## Unit-test standards
 

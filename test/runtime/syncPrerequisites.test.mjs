@@ -88,7 +88,7 @@ test('sync omits custom label keys from canonical output', () => {
   syncWithInjectedOutput();
 
   assert.ok(
-    outputMessages.some((message) => message.includes('Synchronized 4 labels and 6 Sloop skills')),
+    outputMessages.some((message) => message.includes('Synchronized 4 labels and 5 Sloop skills')),
   );
   assert.ok(!outputMessages.some((message) => message.includes("Label 'custom' installed")));
 });
