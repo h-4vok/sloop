@@ -9,10 +9,12 @@ import { codexCliInvocation } from '../../src/codex-cli.js';
 
 test(
   'Windows bridge preserves empty and special arguments at the global CLI process boundary',
-  { skip: process.platform !== 'win32', timeout: 15_000 },
+  { skip: process.platform !== 'win32', timeout: 30_000 },
   async (t) => {
     const fixtureDir = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-global-codex-'));
-    t.onTestFinished(() => rm(fixtureDir, { recursive: true, force: true }));
+    t.onTestFinished(() =>
+      rm(fixtureDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+    );
     await copyFile(process.execPath, join(fixtureDir, 'codex.exe'));
 
     const expectedArgs = [

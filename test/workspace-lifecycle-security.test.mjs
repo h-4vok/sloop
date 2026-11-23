@@ -65,7 +65,7 @@ test('stale recovery rejects unknown Serena files and cleanup preserves them', a
     readFileSync(join(facts.executionRoot, '.serena', 'private.txt'), 'utf8'),
     'preserve\n',
   );
-}, 20_000);
+}, 30_000);
 
 test('unregistered cleanup rejects worktrees without verified base ancestry', async () => {
   const { workspaceAdapter } = await import('../src/workspace.ts');

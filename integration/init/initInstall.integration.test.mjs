@@ -29,41 +29,45 @@ test('config command rejects invalid and cancelled edits without side effects', 
   assert.match(cancelled.text(), /workspace\.mode/);
 });
 
-test('wizard retries invalid input and persists varied valid settings', async () => {
-  const root = createRepository();
-  const modeIO = createMockScriptedIo(['pijs', 'worktree', 'y', 'n']);
-  assert.equal(
-    await runConfigCommand(root, ['--init', '--wizard', 'workspace.mode'], undefined, modeIO),
-    0,
-    modeIO.text(),
-  );
+test(
+  'wizard retries invalid input and persists varied valid settings',
+  { timeout: 15_000 },
+  async () => {
+    const root = createRepository();
+    const modeIO = createMockScriptedIo(['pijs', 'worktree', 'y', 'n']);
+    assert.equal(
+      await runConfigCommand(root, ['--init', '--wizard', 'workspace.mode'], undefined, modeIO),
+      0,
+      modeIO.text(),
+    );
 
-  const rootIO = createMockScriptedIo(['.tmp/worktrees', 'y']);
-  assert.equal(
-    await runConfigCommand(root, ['workspace.worktreeRoot'], undefined, rootIO),
-    0,
-    rootIO.text(),
-  );
-  const baseIO = createMockScriptedIo(['develop', 'y']);
-  assert.equal(
-    await runConfigCommand(root, ['repository.baseBranch'], undefined, baseIO),
-    0,
-    baseIO.text(),
-  );
-  const intervalIO = createMockScriptedIo(['1m', 'y']);
-  assert.equal(
-    await runConfigCommand(root, ['loop.interval'], undefined, intervalIO),
-    0,
-    intervalIO.text(),
-  );
+    const rootIO = createMockScriptedIo(['.tmp/worktrees', 'y']);
+    assert.equal(
+      await runConfigCommand(root, ['workspace.worktreeRoot'], undefined, rootIO),
+      0,
+      rootIO.text(),
+    );
+    const baseIO = createMockScriptedIo(['develop', 'y']);
+    assert.equal(
+      await runConfigCommand(root, ['repository.baseBranch'], undefined, baseIO),
+      0,
+      baseIO.text(),
+    );
+    const intervalIO = createMockScriptedIo(['1m', 'y']);
+    assert.equal(
+      await runConfigCommand(root, ['loop.interval'], undefined, intervalIO),
+      0,
+      intervalIO.text(),
+    );
 
-  const config = loadConfigText(readFileSync(join(root, 'sloop.config.yaml'), 'utf8'));
-  assert.equal(config.repository.baseBranch, 'develop');
-  assert.equal(config.workspace.mode, 'worktree');
-  assert.equal(config.workspace.worktreeRoot, '.tmp/worktrees');
-  assert.equal(config.loop.interval, 60_000);
-  assert.equal((modeIO.text().match(/workspace\.mode\n/g) ?? []).length, 2);
-});
+    const config = loadConfigText(readFileSync(join(root, 'sloop.config.yaml'), 'utf8'));
+    assert.equal(config.repository.baseBranch, 'develop');
+    assert.equal(config.workspace.mode, 'worktree');
+    assert.equal(config.workspace.worktreeRoot, '.tmp/worktrees');
+    assert.equal(config.loop.interval, 60_000);
+    assert.equal((modeIO.text().match(/workspace\.mode\n/g) ?? []).length, 2);
+  },
+);
 
 test('wizard cancellation does not create a config', async () => {
   const root = createRepository();
