@@ -27,13 +27,21 @@ export function createLoggedGitHubHandler<T extends (...args: any[]) => any>(
 ): T {
   const handler = {
     options,
+
     operation,
+
     action,
+
     request,
+
     response,
+
     logRequest,
+
     logResponse,
+
     wrapFailure,
+
     logError,
   } satisfies GitHubHandler<T>;
   return ((...args: Parameters<T>) => invokeGitHubHandler(handler, args)) as T;

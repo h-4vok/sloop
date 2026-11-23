@@ -36,16 +36,24 @@ export function createRepositoryDependencies(
 
   return {
     config,
+
     ...adapters,
+
     setRunLogger: (logger: RunEventLogger | undefined) => {
       runLogger = logger;
     },
+
     createRunLogger: (issue: number, runId: string) =>
       new RunLogger(runDirectory(root, issue, runId)),
+
     reportStatus: (message: string) => console.error(message),
+
     stateFile,
+
     root,
+
     repository,
+
     ...createWorktreeCommands(root, stateFile),
   };
 }
@@ -63,30 +71,47 @@ function createRepositoryAdapters(
   const remoteAuthority = remoteAuthorityFactory.create(client, repository, logGithub);
   const githubProvider = gitHubProviderFactory.create({
     root,
+
     repository,
+
     eligibleLabel: config.github.labels.eligible,
+
     priorityLabels: config.github.labels.priority,
+
     execute,
+
     logGithub,
   });
   const dispatcherConfig = dispatcherConfigFactory.create(config);
   const controls = dispatcherControlsFactory.create({
     root,
+
     stateFile,
+
     repository,
+
     remoteAuthority,
+
     config: dispatcherConfig,
+
     listEligibleIssues: githubProvider.list,
+
     loadPullRequest: githubProvider.pullRequest,
   });
 
   return {
     client,
+
     workspace,
+
     remoteAuthority,
+
     githubProvider,
+
     dispatcherConfig,
+
     controls,
+
     lockStore: dispatcherLockStoreFactory.create(root),
   };
 }
@@ -94,6 +119,7 @@ function createRepositoryAdapters(
 function createWorktreeCommands(root: string, stateFile: string) {
   return {
     listAllWorktrees: () => workspaceAdapter.listWorkspaces(root, stateFile),
+
     clearAllWorktrees: () => workspaceAdapter.clearWorkspaces(root, stateFile),
   };
 }

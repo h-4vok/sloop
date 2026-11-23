@@ -35,7 +35,9 @@ export const createRemoteManifestFields = Object.freeze({
   ) {
     return {
       ...pullRequestField(phase, state),
+
       branch: manifestBranch(phase, state, previous),
+
       baseSha: manifestBaseSha(phase, state, previous),
     };
   },

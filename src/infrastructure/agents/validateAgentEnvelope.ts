@@ -25,9 +25,13 @@ export function validateAgentEnvelope(value: unknown, expected?: RunContext): Ag
 
   return {
     schema: AGENT_OUTPUT_VERSION,
+
     context: runContext,
+
     producer: producer as Role,
+
     status: status as RunStatus,
+
     payload,
   };
 }

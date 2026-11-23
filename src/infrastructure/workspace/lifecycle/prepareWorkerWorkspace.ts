@@ -27,11 +27,17 @@ function createWorkspaceFacts(
 ): WorkspaceFacts {
   return {
     workspaceRoot: root,
+
     executionRoot,
+
     ...(worktreeRoot ? { worktreeRoot } : {}),
+
     branch,
+
     baseSha,
+
     headSha: baseSha,
+
     ownership: { runId: options.runId, issue: options.issue, protocol: 'sloop-workspace-v1' },
   };
 }
@@ -67,7 +73,9 @@ export function prepareWorktreeWorkspace(options: WorkspaceOptions): WorkspaceFa
   const file = options.stateFile ?? resolve(root, '.sloop/state.json');
   const registration: RegisteredWorkspace = {
     ...facts,
+
     repositoryRoot: root,
+
     worktreeRoot: parent,
   };
   writeWorkspaceState(file, [...readWorkspaceState(file), registration]);

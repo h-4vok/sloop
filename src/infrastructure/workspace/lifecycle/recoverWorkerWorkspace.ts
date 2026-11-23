@@ -81,11 +81,17 @@ function recoverRemoteWorkspace(
   if (!hasAncestorCommits(root, [baseSha], live.head)) return undefined;
   return {
     workspaceRoot: root,
+
     executionRoot: live.path,
+
     worktreeRoot: parent,
+
     branch: options.branch,
+
     baseSha,
+
     headSha: live.head,
+
     ownership: { runId: options.runId, issue: options.issue, protocol: 'sloop-workspace-v1' },
   };
 }

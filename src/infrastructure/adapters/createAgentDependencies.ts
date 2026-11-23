@@ -33,9 +33,13 @@ export function createAgentDependencies(
   const harness = createAgentHarness(config, options, workspace);
   return {
     harness,
+
     reconcileActiveRun: activeRunReconcilerFactory.create({ client, config, root }),
+
     setRunLogger,
+
     run: (spec) => runCommand(spec, workspace.getExecutionRoot()),
+
     prepareWorkerBranch: (issue) =>
       prepareWorkerBranch(
         issue,
@@ -44,11 +48,17 @@ export function createAgentDependencies(
         config.repository.baseBranch,
         config.repository.branchPrefix,
       ),
+
     checkoutWorkerBranch: (branch) => checkoutWorkerBranch(branch, root),
+
     pid: () => process.pid,
+
     processAlive: defaultProcessAlive,
+
     now: Date.now,
+
     sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+
     onReclaim: () => {},
   };
 }
@@ -65,11 +75,17 @@ function createAgentHarness(
 
     return new CodexHarness({
       cwd: workspace.getExecutionRoot(),
+
       model: roleConfig.model,
+
       sandbox: roleConfig.sandbox,
+
       reasoningEffort: roleConfig.reasoningEffort,
+
       timeoutMs: spec.timeoutMs,
+
       log: (source, chunk) => logger.write(`harness-${source}`, { chunk }),
+
       spawn: options.codexSpawn,
     });
   };

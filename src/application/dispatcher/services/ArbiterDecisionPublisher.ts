@@ -38,6 +38,7 @@ function createFollowUp(
 
   return {
     ...current,
+
     ...addFollowUpState(current, key, followUpNumber),
   };
 }
@@ -49,8 +50,10 @@ function addFollowUpState(
 ): Pick<ArbiterRunContext['current'], 'arbiterFollowUps' | 'arbiterFollowUpEligibility'> {
   return {
     arbiterFollowUps: { ...(current.arbiterFollowUps ?? {}), [key]: followUpNumber },
+
     arbiterFollowUpEligibility: {
       ...(current.arbiterFollowUpEligibility ?? {}),
+
       [key]: followUpEligible(false, true),
     },
   };

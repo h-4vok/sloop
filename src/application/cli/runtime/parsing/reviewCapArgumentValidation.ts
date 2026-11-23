@@ -43,9 +43,13 @@ function collectReviewCapDraft(parsed: ReviewCapArguments): ReviewCapParseResult
 
   return result.success({
     steer,
+
     additionalRounds: rounds === undefined ? 0 : Number(rounds),
+
     waivedFindingIds: waivers.flatMap((value) => value.split(',')),
+
     waiveAllOutstanding: (parsed.counts.get('--waive-all-outstanding') ?? 0) === 1,
+
     abandon: (parsed.counts.get('--abandon') ?? 0) === 1,
   });
 }
@@ -136,7 +140,10 @@ function validateReviewCapCombinations(
 /** Validates review-cap options and exposes the parser's focused validators. */
 export const reviewCapArgumentValidation = Object.freeze({
   validate: validateReviewCapRequest,
+
   validateCounts: validateReviewCapCounts,
+
   validateValues: validateReviewCapValues,
+
   validateCombinations: validateReviewCapCombinations,
 });

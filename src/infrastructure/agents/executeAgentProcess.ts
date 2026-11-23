@@ -37,8 +37,11 @@ function processSpawnOptions(options: Parameters<ProcessExecutor>[2]) {
   const input = options.stdin === undefined ? 'ignore' : 'pipe';
   return {
     cwd: options.cwd,
+
     env: options.env,
+
     shell: false as const,
+
     stdio: [input, 'pipe', 'pipe'] as ['ignore' | 'pipe', 'pipe', 'pipe'],
   };
 }

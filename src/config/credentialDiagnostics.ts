@@ -71,6 +71,7 @@ function isCredentialOptionValue(
 function credentialDiagnostic(path: string): ConfigDiagnostic {
   return {
     path,
+
     message: 'credentials are not accepted in sloop.config.yaml; use the external environment',
   };
 }

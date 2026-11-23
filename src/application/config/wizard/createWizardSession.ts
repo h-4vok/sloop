@@ -29,21 +29,36 @@ export function createWizardSession(
 
   return {
     ok: true,
+
     value: {
       root,
+
       file,
+
       init,
+
       sync,
+
       reconciler,
+
       io,
+
       logger,
+
       fileStore,
+
       current: configResult.value,
+
       next: initialSource,
+
       changed,
+
       asked: new Set<string>(),
+
       warning,
+
       useColor: io.useColor ?? isColorOutputEnabled(io.output === output),
+
       readline: createInterface({ input: io.input, output: io.output }),
     },
   };

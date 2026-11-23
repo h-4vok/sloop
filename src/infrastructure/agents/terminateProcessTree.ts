@@ -40,6 +40,7 @@ function killWindowsProcessTree(
   };
   const taskkill = spawnProcess('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
     windowsHide: true,
+
     stdio: 'ignore',
   });
 

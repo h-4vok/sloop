@@ -20,8 +20,11 @@ function resolveGitHubExecution(host: DispatcherHost) {
 
   return {
     executable: (host.resolveExecutable ?? resolveExecutable)('gh', platform),
+
     platform,
+
     comSpec: host.comSpec ?? process.env.ComSpec,
+
     run: host.runSyncCommand ?? runSyncCommand,
   };
 }

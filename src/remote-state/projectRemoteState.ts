@@ -18,8 +18,11 @@ export function projectRemoteState(snapshot: RemoteSnapshot): Result<WorkflowPro
   if (!hasCurrentManifest(manifest, snapshot.issue, markers))
     return result.success({
       protocol: REMOTE_PROTOCOL,
+
       phase: 'idle',
+
       openGates: [],
+
       artifactKeys: markers,
     });
   return createProjection(snapshot, manifest as RunManifest, markers);
@@ -71,11 +74,17 @@ function createProjection(
 
   return result.success({
     protocol: REMOTE_PROTOCOL,
+
     phase,
+
     openGates: gates,
+
     runId: manifest.runId,
+
     manifest,
+
     artifactKeys: [...new Set([...markers, ...manifest.artifacts])].sort(),
+
     ...optionalLease(leaseState),
   });
 }

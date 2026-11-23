@@ -36,12 +36,17 @@ function createConfiguredWorkspaceAdapter(
 ): WorkspaceAdapter {
   return {
     mode: options.config.workspace.mode,
+
     prepare: (issue) => prepareWorkspace(options, issue, setExecutionRoot),
+
     recover: (issue, runId, branch) =>
       recoverWorkspace(options, issue, runId, branch, setExecutionRoot),
+
     cleanup: (facts) => cleanupWorkspace(options, facts, setExecutionRoot),
+
     context: (): RunContext => ({
       originalRepository: options.root,
+
       executionRoot: getExecutionRoot(),
     }),
   };
@@ -92,13 +97,21 @@ function cleanupWorkspace(
 function createWorkspaceOptions(options: WorkspaceAdapterOptions, issue: number, runId: string) {
   return {
     repositoryRoot: options.root,
+
     remote: options.config.repository.remote,
+
     baseBranch: options.config.repository.baseBranch,
+
     branchPrefix: options.config.repository.branchPrefix ?? 'codex/issue-',
+
     issue,
+
     runId,
+
     worktreeRoot: options.config.workspace.worktreeRoot,
+
     mode: options.config.workspace.mode,
+
     stateFile: options.stateFile,
   };
 }

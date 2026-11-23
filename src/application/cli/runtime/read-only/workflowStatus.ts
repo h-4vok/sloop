@@ -39,9 +39,13 @@ function resultValue(
 ) {
   return {
     repository: context.root,
+
     configRef: context.ref,
+
     workflow: details(parsed.verbose, workflow),
+
     ...(parsed.verbose ? { config: context.config } : {}),
+
     ...(recovery ? { nextAction: recovery } : {}),
   };
 }
@@ -66,8 +70,11 @@ function details(verbose: boolean, workflow: Record<string, unknown>) {
   if (verbose) return workflow;
   return {
     issue: workflow.issue,
+
     pr: workflow.pr,
+
     status: workflow.status,
+
     lastError: workflow.lastError,
   };
 }
@@ -90,9 +97,11 @@ function createRecoveryAction(issue?: number, pr?: number) {
   const hasContext = Boolean(issue && pr);
   return {
     command: hasContext ? `sloop --prepare-recovery ${issue} --pr ${pr}` : 'sloop status --verbose',
+
     description: hasContext
       ? 'Prepare local recovery for the recorded issue and PR.'
       : 'Inspect the recovery state; issue or PR context is unavailable.',
+
     mutates: hasContext,
   };
 }
@@ -100,7 +109,9 @@ function createRecoveryAction(issue?: number, pr?: number) {
 function createBlockedAction() {
   return {
     command: 'sloop status --verbose',
+
     description: 'Inspect the recorded blocker and available context.',
+
     mutates: false,
   };
 }

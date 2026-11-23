@@ -8,10 +8,15 @@ type ParseResult<T> = Result<T, string>;
 
 const singleArgumentCommands: Readonly<Record<string, DispatcherCommand>> = Object.freeze({
   '--list': { kind: 'list' },
+
   '--recover-lock': { kind: 'recover-lock' },
+
   '--reset': { kind: 'reset' },
+
   '--reset-mutex': { kind: 'reset-mutex' },
+
   '--list-all-worktrees': { kind: 'list-all-worktrees' },
+
   '--clear-all-worktrees': { kind: 'clear-all-worktrees' },
 });
 

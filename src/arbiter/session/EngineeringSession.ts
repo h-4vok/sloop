@@ -68,16 +68,27 @@ export type EngineeringSession = {
 export function createSession(issue: number, sessionId: string = randomUUID()): EngineeringSession {
   return {
     sessionId,
+
     issue,
+
     status: 'running',
+
     round: 1,
+
     agents: {},
+
     processedEventIds: [],
+
     unclassifiedFeedback: [],
+
     feedback: [],
+
     pendingClarifications: [],
+
     answeredClarificationIds: [],
+
     classifications: [],
+
     updatedAt: new Date().toISOString(),
   };
 }

@@ -52,6 +52,7 @@ function parseArgumentVector(
     if (!(error instanceof SyntaxError)) throw error;
     return {
       ok: false,
+
       error: new ConfigValidationError([
         { path: `$.${field.path}`, message: `expected valid JSON: ${error.message}` },
       ]),

@@ -25,6 +25,7 @@ const configSubcommands: Readonly<
   Record<string, (options: readonly string[]) => ParseResult<CliCommand | undefined>>
 > = {
   init: parseConfigInit,
+
   install: parseConfigInstall,
 };
 

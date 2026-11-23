@@ -70,7 +70,9 @@ export const dispatcherChecks = Object.freeze({
 
     return {
       root: rootResult.value,
+
       config: configResult.value.config,
+
       result: { code: EXIT.ok },
     };
   },

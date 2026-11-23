@@ -31,6 +31,7 @@ function parseConfigResult(
   if (!isPlainObject(value))
     return {
       ok: false,
+
       error: new ConfigValidationError([{ path: '$', message: 'expected a YAML mapping' }]),
     };
 

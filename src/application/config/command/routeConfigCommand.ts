@@ -25,10 +25,15 @@ function createConfigCommandRequest(command: ConfigCommandContext): ConfigComman
   const syncFlags = args.filter((arg) => arg === '--sync' || arg === '--no-sync');
   return {
     file,
+
     init,
+
     wizardMode,
+
     syncFlags,
+
     sync: syncFlags[0],
+
     positional: args.filter((arg) => !arg.startsWith('--')),
   };
 }

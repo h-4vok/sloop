@@ -33,6 +33,7 @@ export function reconcileActiveRun(
   } catch (error) {
     return {
       outcome: 'blocked',
+
       reason: `reconciliation could not verify state: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
@@ -90,17 +91,23 @@ function reconcileBranch(
   if (!branchFacts.aligned)
     return {
       outcome: 'blocked',
+
       reason: branchFacts.diagnostic,
+
       localSha: branchFacts.localSha,
+
       remoteSha: branchFacts.remoteSha,
     };
   return {
     outcome: 'terminal',
+
     reason:
       issueState?.toUpperCase() === 'CLOSED'
         ? 'issue closed; branch aligned'
         : 'PR merged; branch aligned',
+
     localSha: branchFacts.localSha,
+
     remoteSha: branchFacts.remoteSha,
   };
 }

@@ -19,8 +19,11 @@ export function createRestoredRunManifest(
 
   return remoteManifest(cfg, d, issue, previous.runId, key, 'blocked', undefined, {
     ...previous,
+
     pr: current.pr,
+
     branch,
+
     reviewRound: directive.round,
   });
 }

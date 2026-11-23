@@ -63,21 +63,37 @@ function createRemoteSnapshot(
 ): RemoteSnapshot {
   return {
     issue,
+
     issueState: issueSnapshot.state,
+
     labels: (issueSnapshot.labels ?? []).map(({ name }) => name),
+
     pr: firstDefined(pullRequest.number, manifest?.pr),
+
     prState: pullRequest.state,
+
     prMergedAt: pullRequest.mergedAt,
+
     prBaseBranch: pullRequest.baseRefName,
+
     comments: comments.map(mapRemoteComment),
+
     markers: findRemoteMarkers(comments),
+
     manifest,
+
     branch: firstDefined(pullRequest.headRefName, manifest?.branch),
+
     sha: pullRequest.headRefOid,
+
     checks: pullRequest.statusCheckRollup,
+
     reviews: pullRequest.reviews,
+
     inlineThreads,
+
     now: Date.now(),
+
     leaseOwner: `${process.pid}:${issue}`,
   };
 }
@@ -85,7 +101,9 @@ function createRemoteSnapshot(
 function mapRemoteComment(comment: { body: string; createdAt?: string; id?: number }) {
   return {
     body: comment.body,
+
     ...(comment.createdAt ? { createdAt: comment.createdAt } : {}),
+
     ...(comment.id ? { id: comment.id } : {}),
   };
 }

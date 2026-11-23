@@ -46,7 +46,9 @@ export function applyArbiterDecisions(
   const decisions = validateArbiterDecisions(findings, raw, state.interventions + 1);
   return {
     interventions: state.interventions + 1,
+
     decisions: [...state.decisions, ...decisions],
+
     terminal: decisions.some((decision) => decision.action === 'escalate')
       ? 'human_review_required'
       : undefined,

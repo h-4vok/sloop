@@ -23,6 +23,7 @@ export const createGitHubProviderHandlers = Object.freeze({
       () =>
         selectIssues(loadIssues(), options.priorityLabels).map(({ number, title }) => ({
           number,
+
           title,
         })),
       undefined,

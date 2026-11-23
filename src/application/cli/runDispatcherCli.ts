@@ -61,7 +61,9 @@ function createRecoveryAction(
   if (!shouldSuggestRecovery(status, issue, pr, verbose)) return undefined;
   return {
     command: `sloop --prepare-recovery ${issue as number} --pr ${pr as number}`,
+
     description: 'Prepare local recovery for the failed Worker.',
+
     mutates: true,
   };
 }

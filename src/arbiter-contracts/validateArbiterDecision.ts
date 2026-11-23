@@ -81,11 +81,17 @@ function validateActionDetails(
 function createDecision(finding: ArbiterFinding, value: Record<string, unknown>): ArbiterDecision {
   return {
     findingId: finding.id,
+
     owner: finding.owner,
+
     action: value.action as ArbiterAction,
+
     rationale: value.rationale as string,
+
     direction: optionalString(value.direction),
+
     verification: optionalString(value.verification),
+
     followUp: value.followUp == null ? undefined : (value.followUp as ArbiterDecision['followUp']),
   };
 }

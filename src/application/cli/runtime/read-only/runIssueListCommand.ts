@@ -71,6 +71,7 @@ export const runIssueListCommand = Object.freeze({
     }[];
     const issues = rawIssues.map((issue) => ({
       ...issue,
+
       labels: issue.labels?.map(({ name }) => name),
     }));
     return selectIssues(issues, context.config.github.labels.priority);

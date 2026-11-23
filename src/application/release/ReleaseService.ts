@@ -87,6 +87,7 @@ export function updateMetadata(
 
   return {
     packageText: updatedPackage,
+
     changelog: `${entry}${changelog.replace(/^# Changelog\s*\n?/, '# Changelog\n\n')}`,
   };
 }
