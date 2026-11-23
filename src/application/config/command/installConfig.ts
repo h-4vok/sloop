@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline/promises';
 import type { ConfigCommandContext } from '../configCommandTypes.js';
+import { installConfigMessages } from './installConfigMessages.js';
 
 /** Installs config-managed prerequisites after an optional confirmation. */
 async function executeConfigInstall(
@@ -8,16 +9,11 @@ async function executeConfigInstall(
   forceSync: boolean,
 ): Promise<number> {
   const { root, reconciler, io, logger, fileStore } = command;
-  if (!fileStore.exists(file))
-    return fail('No valid sloop.config.yaml; run sloop config init', logger);
+  if (!fileStore.exists(file)) return fail(installConfigMessages.missingConfiguration, logger);
   if (!forceSync) {
-    if (!hasInstallTerminal(io))
-      return fail(
-        'sloop config install requires a TTY; use --force for non-interactive installation',
-        logger,
-      );
+    if (!hasInstallTerminal(io)) return fail(installConfigMessages.requiresTerminal, logger);
     if (!(await confirmConfigInstall(io))) {
-      logger.log('Installation skipped.');
+      logger.log(installConfigMessages.installationSkipped);
       return 0;
     }
   }
@@ -31,9 +27,7 @@ function hasInstallTerminal(io: ConfigCommandContext['io']): boolean {
 async function confirmConfigInstall(io: ConfigCommandContext['io']): Promise<boolean> {
   const readline = createInterface({ input: io.input, output: io.output });
   try {
-    const answer = await readline.question(
-      'Install configured GitHub labels and Sloop skills now? [Y/n] ',
-    );
+    const answer = await readline.question(installConfigMessages.confirmationPrompt);
     return answer.trim().toLowerCase() !== 'n';
   } finally {
     readline.close();
@@ -49,8 +43,8 @@ async function synchronizeConfigInstall(
     await reconciler(root, 'github');
     return 0;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return fail(`Synchronization failed: ${message}`, logger);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return fail(installConfigMessages.synchronizationFailed(errorMessage), logger);
   }
 }
 
