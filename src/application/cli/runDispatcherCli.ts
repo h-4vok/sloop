@@ -88,6 +88,17 @@ const dispatcherCliCommandHandlers: DispatcherCliCommandHandlerMap = {
     return 0;
   },
 
+  'reset-mutex': (_command, dependencies) => {
+    const resetResult = dependencies.resetMutex();
+    if (!resetResult.ok) {
+      console.error(`[sloop] ${resetResult.error}`);
+      return 4;
+    }
+
+    console.log(resetResult.value);
+    return 0;
+  },
+
   'resolve-review-cap': (command, dependencies) => {
     const config = dependencies.loadConfig();
     dependencies.resolveReviewCap(command.options, config);

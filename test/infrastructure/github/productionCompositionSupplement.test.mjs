@@ -94,11 +94,12 @@ test('adapter workspace callbacks use the configured checkout lifecycle', () => 
 }, 15_000);
 
 test('dispatcher controls list delegates to its eligible-issues port', () => {
+  const root = createTemporaryDirectory('sloop-dispatcher-controls-');
   const eligibleIssues = [{ number: 7, title: 'Repair adapter boundary' }];
   const controls = dispatcherControlsFactory.create({
-    root: tmpdir(),
+    root,
 
-    stateFile: join(tmpdir(), 'sloop-dispatcher-controls-state.json'),
+    stateFile: join(root, 'state.json'),
 
     repository: 'owner/repository',
 
@@ -112,4 +113,5 @@ test('dispatcher controls list delegates to its eligible-issues port', () => {
   });
 
   assert.equal(controls.list(), eligibleIssues);
+  assert.deepEqual(controls.resetMutex(), { ok: true, value: 'No repository mutex found.' });
 });

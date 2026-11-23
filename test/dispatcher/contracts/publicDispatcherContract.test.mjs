@@ -55,16 +55,40 @@ test('public CLI status, list, recovery, and reset commands use injected control
     ['--list'],
     ['--recover-lock'],
     ['--reset'],
+    ['--reset-mutex'],
   ]);
 
   assert.deepEqual(
     fixture.calls.map(([name]) => name),
-    ['status', 'list', 'recoverLock', 'reset'],
+    ['status', 'list', 'recoverLock', 'reset', 'resetMutex'],
   );
   assert.deepEqual(
     fixture.calls.find(([name]) => name === 'status'),
     ['status', true],
   );
+});
+
+test('public CLI returns a blocked exit when a live mutex owner refuses reset', async () => {
+  const fixture = createInjectedControlFixture();
+  const originalError = console.error;
+  const errorMessages = [];
+  fixture.harness.dependencies.resetMutex = () => ({
+    ok: false,
+    error: 'Cannot reset the repository mutex while Sloop process 7004 is active.',
+  });
+  console.error = (message) => errorMessages.push(message);
+
+  try {
+    const command = parseDispatcherCommand(['--reset-mutex']);
+    const exitCode = await runDispatcherCli(command, fixture.harness.dependencies);
+
+    assert.equal(exitCode, 4);
+    assert.deepEqual(errorMessages, [
+      '[sloop] Cannot reset the repository mutex while Sloop process 7004 is active.',
+    ]);
+  } finally {
+    console.error = originalError;
+  }
 });
 
 test('public CLI review-cap and recovery commands use injected controls', async () => {
@@ -102,6 +126,10 @@ function createInjectedControlFixture() {
   dependencies.list = () => (calls.push(['list']), [{ number: 28, title: 'injected' }]);
   dependencies.recoverLock = () => (calls.push(['recoverLock']), 'injected recovery');
   dependencies.reset = () => calls.push(['reset']);
+  dependencies.resetMutex = () => (
+    calls.push(['resetMutex']),
+    { ok: true, value: 'Repository mutex reset.' }
+  );
   dependencies.resolveReviewCap = (args, config) => calls.push(['resolveReviewCap', args, config]);
   dependencies.linkIssue = (issue) => calls.push(['linkIssue', issue]);
   dependencies.prepareRecovery = (issue, pr, config) => (

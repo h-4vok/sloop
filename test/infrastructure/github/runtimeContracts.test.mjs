@@ -18,7 +18,7 @@ import { createNodeHost } from '../../../src/infrastructure/host/createNodeHost.
 
 import { canonicalConfigYaml, loadConfigText } from '../../../src/config.js';
 
-import { withEphemeralMutex, withEphemeralMutexAsync } from '../../../src/mutex.js';
+import { ephemeralMutex } from '../../../src/mutex.js';
 
 import { RunLogger, applyRunRetention, runDirectory } from '../../../src/run-log.js';
 
@@ -59,33 +59,33 @@ test('local mutex removes its lease after sync and async results or failures', a
   const dir = createTemporaryDirectory('sloop-infra-mutex-');
 
   assert.equal(
-    withEphemeralMutex(dir, 'one', () => 'done'),
+    ephemeralMutex.run(dir, 'one', () => 'done'),
     'done',
   );
   assert.equal(existsSync(join(dir, '.sloop', 'mutex', 'active')), false);
   assert.throws(
     () =>
-      withEphemeralMutex(dir, 'one', () => {
+      ephemeralMutex.run(dir, 'one', () => {
         throw new Error('work failed');
       }),
     /work failed/,
   );
-  assert.equal(await withEphemeralMutexAsync(dir, 'two', async () => 2), 2);
+  assert.equal(await ephemeralMutex.runAsync(dir, 'two', async () => 2), 2);
   await assert.rejects(
     () =>
-      withEphemeralMutexAsync(dir, 'two', async () => {
+      ephemeralMutex.runAsync(dir, 'two', async () => {
         throw new Error('async failed');
       }),
     /async failed/,
   );
   mkdirSync(join(dir, '.sloop', 'mutex', 'active'), { recursive: true });
-  assert.throws(() => withEphemeralMutex(dir, 'three', () => undefined), /another sloop process/);
+  assert.throws(() => ephemeralMutex.run(dir, 'three', () => undefined), /another sloop process/);
   await assert.rejects(
-    () => withEphemeralMutexAsync(dir, 'three', async () => undefined),
+    () => ephemeralMutex.runAsync(dir, 'three', async () => undefined),
     /another sloop process/,
   );
-  assert.throws(() => withEphemeralMutex('\0', 'invalid', () => undefined));
-  await assert.rejects(() => withEphemeralMutexAsync('\0', 'invalid', async () => undefined));
+  assert.throws(() => ephemeralMutex.run('\0', 'invalid', () => undefined));
+  await assert.rejects(() => ephemeralMutex.runAsync('\0', 'invalid', async () => undefined));
 });
 
 test('run directory names include timestamp, issue, and normalized run ID', () => {

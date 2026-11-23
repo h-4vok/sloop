@@ -32,8 +32,8 @@ Use only for `h-4vok/sloop-test-empty`. This is a manual PowerShell runbook. It 
 3. Close each captured PR with `gh pr close <number> --delete-branch --repo h-4vok/sloop-test-empty`. Do not merge it. Close each captured issue with `gh issue close <number> --repo h-4vok/sloop-test-empty`, then remove `Automation Ready`, `Automation Claimed`, `Automation Blocked`, and `Sloop E2E` labels.
 4. Run `git fetch origin --prune`, `git switch main`, and `git pull --ff-only origin main`.
 5. On `main`, collect local/remote branches matching `^codex/issue-\d+(-[a-z0-9]+)?$` and list all open PR head branches. Stop if an open PR uses a matching branch. Delete matching remote branches with `git push origin --delete <branch>` and local branches with `git branch -D -- <branch>`. Never delete `main` or another branch prefix.
-6. Run `sloop --clear-all-worktrees`, then `sloop --reset`. Let the supported command reset active/completed status; do not delete `.sloop` files directly. Use `sloop --recover-lock` only when Sloop reports a stale lock and no dispatcher is running. Keep logs and plans as audit evidence.
+6. Run `sloop --clear-all-worktrees`, `sloop --reset`, then `sloop --reset-mutex`. The mutex command removes the current repository's stale mutex directory and refuses to remove a lease whose owner process is still active or cannot be verified. Do not delete `.sloop` files directly. Use `sloop --recover-lock` only when Sloop reports a stale dispatcher lock and no dispatcher is running. Keep logs and plans as audit evidence.
 
-7. Verify no open issue or PR labeled `Sloop E2E`, no captured remote/local test branches, clean `git status --short`, current branch `main`, and `sloop status --verbose --json` reports no active issue.
+7. Verify no open issue or PR labeled `Sloop E2E`, no captured remote/local test branches, no `.sloop/mutex` directory, clean `git status --short`, current branch `main`, and `sloop status --verbose --json` reports no active issue.
 
 If an iteration failed, capture its issue, PR, status, and error before cleanup. Cleanup still closes its labeled artifacts after the evidence is recorded.

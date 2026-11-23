@@ -18,6 +18,7 @@ Options:
   --version              Show the installed version
   --recover-lock         Recover a stale dispatcher lock
   --reset                Reset completed local run state
+  --reset-mutex          Remove a stale repository-local mutex
   --prepare-recovery N [--pr PR]
                          Prepare issue N for worker recovery; use PR or existing state.pr
   --resolve-review-cap --steer TEXT [--additional-rounds N]
@@ -43,6 +44,8 @@ export function createHelp(version: string): Readonly<{
     '--recover-lock': 'Usage: sloop --recover-lock',
 
     '--reset': 'Usage: sloop --reset',
+
+    '--reset-mutex': 'Usage: sloop --reset-mutex',
 
     '--prepare-recovery': 'Usage: sloop --prepare-recovery N [--pr N]',
 
