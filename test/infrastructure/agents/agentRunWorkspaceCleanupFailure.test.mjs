@@ -29,8 +29,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 const context = { run: 'run-207', issue: 207, pr: 77, round: 1, sha: 'abc123', cursor: 'cursor' };
 const reviewerPayload = {
   summary: 'Accepted',
+
   evidence: ['Checks passed'],
+
   newFindings: [],
+
   dispositions: [],
 };
 const reviewerEnvelope = {
@@ -94,7 +97,9 @@ test('preserves the exhausted-retry error and reports the failed workspace remov
   const runner = new ArbitraryCommandRunner('fake', [], options);
   const expectedError = {
     name: 'AgentContractError',
+
     code: 'operational-failure',
+
     message: 'Agent failed',
   };
 

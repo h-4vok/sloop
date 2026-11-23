@@ -6,22 +6,36 @@ test('projection reports workflow gates and structured input failures', () => {
   // Arrange
   const manifest = {
     protocol: 1,
+
     runId: 'run-41',
+
     issue: 41,
+
     branch: 'worker/41',
+
     baseSha: 'abcdef1234567',
+
     configFingerprint: 'config-hash',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'cursor-1',
+
     artifacts: ['artifact/a'],
   };
   const snapshot = {
     issue: 41,
+
     manifest,
+
     markers: ['sloop/v1/run/run-41'],
+
     branch: 'worker/41',
+
     sha: 'abcdef1',
+
     checks: [{ name: 'ci', status: 'completed', conclusion: 'failure' }],
   };
 

@@ -28,13 +28,20 @@ function createPrMismatchScenario() {
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -42,15 +49,25 @@ function createPrMismatchScenario() {
   );
   const manifest = {
     protocol: 1,
+
     runId: 'remote-run',
+
     issue: 1,
+
     pr: 8,
+
     branch: 'codex/issue-1',
+
     baseSha: 'abc1234',
+
     configFingerprint: 'config-v1',
+
     phase: 'blocked',
+
     reviewRound: 2,
+
     contextCursor: '',
+
     artifacts: [artifactKey('run', { issue: 1, runId: 'remote-run' })],
   };
   const remote = {
@@ -66,11 +83,17 @@ function createMismatchGitHubHost() {
     if (args[0] === 'pr' && args[1] === 'view') {
       return JSON.stringify({
         number: 7,
+
         state: 'OPEN',
+
         headRefName: 'codex/issue-1',
+
         headRefOid: 'abc1234',
+
         mergeable: 'MERGEABLE',
+
         mergeStateStatus: 'CLEAN',
+
         comments: [],
       });
     }
@@ -81,9 +104,13 @@ function createMismatchGitHubHost() {
 function resumeDecision() {
   return {
     steer: 'resume the reviewed work',
+
     abandon: false,
+
     waiveAllOutstanding: false,
+
     waivedFindingIds: [],
+
     additionalRounds: 1,
   };
 }

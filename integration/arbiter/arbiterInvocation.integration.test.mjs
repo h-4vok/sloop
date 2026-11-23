@@ -7,10 +7,15 @@ import { CodexAgentRunner } from '../../src/agent-runner.js';
 
 const context = {
   run: 'arbiter-run',
+
   issue: 41,
+
   pr: 73,
+
   round: 2,
+
   sha: 'abc123',
+
   cursor: 'arbiter-2',
 };
 const envelope = {

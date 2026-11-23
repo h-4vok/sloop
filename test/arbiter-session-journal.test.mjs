@@ -18,13 +18,21 @@ const createTemporaryFile = () =>
 function createJournalEvent(id, sessionId, type, payload = {}, extra = {}) {
   return {
     id,
+
     sessionId,
+
     issue: 1,
+
     role: 'arbiter',
+
     round: 2,
+
     type,
+
     emittedAt: '2020-01-01T00:00:00Z',
+
     payload,
+
     ...extra,
   };
 }
@@ -46,6 +54,7 @@ test('journal persists unique events and restores review and clarification state
     'clarification_requested',
     {
       question: 'Which behavior is expected?',
+
       target: 'form input',
     },
   );

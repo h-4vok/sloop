@@ -22,16 +22,24 @@ const releaseMetadataCases = [
   { name: 'different pull request', date: '2026-09-10', pullRequest: 73, expected: false },
   {
     name: 'outdated package version',
+
     date: '2026-09-10',
+
     pullRequest: 72,
+
     packageText: '{"version":"0.1.1"}',
+
     expected: false,
   },
   {
     name: 'missing changelog entry',
+
     date: '2026-09-10',
+
     pullRequest: 72,
+
     changelog: '# Changelog\n',
+
     expected: false,
   },
 ];

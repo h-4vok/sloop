@@ -8,10 +8,15 @@ test('decision validation accepts a complete ruling and returns structured error
   const validDecision = [
     {
       findingId: 'Q1',
+
       owner: 'qa',
+
       action: 'uphold',
+
       rationale: 'The contract requires trimming.',
+
       direction: 'Trim surrounding whitespace.',
+
       verification: 'Check leading and trailing spaces.',
     },
   ];

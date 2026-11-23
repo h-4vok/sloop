@@ -27,25 +27,44 @@ function createCompletedIssueHarness() {
     ],
     {
       headRefName: 'codex/issue-17',
+
       initialState: {
         issue: 16,
+
         status: 'ready_for_human_merge',
+
         pr: 16,
+
         branch: 'codex/issue-16',
+
         headSha: 'old-head',
+
         mainBaseSha: 'old-main',
+
         reviewRound: 9,
+
         lastCiFeedback: 'old CI feedback',
+
         lastQaFeedback: 'old QA feedback',
+
         lastStaffFeedback: 'old Staff feedback',
+
         taskContext: 'old task context',
+
         workerRunId: 'old-run',
+
         workerPid: 123,
+
         workerStartedAt: 1,
+
         workerHeartbeatAt: 1,
+
         workerRecoveryCount: 4,
+
         lastError: 'old error',
+
         completedIssues: [16],
+
         mainGreen: true,
       },
     },
@@ -65,11 +84,17 @@ function assertClaimUsesNewIssue(dispatcherHarness) {
 
   assert.deepEqual(claimSave, {
     completedIssues: [16],
+
     mainGreen: true,
+
     issue: 17,
+
     status: 'claimed',
+
     reviewRound: 1,
+
     drainStatus: 'running',
+
     updatedAt: claimSave.updatedAt,
   });
   assert.equal(dispatcherHarness.runs[0].input.includes('An existing PR is #16'), false);

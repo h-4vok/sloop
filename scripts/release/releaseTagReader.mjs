@@ -15,6 +15,7 @@ export function readTagMetadata(tag, gitCommand = git) {
   try {
     return {
       packageText: gitCommand('show', `${tag}:package.json`),
+
       changelog: gitCommand('show', `${tag}:CHANGELOG.md`),
     };
   } catch {

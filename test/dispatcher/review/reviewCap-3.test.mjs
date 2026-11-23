@@ -26,9 +26,13 @@ test('review-cap resolution creates an empty cap when resuming a ready PR recove
   const fake = createReviewCapGitHubHost({
     pullRequest: {
       number: 7,
+
       mergeable: 'MERGEABLE',
+
       mergeStateStatus: 'CLEAN',
+
       comments: [],
+
       statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
     },
   });

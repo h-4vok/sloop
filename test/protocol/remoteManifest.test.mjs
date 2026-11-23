@@ -46,14 +46,23 @@ test('remote manifest contracts reject malformed markers and validate boundaries
 function createRemoteManifest() {
   return {
     protocol: 1,
+
     runId: 'run-1',
+
     issue: 33,
+
     branch: 'codex/issue-33',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: [],
   };
 }

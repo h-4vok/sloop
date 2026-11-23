@@ -32,10 +32,12 @@ test('resumes the stored session for the same run issue and role', async () => {
   const calls = [];
   const harness = {
     capabilities: { sessions: true },
+
     async start(_context, turn) {
       calls.push(['start', turn]);
       return { accepted: true, session: 'opaque-a' };
     },
+
     async resume(_context, turn) {
       calls.push(['resume', turn]);
       return { accepted: true, session: turn.session };
@@ -89,10 +91,12 @@ test('starts a separate session for a different run key', async () => {
   const calls = [];
   const harness = {
     capabilities: { sessions: true },
+
     async start(runContext, turn) {
       calls.push(['start', turn]);
       return { accepted: true, session: `session-${runContext.run}` };
     },
+
     async resume(_context, turn) {
       calls.push(['resume', turn]);
       return { accepted: true, session: turn.session };

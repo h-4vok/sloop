@@ -24,13 +24,20 @@ test('recovery with a stale remote branch adopts the existing PR branch and reac
 function createStaleRemoteBranchHarness(now) {
   const dispatcherHarness = createMockDispatcherHarness([{ number: 1, title: 'a' }], {
     headRefName: 'codex/issue-1-137e',
+
     initialState: {
       issue: 1,
+
       pr: 14,
+
       status: 'worker_recovery_pending',
+
       reviewRound: 4,
+
       workerPid: -1,
+
       workerStartedAt: now - 101,
+
       workerHeartbeatAt: now - 101,
     },
   });
@@ -38,25 +45,42 @@ function createStaleRemoteBranchHarness(now) {
   dispatcherHarness.dependencies.remote = {
     snapshot: () => ({
       protocol: 1,
+
       issue: 1,
+
       pr: 14,
+
       manifest: {
         protocol: 1,
+
         runId: 'recovery-run',
+
         issue: 1,
+
         pr: 14,
+
         branch: 'codex/issue-1-stale',
+
         baseSha: 'abcdef1',
+
         configFingerprint: 'test-config',
+
         phase: 'working',
+
         reviewRound: 4,
+
         contextCursor: '',
+
         artifacts: ['sloop-v1/run/recovery-artifact'],
       },
+
       markers: ['sloop/v1/run/recovery-run'],
     }),
+
     reconcile: () => true,
+
     claim: () => {},
+
     publish: () => {},
   };
   dispatcherHarness.dependencies.prepareWorkerBranch = () => {

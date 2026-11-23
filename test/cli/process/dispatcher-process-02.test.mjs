@@ -37,13 +37,20 @@ function createAbandonmentFixture() {
   const statePath = join(root, 'state.json');
   const state = {
     issue: 1,
+
     pr: 7,
+
     status: 'review_cap_pending',
+
     reviewRound: 2,
+
     reviewCap: {
       capRound: 2,
+
       outstandingFindingIds: ['Q1'],
+
       additionalRounds: 0,
+
       waivedFindingIds: [],
     },
   };
@@ -55,15 +62,24 @@ function createAbandonmentFixture() {
   });
   return {
     root,
+
     statePath,
+
     state,
+
     host: host.host,
+
     calls: host.calls,
+
     options: {
       steer: 'stop safely',
+
       abandon: true,
+
       waiveAllOutstanding: false,
+
       waivedFindingIds: [],
+
       additionalRounds: 0,
     },
   };
@@ -80,12 +96,18 @@ function resumeCompletedAbandonment(fixture) {
   writeState(
     {
       ...fixture.state,
+
       status: 'abandon_pending',
+
       abandonment: {
         steer: 'stop safely',
+
         commentPublished: true,
+
         prClosed: true,
+
         labelled: true,
+
         issueClosed: true,
       },
     },

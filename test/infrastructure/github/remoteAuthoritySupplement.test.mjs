@@ -89,7 +89,9 @@ test('remote snapshot normalizes issue and pull-request state', () => {
   const mockGitHubCommand = (_commandFile, commandArgs) =>
     respondToMockGitHubCommand(commandArgs, {
       'issue view': mockIssueResponse,
+
       'pr view': mockPullRequestResponse,
+
       api: mockReviewThreadsResponse,
     });
   const adapterDependencies = createAdapterDependenciesWithMockGitHubCommand(mockGitHubCommand);

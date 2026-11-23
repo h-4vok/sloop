@@ -6,8 +6,11 @@ import { createMockAgentRun } from './createMockAgentRun.mjs';
 export function createMockDispatcherDependencies(fixture) {
   return {
     ...createCoreStateDependencies(fixture),
+
     ...createPullRequestDependencies(fixture),
+
     ...createLeaseDependencies(),
+
     ...createBranchDependencies(),
   };
 }
@@ -15,37 +18,53 @@ export function createMockDispatcherDependencies(fixture) {
 function createCoreStateDependencies(fixture) {
   return {
     root: fixture.root,
+
     load: () => fixture.state,
+
     save: (next) => {
       fixture.saves.push(structuredClone(next));
       fixture.state = next;
     },
+
     loadConfig: () => ({ ...baseConfig, ...fixture.overrides.config }),
+
     setRunLogger: (logger) => {
       fixture.activeLogger = logger;
     },
+
     runContext: () => ({ originalRepository: fixture.root, executionRoot: fixture.root }),
+
     status: (verbose) =>
       verbose
         ? fixture.state
         : {
             issue: fixture.state.issue,
+
             pr: fixture.state.pr,
+
             status: fixture.state.status,
+
             lastError: fixture.state.lastError,
           },
+
     list: () => fixture.issues.map(({ number, title }) => ({ number, title })),
+
     recoverLock: () => 'recovered',
+
     reset: () => {
       fixture.state = resetRunState(fixture.state, () => false);
     },
+
     resolveReviewCap: () => {},
+
     linkIssue: () => {},
+
     prepareRecovery: (issue, requestedPr) => {
       const number = requestedPr ?? fixture.state.pr;
       fixture.state = prepareRecovery(fixture.state, issue, number, Date.now(), 100);
       return number;
     },
+
     eligible: () => fixture.issues,
   };
 }
@@ -53,11 +72,17 @@ function createCoreStateDependencies(fixture) {
 function createPullRequestDependencies(fixture) {
   return {
     comment: (issue, body) => fixture.comments.push([issue, body]),
+
     run: createMockAgentRun(fixture),
+
     pullRequest: () => readMockPullRequest(fixture),
+
     updatePullRequestBody: (number, body) => updateMockPullRequestBody(fixture, number, body),
+
     pullRequestBody: () => fixture.pr.body,
+
     prComment: (number, body) => addMockPullRequestComment(fixture, number, body),
+
     createIssue: (title, body) => createMockIssue(fixture, title, body),
   };
 }
@@ -87,21 +112,33 @@ function createMockIssue(fixture, title, body) {
 function createLeaseDependencies() {
   return {
     now: () => Date.now(),
+
     pid: () => process.pid,
+
     processAlive: (pid) => pid > 0 && pid !== -1,
+
     sleep: async () => {},
+
     onReclaim: () => {},
+
     tryAcquire: () => true,
+
     readOwner: () => {
       throw new Error('lock owner unavailable');
     },
+
     tryBeginReclaim: () => true,
+
     readReclaimOwner: () => {
       throw new Error('reclaim owner unavailable');
     },
+
     reclaimAgeMs: () => 0,
+
     finishReclaim: () => {},
+
     abandonReclaim: () => {},
+
     release: () => {},
   };
 }
@@ -110,8 +147,10 @@ function createBranchDependencies() {
   return {
     prepareWorkerBranch: (issue) => ({
       branch: workerBranchName(issue),
+
       mainBaseSha: 'main-sha-1',
     }),
+
     checkoutWorkerBranch: () => {},
   };
 }

@@ -8,6 +8,7 @@ test('Windows timeout requests termination of the full agent process tree', () =
   let requestedPid;
   const agentProcess = {
     pid: 1420,
+
     kill: () => {
       wasKilledDirectly = true;
       return true;
@@ -26,6 +27,7 @@ test('Windows timeout falls back to killing the agent when tree termination fail
   let wasKilledDirectly = false;
   const agentProcess = {
     pid: 1420,
+
     kill: () => {
       wasKilledDirectly = true;
       return true;
@@ -57,6 +59,7 @@ test('Windows process tree termination falls back when taskkill fails', () => {
   const spawnProcess = () => taskkillProcess;
   const agentProcess = {
     pid: 1420,
+
     kill: () => {
       directKillCount += 1;
       return true;
@@ -74,6 +77,7 @@ test('non-Windows timeout kills the agent process directly', () => {
   let wasKilledDirectly = false;
   const agentProcess = {
     pid: 1420,
+
     kill: () => {
       wasKilledDirectly = true;
       return true;

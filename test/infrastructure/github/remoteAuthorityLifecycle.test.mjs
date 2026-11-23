@@ -20,6 +20,7 @@ test('production adapters read, claim, and publish remote run state', () => {
   scenario.dependencies.remote.claim(81, 'new', 'lease-token');
   scenario.dependencies.remote.claim(81, 'new', {
     ...scenario.manifest,
+
     lease: { owner: 'owner', expiresAt: 10 },
   });
   scenario.dependencies.remote.publish(81, { ...scenario.manifest, artifacts: [] });
@@ -80,15 +81,21 @@ function respondToRemoteCommand(args, calls, marker) {
   if (args[0] === 'issue')
     return JSON.stringify({
       labels: [{ name: 'eligible' }],
+
       comments: [{ body: `sloop/v1/run/old\\n${marker}` }],
     });
   if (args[0] === 'pr' && args[1] === 'view') {
     return JSON.stringify({
       number: 9,
+
       headRefName: 'codex/issue-81',
+
       headRefOid: 'abcdef1',
+
       comments: [{ body: 'sloop-v1/review/1' }],
+
       reviews: [{ state: 'APPROVED' }],
+
       statusCheckRollup: [{ name: 'checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
     });
   }
@@ -108,15 +115,25 @@ function createOfflineDependencies(root, config) {
 function createRemoteManifest() {
   return {
     protocol: 1,
+
     runId: 'run',
+
     issue: 81,
+
     pr: 9,
+
     branch: 'codex/issue-81',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'cfg',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: '',
+
     artifacts: ['old'],
   };
 }

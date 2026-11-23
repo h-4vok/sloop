@@ -21,10 +21,15 @@ function createNoWorkHarness() {
   const dispatcherHarness = createMockDispatcherHarness([], { initialState: priorRunState() });
   dispatcherHarness.setState({
     completedIssues: [8],
+
     mainGreen: true,
+
     status: undefined,
+
     issue: undefined,
+
     pr: undefined,
+
     branch: undefined,
   });
 
@@ -34,23 +39,41 @@ function createNoWorkHarness() {
 function priorRunState() {
   return {
     issue: 9,
+
     status: 'blocked',
+
     pr: 14,
+
     branch: 'codex/issue-9',
+
     headSha: 'old-head',
+
     mainBaseSha: 'old-main',
+
     reviewRound: 4,
+
     lastCiFeedback: 'old CI',
+
     lastQaFeedback: 'old QA',
+
     lastStaffFeedback: 'old Staff',
+
     taskContext: 'old context',
+
     workerRunId: 'old-run',
+
     workerPid: 123,
+
     workerStartedAt: 1,
+
     workerHeartbeatAt: 1,
+
     workerRecoveryCount: 2,
+
     lastError: 'old error',
+
     completedIssues: [8],
+
     mainGreen: true,
   };
 }
@@ -58,9 +81,13 @@ function priorRunState() {
 function expectedDoneState(updatedAt) {
   return {
     completedIssues: [8],
+
     mainGreen: true,
+
     status: 'done',
+
     drainStatus: 'done',
+
     updatedAt,
   };
 }

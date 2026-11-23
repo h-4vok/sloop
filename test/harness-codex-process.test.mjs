@@ -37,10 +37,15 @@ function createHarnessChild() {
 function createCodexHarness(child, timeoutMs, spawn = () => child) {
   return new CodexHarness({
     cwd: 'fixture-repository',
+
     model: 'gpt-5-codex',
+
     sandbox: 'workspace-write',
+
     reasoningEffort: 'high',
+
     timeoutMs,
+
     spawn,
   });
 }

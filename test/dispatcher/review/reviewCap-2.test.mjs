@@ -16,13 +16,20 @@ function createReviewCapFixture() {
   writeState(
     {
       issue: 1,
+
       pr: 7,
+
       status: 'review_cap_pending',
+
       reviewRound: 2,
+
       reviewCap: {
         capRound: 2,
+
         outstandingFindingIds: ['Q1', 'Q2'],
+
         additionalRounds: 0,
+
         waivedFindingIds: [],
       },
     },
@@ -30,24 +37,37 @@ function createReviewCapFixture() {
   );
   const fake = createReviewCapGitHubHost({
     issue: { comments: [{ body: 'An unrelated issue comment.' }] },
+
     pullRequest: {
       number: 7,
+
       mergeable: 'MERGEABLE',
+
       mergeStateStatus: 'CLEAN',
+
       comments: [{ body: 'An unrelated pull request comment.' }],
+
       statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
     },
   });
   return {
     root,
+
     statePath,
+
     host: fake.host,
+
     calls: fake.calls,
+
     options: {
       steer: 'ship this',
+
       abandon: false,
+
       waiveAllOutstanding: false,
+
       waivedFindingIds: ['q1', 'q2'],
+
       additionalRounds: 0,
     },
   };

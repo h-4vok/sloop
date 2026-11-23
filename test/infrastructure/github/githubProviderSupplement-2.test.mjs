@@ -57,7 +57,9 @@ function collectActiveRunOutcomes() {
   const verifiedIdentity = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   const unavailableReconcile = activeRunReconcilerFactory.create({
     client,
+
     config,
+
     root: tmpdir(),
   })({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   state.pullRequest = { ...state.pullRequest, state: 'MERGED' };
@@ -65,18 +67,26 @@ function collectActiveRunOutcomes() {
   const mergedPullRequest = reconcile({ issue: 81, pr: 9, branch: 'codex/issue-81-x' });
   state.pullRequest = {
     number: 9,
+
     state: 'MERGED',
+
     baseRefName: config.repository.baseBranch,
+
     body: 'Fixes #81',
   };
   const missingBranch = reconcile({ issue: 81, pr: 9 });
 
   return {
     openResult,
+
     missingClosingReference,
+
     verifiedIdentity,
+
     unavailableReconcile,
+
     mergedPullRequest,
+
     missingBranch,
   };
 }
@@ -85,11 +95,16 @@ function createActiveRunScenario() {
   const config = loadConfigText(canonicalConfigYaml());
   const state = {
     issueState: 'OPEN',
+
     pullRequest: {
       number: 9,
+
       state: 'OPEN',
+
       baseRefName: config.repository.baseBranch,
+
       headRefName: 'codex/issue-81-x',
+
       body: 'Fixes #81',
     },
   };

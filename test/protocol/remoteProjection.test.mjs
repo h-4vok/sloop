@@ -17,11 +17,17 @@ test('projection identifies active lease ownership and review gates', () => {
   });
   const projected = projectRemoteState({
     issue: 33,
+
     markers: ['sloop/v1/run/r'],
+
     manifest,
+
     labels: ['Automation Blocked'],
+
     branch: 'wrong',
+
     sha: 'bad',
+
     leaseOwner: 'b',
   });
 
@@ -38,12 +44,19 @@ test('projection reports a complete manifest with no open gates', () => {
   const manifest = createProjectionManifest({ phase: 'complete' });
   const complete = projectRemoteState({
     issue: 33,
+
     comments: [{ marker: 'sloop/v1/run/r' }],
+
     manifest,
+
     checks: [{ name: 'pr-checks', conclusion: 'success' }],
+
     reviews: [{ state: 'APPROVED' }, { state: 'dismissed' }],
+
     inlineThreads: [{ resolved: true }],
+
     branch: 'b',
+
     sha: 'abcdef1',
   });
 
@@ -54,15 +67,25 @@ test('projection reports a complete manifest with no open gates', () => {
 function createProjectionManifest(overrides = {}) {
   return {
     protocol: 1,
+
     runId: 'r',
+
     issue: 33,
+
     branch: 'b',
+
     baseSha: 'abcdef1',
+
     configFingerprint: 'f',
+
     phase: 'working',
+
     reviewRound: 1,
+
     contextCursor: 'c',
+
     artifacts: [],
+
     ...overrides,
   };
 }

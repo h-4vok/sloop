@@ -74,6 +74,7 @@ test('public CLI returns a blocked exit when a live mutex owner refuses reset', 
   const errorMessages = [];
   fixture.harness.dependencies.resetMutex = () => ({
     ok: false,
+
     error: 'Cannot reset the repository mutex while Sloop process 7004 is active.',
   });
   console.error = (message) => errorMessages.push(message);

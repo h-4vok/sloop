@@ -15,15 +15,25 @@ export function createMockFaultHarness(options = {}) {
 function createFaultFixture(options) {
   const fixture = {
     root: createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-fault-')),
+
     state: structuredClone(options.initialState ?? {}),
+
     remote: options.remoteManifest,
+
     claimCount: 0,
+
     publishCount: 0,
+
     publishedManifests: [],
+
     prepareCount: 0,
+
     hasSimulatedCrash: false,
+
     comments: [],
+
     reviews: [],
+
     events: [],
   };
   fixture.pr = createFaultPullRequest(fixture);
@@ -33,15 +43,25 @@ function createFaultFixture(options) {
 function createFaultPullRequest(fixture) {
   return {
     number: 14,
+
     state: 'OPEN',
+
     baseRefName: 'main',
+
     headRefName: 'codex/issue-33-fault',
+
     headRefOid: 'abcdef1',
+
     body: 'Summary\n\nCloses #33',
+
     mergeStateStatus: 'CLEAN',
+
     mergeable: 'MERGEABLE',
+
     comments: fixture.comments,
+
     reviews: fixture.reviews,
+
     statusCheckRollup: [{ name: 'pr-checks', status: 'COMPLETED', conclusion: 'SUCCESS' }],
   };
 }
@@ -49,14 +69,21 @@ function createFaultPullRequest(fixture) {
 function createFaultDependencies(fixture, options) {
   return {
     ...createFaultLocalDependencies(fixture, options),
+
     ...createFaultAgentDependencies({
       events: fixture.events,
+
       comments: fixture.comments,
+
       reviews: fixture.reviews,
+
       pr: fixture.pr,
+
       pullRequestEvidence: options.pullRequestEvidence ?? {},
     }),
+
     ...createFaultLeaseDependencies(),
+
     ...createIssue33FaultAdapters(fixture, options),
   };
 }
@@ -64,18 +91,30 @@ function createFaultDependencies(fixture, options) {
 function createFaultLocalDependencies(fixture, options) {
   return {
     root: fixture.root,
+
     load: () => fixture.state,
+
     save: (next) => saveFaultState(fixture, next, options.crashAfterClaim),
+
     loadConfig: () => faultConfig,
+
     status: (verbose) =>
       verbose ? fixture.state : { issue: fixture.state.issue, status: fixture.state.status },
+
     list: () => [],
+
     recoverLock: () => 'none',
+
     reset: () => {},
+
     resolveReviewCap: () => {},
+
     linkIssue: () => {},
+
     prepareRecovery: () => 14,
+
     eligible: () => [{ number: 33, title: 'fault injection' }],
+
     comment: (issue, body) => fixture.comments.push({ issue, body }),
   };
 }
@@ -97,13 +136,19 @@ function shouldSimulateFaultCrash(fixture, next, crashAfterClaim) {
 function createPublicFaultHarness(fixture, dependencies) {
   return {
     dependencies,
+
     counts: () => ({
       claimCount: fixture.claimCount,
+
       publishCount: fixture.publishCount,
+
       prepareCount: fixture.prepareCount,
     }),
+
     remote: () => fixture.remote,
+
     published: () => fixture.publishedManifests,
+
     events: () => fixture.events,
   };
 }

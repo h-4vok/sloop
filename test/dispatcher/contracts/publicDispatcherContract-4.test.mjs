@@ -55,10 +55,15 @@ test('native dispatcher GitHub operations preserve argv, repository scoping, and
       'pr view details',
       JSON.stringify({
         number: 7,
+
         body: undefined,
+
         merge_state_status: 'CLEAN',
+
         reviews: [{ body: 'review', submitted_at: 'two', commit: { oid: 'abc' } }],
+
         comments: [{ body: 'comment', created_at: 'one' }],
+
         statusCheckRollup: [{ context: 'pr-checks', state: 'SUCCESS', details_url: 'https://x' }],
       }),
     ],

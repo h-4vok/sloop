@@ -90,6 +90,7 @@ function assertRecoveryObservation(root, flag, phase, blocker) {
   );
   const runtimeHarness = createMockRuntimeHarness({
     'git rev-parse --show-toplevel': { stdout: `${root}\n`, stderr: '', status: 0 },
+
     readableFiles: [statePath],
   });
   runtimeHarness.io.cwd = root;
@@ -108,15 +109,23 @@ function assertRecoveryObservation(root, flag, phase, blocker) {
   );
   assert.deepEqual(diagnostic, {
     check: `recovery-${phase}`,
+
     message: `${blocker} (issue #45, PR #107)`,
+
     remediation: 'Next: sloop --prepare-recovery 45 --pr 107; this mutates local recovery state.',
+
     phase,
+
     context: { issue: 45, pullRequest: 107 },
+
     nextAction: {
       command: 'sloop --prepare-recovery 45 --pr 107',
+
       description: 'Prepare the recorded recovery for the issue and pull request.',
+
       mutates: true,
     },
+
     mutates: false,
   });
   assert.equal(

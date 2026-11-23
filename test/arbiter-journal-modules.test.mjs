@@ -17,12 +17,19 @@ test('journal appends each event once and restores clarification state', () => {
   const journal = new JsonlJournal(journalPath);
   const event = {
     id: 'event-1',
+
     sessionId: 'session-1',
+
     issue: 41,
+
     role: 'arbiter',
+
     round: 1,
+
     type: 'clarification_requested',
+
     emittedAt: '2026-10-30T12:00:00Z',
+
     payload: { question: 'Which behavior is expected?', target: 'form input' },
   };
   const baseSession = createSession(41, 'session-1');
