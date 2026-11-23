@@ -64,9 +64,12 @@ function isWindowsBatchCommand(executable: string, platform: string): boolean {
 }
 
 function assertSafeBatchCommand(executable: string, args: readonly string[]): void {
-  // cmd.exe must parse batch files, so reject syntax that can alter the command.
-  const unsafe = /["%&|<>()^!\r\n]/;
-  if (unsafe.test(executable) || args.some((argument) => unsafe.test(argument)))
+  // These quotes, expansions, separators, redirection, grouping, escapes, and line breaks are cmd.exe syntax.
+  const unsafeWindowsBatchCommandPattern = /["%&|<>()^!\r\n]/;
+  if (
+    unsafeWindowsBatchCommandPattern.test(executable) ||
+    args.some((argument) => unsafeWindowsBatchCommandPattern.test(argument))
+  )
     throw new Error('Windows batch command contains unsafe cmd.exe syntax');
 }
 
