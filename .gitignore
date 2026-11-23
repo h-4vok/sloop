@@ -9,3 +9,5 @@ sloop.config.json
 .env
 .serena/
 .playwright-mcp/
+graphify-out/*
+!graphify-out/graph.json

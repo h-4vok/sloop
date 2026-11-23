@@ -4,6 +4,13 @@
 
 Before writing or reviewing code, read `docs/engineering-standards.md` and apply its architectural, design, naming, error-handling, and testing rules. These standards complement the repository verification instructions below; AAA is only one part of them.
 
+## Graphify
+
+- For codebase and architecture questions, start with a focused `graphify query "..."` against the shared graph.
+- After relevant code changes or a pull/branch update that may make references stale, run `graphify update .`, review `graphify-out/graph.json`, and commit the refreshed graph with the source changes.
+- Track only `graphify-out/graph.json`; keep Graphify caches, reports, HTML, cost data, and checkout markers local.
+- See `docs/graphify.md` for fresh-clone setup and per-clone merge-driver configuration.
+
 ## Sloop skills
 
 The canonical source for the distributed Sloop skills is `assets/skills/`:
