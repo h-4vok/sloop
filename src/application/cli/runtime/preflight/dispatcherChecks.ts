@@ -39,11 +39,13 @@ export const dispatcherChecks = Object.freeze({
     io: RuntimeIo,
   ): Diagnostic[] {
     if (this.isLocalCommand(command)) return checkCorePrerequisites.commonChecks(root, config, io);
+
     if (command.kind === 'list')
       return [
         ...checkCorePrerequisites.commonChecks(root, config, io),
         ...checkGitHubPrerequisites.githubChecks(root, config, io),
       ];
+
     if (this.isGitHubWriteCommand(command))
       return [
         ...checkCorePrerequisites.commonChecks(root, config, io),
@@ -53,9 +55,7 @@ export const dispatcherChecks = Object.freeze({
     return checkCorePrerequisites.doctorChecks(root, config, io);
   },
 
-  commandNameForDispatcher(command: DispatcherCommand): string {
-    return commandNameForDispatcher(command);
-  },
+  commandNameForDispatcher,
 
   loadDispatcherContext(
     command: DispatcherCommand,
@@ -139,6 +139,7 @@ export const dispatcherChecks = Object.freeze({
     if (!context.root || !context.config) return context.result;
 
     const failures = this.checkCommandPrerequisites(command, context.root, context.config, io);
+
     if (failures.length) return this.emitPreflightFailure(command, failures, io);
 
     return this.validateRepositoryIdentity(command, context.root, context.config, io);
