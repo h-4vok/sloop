@@ -4,9 +4,12 @@ import type { Result } from '../core/Result.js';
 /** Identifies the parser behavior and display format for one config field. */
 export type ConfigValueType =
   'string' | 'boolean' | 'integer' | 'duration' | 'enum' | 'list' | 'path' | 'argv';
+
 /** Controls whether a field may appear in configuration fingerprints. */
 export type Sensitivity = 'public' | 'sensitive';
+
 export type Reconciler = ConfigReconcilerKind;
+
 /** Describes one configuration validation failure at its source path. */
 export type ConfigDiagnostic = Readonly<{ path: string; message: string }>;
 
@@ -42,6 +45,7 @@ export type RunnerConfig = Readonly<{
   timeout: number;
   retries: number;
 }>;
+
 /** Fully validated immutable configuration used by the Sloop runtime. */
 export type SloopConfig = Readonly<{
   schemaVersion: 1;

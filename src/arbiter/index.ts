@@ -11,20 +11,30 @@ export type {
   HumanFeedbackBatch,
   ReviewSnapshot,
 } from './session/EngineeringSession.js';
+
 export {
   createSession,
   event,
   formatClarificationComment,
   isReviewCurrent,
 } from './session/EngineeringSession.js';
+
 export { JsonlJournal } from './session/JsonlJournal.js';
+
 export { restoreSession } from './session/restoreSession.js';
+
 export { collectHumanFeedback } from './feedback/collectHumanFeedback.js';
+
 export type { HumanFeedbackInput } from './feedback/collectHumanFeedback.js';
+
 export { consumeArbiterLine } from './process/consumeArbiterLine.js';
+
 export type { EventConsumer } from './process/consumeArbiterLine.js';
+
 export { runLoggedProcess } from './process/runLoggedProcess.js';
+
 export type { LoggedProcessResult, ProcessSpec } from './process/runLoggedProcess.js';
+
 export type { FeedbackClassifier } from './feedback/classifyFeedback.js';
 import type { Classification, HumanFeedback } from './session/EngineeringSession.js';
 

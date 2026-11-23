@@ -13,6 +13,7 @@ export type RunStatus =
   | 'overrule'
   | 'defer'
   | 'escalate';
+
 /** Identifies the workflow invocation an agent result belongs to. */
 export type RunContext = Readonly<{
   run: string;
@@ -22,6 +23,7 @@ export type RunContext = Readonly<{
   sha: string;
   cursor: string;
 }>;
+
 /** Human-readable verification guidance returned in an agent payload. */
 export type HumanGuide = Readonly<{
   summary: string;
@@ -31,6 +33,7 @@ export type HumanGuide = Readonly<{
   limitations: string[];
   checklist: string[];
 }>;
+
 /** Versioned result contract shared by agent producers and Sloop. */
 export type AgentEnvelope = Readonly<{
   schema: typeof AGENT_OUTPUT_VERSION;
@@ -39,6 +42,7 @@ export type AgentEnvelope = Readonly<{
   status: RunStatus;
   payload: Record<string, unknown>;
 }>;
+
 /** Captured completion result from an agent child process. */
 export type ProcessResult = Readonly<{
   stdout: string;
@@ -46,6 +50,7 @@ export type ProcessResult = Readonly<{
   code: number | null;
   signal: NodeJS.Signals | null;
 }>;
+
 /** Injectable process boundary used by agent runners and tests. */
 export type ProcessExecutor = (
   command: string,

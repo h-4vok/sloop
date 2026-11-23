@@ -3,6 +3,7 @@ import type { DispatcherCommand } from './application/dispatcher/DispatcherComma
 import type { Deps } from './application/dispatcher/types/Deps.js';
 import { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
 export { childProcessInvocation, resolveExecutable, runSyncCommand } from './process.js';
+
 export type {
   Check,
   Command,
@@ -16,11 +17,13 @@ export type {
   State,
   Status,
 } from './application/dispatcher/types/index.js';
+
 export type {
   CiState,
   HumanReviewGuide,
   HitlResumeDirective,
 } from './application/dispatcher/types/index.js';
+
 export { CliFailure } from './application/dispatcher/types/CliFailure.js';
 import { DispatcherRuntime } from './application/dispatcher/services/DispatcherRuntime.js';
 import { StateDiagnostics } from './application/dispatcher/services/state/StateDiagnostics.js';
@@ -75,20 +78,35 @@ const { resolveReviewCap } = ResolveReviewCap;
 const { linkIssueToActiveRun } = IssueLink;
 const { dispatch } = Dispatcher;
 export { readState, writeState, resetRunState };
+
 export { defaultProcessAlive };
+
 export { redactDiagnostic };
+
 export { dispatcherLockPath, recoverStaleLock, acquire };
+
 export { eligible, selectIssues };
+
 export { pullRequest, pullRequestBody };
+
 export { updatePullRequestBody, commentPullRequest, withIssueClosingReference };
+
 export { runCommand };
+
 export { command };
+
 export { hasCommit };
+
 export { reviewFeedback };
+
 export { maxRoundsForUserBudget };
+
 export { prepareRecovery, workerBranchName, prepareWorkerBranch, checkoutWorkerBranch };
+
 export { resolveReviewCap };
+
 export { linkIssueToActiveRun };
+
 export { dispatch };
 
 export async function runDispatcherCli(command: DispatcherCommand, d: Deps): Promise<0 | 4> {

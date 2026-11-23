@@ -1,10 +1,12 @@
 import { projectRemoteState as projectResult } from './remote-state/projectRemoteState.js';
 export { REMOTE_PROTOCOL } from './remote-state/RemoteManifest.js';
+
 export type {
   RemoteSnapshot,
   RunManifest,
   WorkflowProjection,
 } from './remote-state/RemoteManifest.js';
+
 export {
   artifactKey,
   decodeRunManifestMarker,
@@ -14,7 +16,9 @@ export {
   reconcileArtifact,
   runManifestMarker,
 } from './remote-state/runManifestMarker.js';
+
 export { validateRunManifest } from './remote-state/validateRunManifest.js';
+
 export { projectRemoteState as projectRemoteStateResult } from './remote-state/projectRemoteState.js';
 import type { RemoteSnapshot, WorkflowProjection } from './remote-state/RemoteManifest.js';
 
