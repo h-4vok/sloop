@@ -19,7 +19,7 @@ The canonical source for the distributed Sloop skills is `assets/skills/`:
 - `assets/skills/sloop-worker/SKILL.md`
 - `assets/skills/sloop-qa/SKILL.md`
 - `assets/skills/product-lead/SKILL.md`
-- `assets/skills/sloop-e2e-prepare/SKILL.md`
+- `assets/skills/sloop-test-empty-e2e/SKILL.md`
 - `assets/skills/sloop-test-cleanup/SKILL.md`
 
 Treat `.codex/skills/` as a deployed working copy; do not edit those files directly. When changing a Sloop skill, edit the matching file under `assets/skills/`, then run `sloop config install` from the Sloop repository to deploy the change to `.codex/skills/`. Verify the deployed result before committing.
