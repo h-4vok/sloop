@@ -98,11 +98,25 @@ test('reset succeeds when no repository mutex exists', () => {
   assert.deepEqual(resetResult, { ok: true, value: 'No repository mutex found.' });
 });
 
+test('reset removes the mutex directory when there is no active lease', () => {
+  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-inactive-mutex-'));
+  const mutexDirectory = join(root, '.sloop', 'mutex');
+  mkdirSync(mutexDirectory, { recursive: true });
+
+  const resetResult = ephemeralMutex.reset(root, () => false);
+
+  assert.deepEqual(resetResult, { ok: true, value: 'Repository mutex reset.' });
+  assert.equal(existsSync(mutexDirectory), false);
+});
+
 test.each([
   [undefined, 'unknown'],
   ['not-a-pid:168', 'invalid'],
   ['1e3:168', 'invalid'],
   ['0x10:168', 'invalid'],
+  ['7004:168:extra', 'invalid'],
+  ['9007199254740992:168', 'invalid'],
+  ['7004:not-an-issue', 'invalid'],
 ])('reset preserves a mutex with an %s owner record', (owner, ownerStatus) => {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-unverified-mutex-'));
   const activeDirectory = join(root, '.sloop', 'mutex', 'active');
