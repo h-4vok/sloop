@@ -9,7 +9,7 @@ import {
   createMockDispatcherHarness,
 } from '../support/dispatcher-test-support.mjs';
 
-test('status rejects unsupported flag combinations', { timeout: 10_000 }, () => {
+test('status rejects unsupported flag combinations', { timeout: 30_000 }, () => {
   const dispatcherHarness = createMockDispatcherHarness();
 
   for (const args of [

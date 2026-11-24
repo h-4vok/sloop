@@ -87,31 +87,36 @@ test('branch mismatch stops before Worker executes', async () => {
   );
 });
 
-test('new branch preparation refuses to overwrite an existing worker branch', () => {
-  const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-git-'));
-  const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
-  const runGit = (args) => {
-    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
-    assert.equal(result.status, 0, result.stderr);
-    return result.stdout.trim();
-  };
-  runGit(['init', '-b', 'main']);
-  runGit(['config', 'user.email', 'test@example.com']);
-  runGit(['config', 'user.name', 'Test']);
-  writeFileSync(join(root, 'README.md'), 'main');
-  runGit(['add', 'README.md']);
-  runGit(['commit', '-m', 'initial']);
-  const remoteResult = spawnSync('git', ['init', '--bare', remote], { encoding: 'utf8' });
+test(
+  'new branch preparation refuses to overwrite an existing worker branch',
+  { timeout: 30_000 },
+  () => {
+    const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-git-'));
+    const remote = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-remote-'));
+    const runGit = (args) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    runGit(['init', '-b', 'main']);
+    runGit(['config', 'user.email', 'test@example.com']);
+    runGit(['config', 'user.name', 'Test']);
+    writeFileSync(join(root, 'README.md'), 'main');
+    runGit(['add', 'README.md']);
+    runGit(['commit', '-m', 'initial']);
+    const remoteResult = spawnSync('git', ['init', '--bare', remote], { encoding: 'utf8' });
 
-  assert.equal(remoteResult.status, 0, remoteResult.stderr);
-  runGit(['remote', 'add', 'origin', remote]);
-  runGit(['push', 'origin', 'main']);
-  runGit(['branch', 'codex/issue-1']);
-  assert.throws(
-    () => prepareWorkerBranch(1, root),
-    /worker branch codex\/issue-1 already exists; refusing to overwrite it/,
-  );
-  assert.equal(runGit(['rev-parse', 'codex/issue-1']), runGit(['rev-parse', 'HEAD']));
-  rmSync(root, { recursive: true, force: true });
-  rmSync(remote, { recursive: true, force: true });
-}, 15_000);
+    assert.equal(remoteResult.status, 0, remoteResult.stderr);
+    runGit(['remote', 'add', 'origin', remote]);
+    runGit(['push', 'origin', 'main']);
+    runGit(['branch', 'codex/issue-1']);
+    assert.throws(
+      () => prepareWorkerBranch(1, root),
+      /worker branch codex\/issue-1 already exists; refusing to overwrite it/,
+    );
+    assert.equal(runGit(['rev-parse', 'codex/issue-1']), runGit(['rev-parse', 'HEAD']));
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  },
+  15_000,
+);

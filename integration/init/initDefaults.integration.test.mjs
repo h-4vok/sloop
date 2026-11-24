@@ -16,36 +16,40 @@ import {
 
 afterEach(cleanupTemporaryRepos);
 
-test('CLI discovery reports version, JSON status, exit classes, and safe failures', () => {
-  const outside = trackTemporaryRepo(
-    createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-contracts-outside-')),
-  );
-  const help = runSloopCli(outside, ['--help']);
-  assert.equal(help.status, 0);
-  assert.match(help.stdout, /Usage: sloop/);
+test(
+  'CLI discovery reports version, JSON status, exit classes, and safe failures',
+  { timeout: 15_000 },
+  () => {
+    const outside = trackTemporaryRepo(
+      createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-contracts-outside-')),
+    );
+    const help = runSloopCli(outside, ['--help']);
+    assert.equal(help.status, 0);
+    assert.match(help.stdout, /Usage: sloop/);
 
-  const version = runSloopCli(outside, ['--version']);
-  assert.equal(version.status, 0);
-  const packageVersion = JSON.parse(
-    readFileSync(join(import.meta.dirname, '../../package.json'), 'utf8'),
-  ).version;
-  assert.equal(version.stdout.trim(), packageVersion);
+    const version = runSloopCli(outside, ['--version']);
+    assert.equal(version.status, 0);
+    const packageVersion = JSON.parse(
+      readFileSync(join(import.meta.dirname, '../../package.json'), 'utf8'),
+    ).version;
+    assert.equal(version.stdout.trim(), packageVersion);
 
-  const unknown = runSloopCli(outside, ['--unknown']);
-  assert.equal(unknown.status, 2);
-  assert.equal(unknown.stdout, '');
-  assert.match(unknown.stderr, /Command usage is invalid/);
+    const unknown = runSloopCli(outside, ['--unknown']);
+    assert.equal(unknown.status, 2);
+    assert.equal(unknown.stdout, '');
+    assert.match(unknown.stderr, /Command usage is invalid/);
 
-  const json = runSloopCli(outside, ['status', '--json']);
-  assert.equal(json.status, 2);
-  assert.equal(json.stderr, '');
-  const envelope = JSON.parse(json.stdout);
-  assert.equal(envelope.status, 'failed');
-  assert.equal(envelope.phase, 'discovery');
-  assert.match(envelope.diagnostics[0].message, /Git repository/);
-});
+    const json = runSloopCli(outside, ['status', '--json']);
+    assert.equal(json.status, 2);
+    assert.equal(json.stderr, '');
+    const envelope = JSON.parse(json.stdout);
+    assert.equal(envelope.status, 'failed');
+    assert.equal(envelope.phase, 'discovery');
+    assert.match(envelope.diagnostics[0].message, /Git repository/);
+  },
+);
 
-test('CLI config init writes canonical defaults without a TTY', () => {
+test('CLI config init writes canonical defaults without a TTY', { timeout: 15_000 }, () => {
   const root = createRepository();
   const result = runSloopCli(root, ['config', 'init']);
 
@@ -55,7 +59,7 @@ test('CLI config init writes canonical defaults without a TTY', () => {
   assert.doesNotThrow(() => loadConfigText(readFileSync(file, 'utf8')));
 });
 
-test('CLI config init leaves an existing user config unchanged', () => {
+test('CLI config init leaves an existing user config unchanged', { timeout: 15_000 }, () => {
   const root = createRepository();
   assert.equal(runSloopCli(root, ['config', 'init']).status, 0);
   const file = join(root, 'sloop.config.yaml');
