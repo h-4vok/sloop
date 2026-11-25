@@ -1,5 +1,6 @@
 /** Current wire protocol version for durable GitHub run markers. */
 export const REMOTE_PROTOCOL = 1;
+
 export type RemoteSnapshot = Readonly<{
   protocol?: number;
   issue: number;
@@ -20,6 +21,7 @@ export type RemoteSnapshot = Readonly<{
   now?: number;
   leaseOwner?: string;
 }>;
+
 export type RunManifest = Readonly<{
   protocol: number;
   runId: string;
@@ -34,6 +36,7 @@ export type RunManifest = Readonly<{
   contextCursor: string;
   artifacts: readonly string[];
 }>;
+
 export type WorkflowProjection = Readonly<{
   protocol: number;
   phase: 'idle' | 'claimed' | 'working' | 'review' | 'blocked' | 'complete';

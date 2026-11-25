@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 /** Portable v1 protocol between a configured Arbiter process and Dispatcher. */
 export type ArbiterRole = 'arbiter' | 'worker' | 'qa' | 'staff' | 'classifier';
+
 export type ArbiterEvent = Readonly<{
   id: string;
   sessionId: string;
@@ -13,7 +14,9 @@ export type ArbiterEvent = Readonly<{
   payload: Record<string, unknown>;
   emittedAt: string;
 }>;
+
 export type ReviewSnapshot = Readonly<{ sha: string; round: number; capturedAt: string }>;
+
 export type HumanFeedback = Readonly<{
   sourceId: string;
   source: 'review' | 'inline_comment' | 'pr_comment' | 'issue_comment' | 'reply';
@@ -21,6 +24,7 @@ export type HumanFeedback = Readonly<{
   target?: string;
   createdAt?: string;
 }>;
+
 export type Classification = Readonly<{
   sourceId: string;
   intent: 'approval' | 'concern' | 'requested_change' | 'blocking' | 'clarification';
@@ -28,11 +32,13 @@ export type Classification = Readonly<{
   target?: string;
   rationale?: string;
 }>;
+
 export type HumanFeedbackBatch = Readonly<{
   items: readonly HumanFeedback[];
   formalApprovals: readonly string[];
   textualObjections: readonly string[];
 }>;
+
 export type EngineeringSession = {
   sessionId: string;
   issue: number;

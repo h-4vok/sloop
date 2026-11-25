@@ -76,29 +76,35 @@ test('plain init creates canonical defaults without a TTY and never overwrites',
   assert.equal(readFileSync(file, 'utf8'), before);
 });
 
-test('real readline wizard covers init, section, and leaf scopes with confirmation safety', async () => {
-  const initRoot = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-init-'));
-  const initIO = createMockScriptedIo(['subdir', 'y', 'n']);
+test(
+  'real readline wizard covers init, section, and leaf scopes with confirmation safety',
+  { timeout: 20_000 },
+  async () => {
+    const initRoot = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-init-'));
+    const initIO = createMockScriptedIo(['subdir', 'y', 'n']);
 
-  assert.equal(
-    await runConfigCommand(initRoot, ['--init', '--wizard', 'workspace.path'], undefined, initIO),
-    0,
-    initIO.text(),
-  );
-  assert.ok(readFileSync(join(initRoot, 'sloop.config.yaml'), 'utf8').includes('#'));
-  assert.match(initIO.text(), /recommendation:/);
+    assert.equal(
+      await runConfigCommand(initRoot, ['--init', '--wizard', 'workspace.path'], undefined, initIO),
+      0,
+      initIO.text(),
+    );
+    assert.ok(readFileSync(join(initRoot, 'sloop.config.yaml'), 'utf8').includes('#'));
+    assert.match(initIO.text(), /recommendation:/);
 
-  const section = createConfigFixture();
-  assert.ok(
-    configPaths('workspace').every((path) => path === 'workspace' || path.startsWith('workspace.')),
-  );
+    const section = createConfigFixture();
+    assert.ok(
+      configPaths('workspace').every(
+        (path) => path === 'workspace' || path.startsWith('workspace.'),
+      ),
+    );
 
-  const leaf = createConfigFixture();
-  const leafIO = createMockScriptedIo(['subdir', 'y']);
-  assert.equal(await runConfigCommand(leaf.root, ['workspace.path'], undefined, leafIO), 0);
-  assert.match(readFileSync(leaf.file, 'utf8'), /path:[\s\S]*?subdir/);
-  assert.match(leafIO.text(), /workspace\.path[\s\S]*options:/);
-});
+    const leaf = createConfigFixture();
+    const leafIO = createMockScriptedIo(['subdir', 'y']);
+    assert.equal(await runConfigCommand(leaf.root, ['workspace.path'], undefined, leafIO), 0);
+    assert.match(readFileSync(leaf.file, 'utf8'), /path:[\s\S]*?subdir/);
+    assert.match(leafIO.text(), /workspace\.path[\s\S]*options:/);
+  },
+);
 
 test('interactive cancellation leaves bytes unchanged', async () => {
   const { root, file } = createConfigFixture();

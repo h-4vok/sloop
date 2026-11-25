@@ -40,24 +40,28 @@ function createRepository() {
   return root;
 }
 
-test('production workspace adapter owns and cleans an isolated worktree lifecycle', () => {
-  const root = createRepository();
-  const config = loadConfigText(
-    canonicalConfigYaml().replace('    checkout\n  path:', '    worktree\n  path:'),
-  );
-  const dependencies = productionDependencies(root, config, 'o/r', { execFileSync: () => '{}' });
-  dependencies.save({ workerRunId: 'adapter-run' });
-  const facts = dependencies.workspaceAdapter.prepare(81);
+test(
+  'production workspace adapter owns and cleans an isolated worktree lifecycle',
+  { timeout: 30_000 },
+  () => {
+    const root = createRepository();
+    const config = loadConfigText(
+      canonicalConfigYaml().replace('    checkout\n  path:', '    worktree\n  path:'),
+    );
+    const dependencies = productionDependencies(root, config, 'o/r', { execFileSync: () => '{}' });
+    dependencies.save({ workerRunId: 'adapter-run' });
+    const facts = dependencies.workspaceAdapter.prepare(81);
 
-  assert.equal(dependencies.workspaceAdapter.context().executionRoot, facts.executionRoot);
-  assert.equal(dependencies.runContext().executionRoot, facts.executionRoot);
-  assert.equal(
-    dependencies.workspaceAdapter.recover(81, 'adapter-run', facts.branch).branch,
-    facts.branch,
-  );
-  assert.equal(dependencies.listAllWorktrees().length, 1);
-  dependencies.workspaceAdapter.cleanup(facts);
-  assert.equal(dependencies.workspaceAdapter.context().executionRoot, root);
-  assert.equal(dependencies.listAllWorktrees().length, 0);
-  dependencies.clearAllWorktrees();
-}, 15_000);
+    assert.equal(dependencies.workspaceAdapter.context().executionRoot, facts.executionRoot);
+    assert.equal(dependencies.runContext().executionRoot, facts.executionRoot);
+    assert.equal(
+      dependencies.workspaceAdapter.recover(81, 'adapter-run', facts.branch).branch,
+      facts.branch,
+    );
+    assert.equal(dependencies.listAllWorktrees().length, 1);
+    dependencies.workspaceAdapter.cleanup(facts);
+    assert.equal(dependencies.workspaceAdapter.context().executionRoot, root);
+    assert.equal(dependencies.listAllWorktrees().length, 0);
+    dependencies.clearAllWorktrees();
+  },
+);

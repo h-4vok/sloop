@@ -1,8 +1,11 @@
 import type { spawn } from 'node:child_process';
 
 export type HarnessRole = 'worker' | 'qa' | 'staff' | 'arbiter' | (string & {});
+
 export type HarnessCapabilities = Readonly<{ sessions: boolean }>;
+
 export type SessionKey = Readonly<{ run: string; issue: number; role: HarnessRole }>;
+
 export type HarnessContext = Readonly<{
   issue: number;
   role: HarnessRole;
@@ -12,7 +15,9 @@ export type HarnessContext = Readonly<{
   progress?: string;
   qaUpdates?: string;
 }>;
+
 export type HarnessTurn = Readonly<{ prompt: string; session?: string }>;
+
 export type HarnessResult = Readonly<{ session?: string; accepted: boolean; output?: string }>;
 
 /** Defines the agent boundary used by turn orchestration. */

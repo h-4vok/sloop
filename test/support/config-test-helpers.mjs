@@ -27,6 +27,7 @@ export {
   productionConfigReconciler,
   parseCliCommand,
 };
+
 export const {
   ConfigValidationError,
   canonicalConfigYaml,
@@ -47,13 +48,17 @@ export const {
   parseConfigValueResult,
   updateConfigTextResult,
 } = config;
+
 export const canonical = config.canonicalConfigYaml();
+
 export const { reconcileConfig, runConfigCommand, setConfigValue, runConfigWizard } = wizard;
+
 export const {
   runConfigCommand: runConfigCommandService,
   runConfigWizard: runConfigWizardService,
   setConfigValue: setConfigValueService,
 } = configServices;
+
 export function assertParserFailure(parser, value, path, matchesMessage) {
   const result = parser(value, path);
   assert.equal(result.ok, false);
@@ -62,18 +67,21 @@ export function assertParserFailure(parser, value, path, matchesMessage) {
     assert.ok(matchesMessage(result.error.message), result.error.message);
   }
 }
+
 export function createConfigWithRemote(remote) {
   return canonical.replace(
     'remote:\n    # Git remote used for Sloop branches.\n    origin',
     'remote: "' + remote + '"',
   );
 }
+
 export function createConfigFixture() {
   const root = createIsolatedTemporaryDirectory(join(tmpdir(), 'sloop-wizard-'));
   const file = join(root, 'sloop.config.yaml');
   writeFileSync(file, config.canonicalConfigYaml());
   return { root, file };
 }
+
 export function createMockScriptedIo(answers, end = true) {
   const input = new PassThrough();
   let captured = '';
@@ -96,6 +104,7 @@ export function createMockScriptedIo(answers, end = true) {
   });
   return { input, output, text: () => captured };
 }
+
 export function createBlankAnswers(scope, tail) {
   return configPaths(scope)
     .filter(

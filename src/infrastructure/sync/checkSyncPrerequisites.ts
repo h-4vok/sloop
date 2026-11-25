@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import type { SloopConfig } from '../../config.js';
 
 export type SyncRunner = (file: string, args: readonly string[], cwd: string) => string;
+
 export type SyncOptions = { runner?: SyncRunner; output?: (message: string) => void };
 
 const defaultRunner: SyncRunner = (file, args, cwd) =>

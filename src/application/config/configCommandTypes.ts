@@ -4,9 +4,11 @@ import type { ConfigFileStore, FieldMetadata } from '../../config.js';
 import type { Logger } from '../../core/Logger.js';
 
 export type ConfigReconciler = CoreConfigReconciler;
+
 export type ConfigReconcilerWithPreflight = ConfigReconciler & {
   preflight?: (root: string, reconciler: FieldMetadata['requiredReconciler']) => void;
 };
+
 export type WizardIO = Readonly<{
   input: Readable & { isTTY?: boolean };
   output: Writable & { isTTY?: boolean };

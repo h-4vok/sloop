@@ -3,6 +3,7 @@ import { runConfigWizard as configWizardService } from './application/config/run
 import { setConfigValue as configValueSetterService } from './application/config/setConfigValue.js';
 
 export { reconcileConfig } from './application/config/runConfigCommand.js';
+
 export type {
   ConfigReconciler,
   ConfigReconcilerWithPreflight,

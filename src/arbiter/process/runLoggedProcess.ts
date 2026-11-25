@@ -20,6 +20,7 @@ export type ProcessSpec = {
   onStdoutLine?: (line: string) => void;
   onStderr?: (text: string) => void;
 };
+
 export type LoggedProcessResult = Readonly<{
   stdout: string;
   stderr: string;

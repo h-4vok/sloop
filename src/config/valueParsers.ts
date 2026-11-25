@@ -3,6 +3,7 @@ import { configValueParsers as primitiveConfigValueParsers } from './parsing/con
 
 /** Preserves the existing parser export while combining parser modules. */
 export { argvParser };
+
 export const configValueParsers = Object.freeze({
   stringParser: primitiveConfigValueParsers.stringParser,
   booleanParser: primitiveConfigValueParsers.booleanParser,

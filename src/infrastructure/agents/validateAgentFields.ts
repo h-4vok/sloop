@@ -8,11 +8,13 @@ export function object(value: unknown, name: string): Record<string, unknown> {
     throw new AgentContractError('malformed', `${name} must be an object`);
   return value as Record<string, unknown>;
 }
+
 export function nonEmpty(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim())
     throw new AgentContractError('malformed', `${name} must be non-empty`);
   return value;
 }
+
 export function exactKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
@@ -52,10 +54,12 @@ export function strings(value: unknown, name: string) {
   )
     throw new AgentContractError('malformed', `${name} must be non-empty strings`);
 }
+
 export function records(value: unknown, name: string) {
   if (!Array.isArray(value) || value.some((x) => !x || typeof x !== 'object' || Array.isArray(x)))
     throw new AgentContractError('malformed', `${name} must be objects`);
 }
+
 export function requiredRecordFields(value: unknown, name: string, fields: readonly string[]) {
   records(value, name);
   for (const [i, item] of (value as Record<string, unknown>[]).entries()) {
@@ -63,6 +67,7 @@ export function requiredRecordFields(value: unknown, name: string, fields: reado
     for (const field of fields) nonEmpty(item[field], `${name}[${i}].${field}`);
   }
 }
+
 export function context(value: unknown): RunContext {
   const c = object(value, 'context');
   exactKeys(c, ['run', 'issue', 'pr', 'round', 'sha', 'cursor'], 'context', ['pr']);
